@@ -1,0 +1,14 @@
+{
+  "pythonVersion": "3.13",
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["tests", "train.py", "training", "models", "tokenizer", "experiments"],
+  "exclude": ["artifacts", "notebooks"],
+  "typeCheckingMode": "strict",
+
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownParameterType": false,
+  "reportUnknownLambdaType": false
+}

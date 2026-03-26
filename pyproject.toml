@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-lab"
+version = "0.0.0"
+requires-python = ">=3.13"
+dependencies = [
+    "equinox>=0.13.6",
+    "flax>=0.12.6",
+    "jax>=0.9.1",
+    "numpy>=2.4.2",
+    "optax>=0.2.8",
+    "pydantic>=2.12.5",
+]
+
+[dependency-groups]
+dev = ["ipykernel", "ruff", "ty"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["models", "tokenizer", "training", "tests", "experiments"]
+extend-exclude = ["artifacts", "notebooks"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ty.environment]
+python = ".venv"
+python-version = "3.13"
+root = ["."]
+
+[tool.ty.src]
+include = ["tests", "train.py", "training", "models", "tokenizer", "experiments"]
+exclude = ["artifacts", "notebooks"]
+
+[tool.ty.terminal]
+error-on-warning = true
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["models*", "tokenizer*", "training*"]
+namespaces = true
