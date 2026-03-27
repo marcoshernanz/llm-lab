@@ -551,17 +551,6 @@ You should come out of this milestone able to:
 - Explain the difference between changing the input representation and changing decoder depth,
 - Interpret tokenized samples and losses coherently.
 
-## Break C: Training Runner and Config
-Do this only after `017`.
-
-What to build:
-- One `train.py` entrypoint.
-- One config format only.
-- Logging, checkpoints, and reproducible run metadata.
-
-Learning outcome:
-- Learn to build training infrastructure only after you have truly earned it.
-
 ## Milestone 018: First Scaled Tokenized Runs
 ### Model
 - Keep the tokenized decoder path.
@@ -569,8 +558,8 @@ Learning outcome:
 - Use the TPU as a normal execution target if it is already operational.
 
 ### Implementation Path
-- Run the tokenized decoder through the new training runner.
 - Scale sequence length, model size, runtime, or dataset size in a controlled way.
+- Continue from the `017` tokenized decoder experiment rather than introducing a new infrastructure layer.
 - Keep the architecture stable while increasing training realism.
 
 ### Understanding Needed Before Implementing
@@ -595,7 +584,7 @@ What to study first:
 - Weight decay.
 
 Why this break exists:
-- Optimizer choices are much more informative once the model, tokenizer, runner, and execution path are already scaled enough to make optimization matter.
+- Optimizer choices are much more informative once the model, tokenizer, and execution path are already scaled enough to make optimization matter.
 
 Learning outcome:
 - Learn optimizer and training recipe choices in a regime where their impact is real rather than washed out by toy-scale constraints.
@@ -624,5 +613,5 @@ Rule:
 - Include RNNs because they maximize understanding of sequence state and gradient flow.
 - Do not include CNNs on the main path unless you later want a side learning branch.
 - Do not start tokenizer work before the single-block decoder, the first multi-head decoder, and the first small stacked decoder are stable.
-- Do not do optimizer deep-dives before the tokenized model, training runner, and first scaled runs are stable enough for optimizer differences to be meaningful.
+- Do not do optimizer deep-dives before the tokenized model and first scaled runs are stable enough for optimizer differences to be meaningful.
 - Do not start CUDA work before the model semantics are stable.
