@@ -1,5 +1,3 @@
-# %%
-
 import optax  # pyright: ignore
 from flax import nnx
 import jax
