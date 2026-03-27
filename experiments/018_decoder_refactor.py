@@ -1,11 +1,13 @@
 # %%
 
+import optax  # pyright: ignore
 from flax import nnx
 
 from pathlib import Path
 
 from lib.timer import Timer
 from lib.utils import load_text, load_tokenizer, build_token_splits
+from models.transformer import DecoderOnlyTransformer
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_PATH = ROOT_DIR / "datasets" / "tinyshakespeare.txt"
@@ -34,7 +36,19 @@ def main():
     rngs = nnx.Rngs(SEED)
     text = load_text(DATA_PATH)
     tokenizer = load_tokenizer(TOKENIZER_PATH)
-    train_token, validation_token = build_token_splits(text, tokenizer, TRAIN_SPLIT)
+    train_tokens, validation_tokens = build_token_splits(text, tokenizer, TRAIN_SPLIT)
+
+    model = DecoderOnlyTransformer(
+        vocab_size=tokenizer.vocab_size,
+        context_length=CONTEXT_LENGTH,
+        embedding_dim=EMBEDDING_DIM,
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+        num_decoder_blocks=NUM_DECODER_BLOCKS,
+        rngs=rngs,
+    )
+    optimizer = nnx.Optimizer(model, optax.sgd(LEARNING_RATE), wrt=nnx.Param)
+    timer.start("train")
 
 
 if __name__ == "__main__":
