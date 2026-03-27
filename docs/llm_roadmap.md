@@ -585,8 +585,8 @@ The next phase starts after `018` and is intentionally separated from this histo
 Continue with [docs/next_steps_roadmap.md](./next_steps_roadmap.md) for:
 - loss-curve tooling and experiment observability,
 - better datasets,
-- controlled scaling on the MacBook Air M4,
 - TPU `v5e-1` runs,
+- controlled scaling on the right hardware,
 - profiling,
 - and only later, an optimizer roadmap.
 

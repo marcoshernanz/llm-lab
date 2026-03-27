@@ -13,8 +13,8 @@ This roadmap is therefore not a continuation of the old milestone numbering.
 It is a new phase with a different emphasis:
 - clearer experiment visibility,
 - better data,
-- controlled scaling,
 - new hardware targets,
+- controlled scaling on the right hardware,
 - and only then deeper training-recipe work.
 
 ## Starting Point
@@ -31,7 +31,8 @@ That means the next roadmap should preserve the architecture long enough to lear
 - Keep experiments runnable end to end.
 - Do not turn the repo into a framework.
 - Do not start optimizer deep-dives before the scaled baseline is stable enough for optimizer differences to mean something.
-- Use the TPU only after the local run is clear enough that TPU behavior can be interpreted, not just observed.
+- Keep a small local smoke-test path for correctness and debugging.
+- Use TPU early for real runs once the dataset and experiment path are stable enough.
 
 ## Phase 1: Observability And Clean Experiment Outputs
 ### Goal
@@ -67,9 +68,28 @@ Move beyond the current tiny dataset to one that makes scaling more meaningful.
 - The repo can run the current tokenized decoder on a clearly better dataset.
 - Dataset loading and artifact paths are straightforward.
 
-## Phase 3: Controlled Scaling On The MacBook Air M4
+## Phase 3: First TPU `v5e-1` Runs
 ### Goal
-Scale the current baseline modestly while still keeping iteration speed reasonable.
+Use the TPU as the normal execution target for real runs once the better dataset is in place.
+
+### What to do
+- Port the current experiment path cleanly to Colab TPU execution.
+- Keep a tiny local run for smoke tests, but stop treating the laptop CPU as the main training target.
+- Keep the architecture fixed during the first TPU runs.
+- Compare compile/setup cost vs steady-state throughput.
+
+### Why now
+- JAX on the local MacBook Air M4 is already CPU-bound enough that larger runs are not the right place to spend learning time.
+- TPU usage is already simple enough in Colab that it does not create much workflow overhead.
+- Once the dataset changes, hardware becomes part of the practical learning path immediately.
+
+### Exit criteria
+- The current tokenized decoder experiment runs end to end on TPU `v5e-1`.
+- You can explain what improved, what became awkward, and what the new bottlenecks are.
+
+## Phase 4: Controlled Scaling On TPU
+### Goal
+Scale the current baseline modestly on the hardware that can actually support it.
 
 ### What to vary
 - sequence length,
@@ -82,26 +102,11 @@ Scale the current baseline modestly while still keeping iteration speed reasonab
 ### Rule
 - Change only a small number of variables at once.
 - Record what changed and what happened.
+- Keep one small local baseline for debugging, but do not force serious scaling work onto the laptop CPU.
 
 ### Exit criteria
-- There is at least one scaled local baseline that is clearly stronger or more informative than the current tiny runs.
+- There is at least one scaled TPU baseline that is clearly stronger or more informative than the current tiny runs.
 - You know which scaling dimension is starting to matter most.
-
-## Phase 4: First TPU `v5e-1` Runs
-### Goal
-Use the TPU as a normal execution target for the existing baseline, not as a reason to redesign the project.
-
-### What to do
-- Port the current experiment path cleanly to Colab TPU execution.
-- Keep the architecture fixed during the first TPU runs.
-- Compare compile/setup cost vs steady-state throughput.
-
-### Why now
-- Hardware scaling is more educational once the local baseline is already stable and understandable.
-
-### Exit criteria
-- The current tokenized decoder experiment runs end to end on TPU `v5e-1`.
-- You can explain what improved, what became awkward, and what the new bottlenecks are.
 
 ## Phase 5: First Profiling Pass
 ### Goal
@@ -115,7 +120,7 @@ Learn profiling only after there is a concrete performance question to answer.
 - obvious data or device bottlenecks.
 
 ### Why now
-- Profiling is much more useful after local and TPU runs exist to compare.
+- Profiling is much more useful after at least one real TPU baseline exists.
 - Earlier than this, timing and plotting are usually enough.
 
 ### Exit criteria
