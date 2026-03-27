@@ -7,11 +7,8 @@ import jax.numpy as jnp
 
 from pathlib import Path
 
-from lib.data import build_examples
-from lib.data import build_token_splits
-from lib.data import load_text
-from lib.data import load_tokenizer
-from lib.eval import evaluate_split
+from lib.data import build_examples, build_token_splits, load_text, load_tokenizer
+from lib.eval import build_evaluation_subset_start_positions, evaluate_positions, evaluate_split
 from lib.plotting import save_loss_artifacts
 from lib.timer import Timer
 from models.transformer import DecoderOnlyTransformer
@@ -27,6 +24,7 @@ BATCH_SIZE = 16
 LEARNING_RATE = 0.02
 TRAIN_STEPS = 50_000
 TRAIN_CHUNK_LENGTH = 1000
+VALIDATION_SUBSET_EXAMPLES = 1024
 if TRAIN_STEPS % TRAIN_CHUNK_LENGTH != 0:
     raise ValueError("TRAIN_STEPS must be divisible by TRAIN_CHUNK_LENGTH")
 
@@ -109,31 +107,35 @@ def main():
     optimizer = nnx.Optimizer(model, optax.sgd(LEARNING_RATE), wrt=nnx.Param)
     timer.start("train")
 
-    train_steps: list[int] = []
     train_losses: list[float] = []
-    validation_steps: list[int] = []
     validation_losses: list[float] = []
 
-    rng = jax.random.key(SEED)
-    for step in range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH):
-        train_loss, rng = train_chunk(model, optimizer, train_tokens, rng)
-        current_step = step + TRAIN_CHUNK_LENGTH
-        validation_loss = evaluate_split(
+    train_rng, validation_rng = jax.random.split(jax.random.key(SEED))
+    validation_start_positions = build_evaluation_subset_start_positions(
+        validation_tokens,
+        context_length=CONTEXT_LENGTH,
+        subset_size=VALIDATION_SUBSET_EXAMPLES,
+        rng=validation_rng,
+    )
+
+    for chunk_index, _ in enumerate(range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH), start=1):
+        train_loss, train_rng = train_chunk(model, optimizer, train_tokens, train_rng)
+        validation_subset_loss = evaluate_positions(
             validation_tokens,
+            validation_start_positions,
             model,
             evaluate_batch_loss,
             CONTEXT_LENGTH,
             EVAL_BATCH_SIZE,
         )
 
-        train_steps.append(current_step)
         train_losses.append(float(train_loss))
-        validation_steps.append(current_step)
-        validation_losses.append(validation_loss)
+        validation_losses.append(validation_subset_loss)
+        current_step = chunk_index * TRAIN_CHUNK_LENGTH
 
         print(
             f"step={current_step} train_loss={float(train_loss):.6f} "
-            f"validation_loss={validation_loss:.6f}"
+            f"validation_loss={validation_subset_loss:.6f}"
         )
 
     train_seconds = timer.stop("train")
@@ -144,17 +146,24 @@ def main():
         CONTEXT_LENGTH,
         EVAL_BATCH_SIZE,
     )
+    validation_loss = evaluate_split(
+        validation_tokens,
+        model,
+        evaluate_batch_loss,
+        CONTEXT_LENGTH,
+        EVAL_BATCH_SIZE,
+    )
     loss_history_csv, loss_curve_svg = save_loss_artifacts(
         script_path=Path(__file__),
-        train_steps=train_steps,
         train_losses=train_losses,
-        validation_steps=validation_steps,
         validation_losses=validation_losses,
+        train_log_interval=TRAIN_CHUNK_LENGTH,
+        validation_log_interval=TRAIN_CHUNK_LENGTH,
     )
     total_seconds = timer.stop("total")
 
     print(f"train_loss={train_loss:.6f}")
-    print(f"validation_loss={validation_losses[-1]:.6f}")
+    print(f"validation_loss={validation_loss:.6f}")
     print(f"loss_history_csv={loss_history_csv}")
     print(f"loss_curve_svg={loss_curve_svg}")
     print(f"train_seconds={train_seconds:.3f}")
