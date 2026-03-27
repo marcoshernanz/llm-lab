@@ -131,7 +131,7 @@ def main():
         loss_tracker.log(
             step=current_step,
             train_loss=float(train_loss),
-            validation_loss=validation_subset_loss,
+            validation_subset_loss=validation_subset_loss,
         )
 
     train_seconds = timer.stop("train")
