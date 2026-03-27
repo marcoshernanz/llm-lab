@@ -27,13 +27,13 @@ def build_token_splits(
     text: str,
     tokenizer: BPEModel,
     train_split: float,
-) -> tuple[jax.Array, jax.Array, str, str]:
+) -> tuple[jax.Array, jax.Array]:
     split_index = int(len(text) * train_split)
     train_text = text[:split_index]
     validation_text = text[split_index:]
     train_token_ids = jnp.asarray(tokenizer.encode(train_text), dtype=jnp.int32)
     validation_token_ids = jnp.asarray(tokenizer.encode(validation_text), dtype=jnp.int32)
-    return train_token_ids, validation_token_ids, train_text, validation_text
+    return train_token_ids, validation_token_ids
 
 
 def build_examples(
