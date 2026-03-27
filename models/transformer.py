@@ -87,6 +87,7 @@ class DecoderBlock(nnx.Module):
 
 class Decoder(nnx.Module):
     blocks: nnx.List[DecoderBlock]
+    output_norm: LayerNorm
 
     def __init__(
         self,
@@ -103,11 +104,12 @@ class Decoder(nnx.Module):
                 for _ in range(num_blocks)
             ]
         )
+        self.output_norm = LayerNorm(embedding_dim)
 
-    def __call__(self, x: jax.Array, *, eps: float) -> jax.Array:
+    def __call__(self, x: jax.Array) -> jax.Array:
         for block in self.blocks:
-            x = block(x, eps=eps)
-        return x
+            x = block(x)
+        return self.output_norm(x)
 
 
 class LanguageModel(nnx.Module):
