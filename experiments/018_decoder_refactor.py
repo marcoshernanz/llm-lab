@@ -43,6 +43,27 @@ def loss_fn(
     return loss_per_token.mean()
 
 
+@nnx.jit
+def train_step(
+    model: DecoderOnlyTransformer,
+    optimizer: nnx.Optimizer[DecoderOnlyTransformer],
+    input_ids: jax.Array,
+    target_ids: jax.Array,
+) -> jax.Array:
+    loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
+    optimizer.update(model, grads)
+    return loss
+
+
+@nnx.jit
+def evaluate_batch_loss(
+    model: DecoderOnlyTransformer,
+    input_ids: jax.Array,
+    target_ids: jax.Array,
+) -> jax.Array:
+    return loss_fn(model, input_ids, target_ids)
+
+
 def train_chunk(
     model: DecoderOnlyTransformer,
     optimizer: nnx.Optimizer[DecoderOnlyTransformer],
@@ -58,8 +79,7 @@ def train_chunk(
             maxval=tokens.shape[0] - CONTEXT_LENGTH,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, CONTEXT_LENGTH)
-        grads = nnx.grad(loss_fn)(model, input_ids, target_ids)
-        optimizer.update(model, grads)
+        train_step(model, optimizer, input_ids, target_ids)
     return rng
 
 
@@ -88,9 +108,19 @@ def main():
         rng = train_chunk(model, optimizer, train_tokens, rng)
 
     train_seconds = timer.stop("train")
-    train_loss = evaluate_split(train_tokens, model, loss_fn, CONTEXT_LENGTH, EVAL_BATCH_SIZE)
+    train_loss = evaluate_split(
+        train_tokens,
+        model,
+        evaluate_batch_loss,
+        CONTEXT_LENGTH,
+        EVAL_BATCH_SIZE,
+    )
     validation_loss = evaluate_split(
-        validation_tokens, model, loss_fn, CONTEXT_LENGTH, EVAL_BATCH_SIZE
+        validation_tokens,
+        model,
+        evaluate_batch_loss,
+        CONTEXT_LENGTH,
+        EVAL_BATCH_SIZE,
     )
     total_seconds = timer.stop("total")
 
