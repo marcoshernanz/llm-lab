@@ -28,7 +28,8 @@ class Embedding(nnx.Module):
     weight: nnx.Param[jax.Array]
 
     def __init__(self, num_embeddings: int, embedding_dim: int, *, rngs: nnx.Rngs):
-        self.weight = nnx.Param(rngs.params.normal((num_embeddings, embedding_dim)))
+        scale = 1.0 / math.sqrt(embedding_dim)
+        self.weight = nnx.Param(rngs.params.normal((num_embeddings, embedding_dim)) * scale)
 
     def __call__(self, indices: jax.Array) -> jax.Array:
         return self.weight[indices]
