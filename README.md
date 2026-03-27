@@ -66,7 +66,7 @@ uv sync
 Run an experiment directly, for example:
 
 ```bash
-uv run python experiments/017_tokenized_small_multi_layer_decoder_jax.py
+uv run python experiments/017_tokenized_small_multi_layer_decoder.py
 ```
 
 ## Near-term goal

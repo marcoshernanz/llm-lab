@@ -169,7 +169,7 @@ Use Kaggle page runtime only for end-to-end turnaround.
 
 ## Current Performance Notes
 
-For `011_attention_residual_jax`:
+For `011_attention_residual`:
 
 - local MacBook CPU is much slower than Kaggle accelerators
 - TPU `v5e-8` was fastest

@@ -532,7 +532,7 @@ You should come out of this break able to:
 
 ## Milestone 017: Tokenized Small Multi-Layer Decoder
 ### Model
-- Direct extension of `experiments/016_small_multi_layer_decoder_jax.py`.
+- Direct extension of `experiments/016_small_multi_layer_decoder.py`.
 - Keep the small stacked decoder architecture from `016`.
 - Move from characters to tokenizer-produced tokens.
 
