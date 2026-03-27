@@ -1,5 +1,4 @@
-# BareTensor Agent Guidelines
+# Agent Notes
 
-- Learning first: optimize for understanding and correctness, not speed of delivery.
-- Modern codebase: use current language features, tooling, and engineering practices.
-- After each code change, explain thoroughly what changed and why.
+- Optimize for learning and first-principles understanding, not speed of delivery.
+- Keep experiments minimal and pedagogical.
