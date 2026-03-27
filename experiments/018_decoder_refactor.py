@@ -21,7 +21,7 @@ EVAL_BATCH_SIZE = 64
 BATCH_SIZE = 16
 LEARNING_RATE = 0.02
 TRAIN_STEPS = 50_000
-TRAIN_CHUNK_LENGTH = 5000
+TRAIN_CHUNK_LENGTH = 1000
 if TRAIN_STEPS % TRAIN_CHUNK_LENGTH != 0:
     raise ValueError("TRAIN_STEPS must be divisible by TRAIN_CHUNK_LENGTH")
 
@@ -69,7 +69,7 @@ def train_chunk(
     optimizer: nnx.Optimizer[DecoderOnlyTransformer],
     tokens: jax.Array,
     rng: jax.Array,
-) -> jax.Array:
+) -> tuple[jax.Array, jax.Array]:
     for _ in range(TRAIN_CHUNK_LENGTH):
         rng, batch_rng = jax.random.split(rng)
         start_positions = jax.random.randint(
@@ -79,8 +79,8 @@ def train_chunk(
             maxval=tokens.shape[0] - CONTEXT_LENGTH,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, CONTEXT_LENGTH)
-        train_step(model, optimizer, input_ids, target_ids)
-    return rng
+        loss = train_step(model, optimizer, input_ids, target_ids)
+    return loss, rng
 
 
 def main():
@@ -104,8 +104,9 @@ def main():
     timer.start("train")
 
     rng = jax.random.key(SEED)
-    for _ in range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH):
-        rng = train_chunk(model, optimizer, train_tokens, rng)
+    for step in range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH):
+        loss, rng = train_chunk(model, optimizer, train_tokens, rng)
+        print(f"step={step} loss={loss:.6f}")
 
     train_seconds = timer.stop("train")
     train_loss = evaluate_split(
