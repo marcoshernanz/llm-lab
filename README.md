@@ -43,10 +43,11 @@ This progression is intentional. The repo optimizes for understanding each conce
 
 ## Start here
 
-- Roadmap: [docs/llm_roadmap.md](docs/llm_roadmap.md)
+- Historical roadmap to the first transformer: [docs/llm_roadmap.md](docs/llm_roadmap.md)
+- Next steps roadmap: [docs/next_steps_roadmap.md](docs/next_steps_roadmap.md)
 - Learning log: [docs/learning_log.md](docs/learning_log.md)
 
-The roadmap explains the learning order and why it is deliberately granular. The learning log records the experiments that have already been run and how the results evolved.
+The historical roadmap explains the learning order that led to the current transformer stage. The next-steps roadmap covers observability, datasets, scaling, TPU runs, profiling, and only later optimizer study. The learning log records the experiments that have already been run and how the results evolved.
 
 ## Working style
 
