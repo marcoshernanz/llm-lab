@@ -114,7 +114,7 @@ def main():
         subset_size=VALIDATION_SUBSET_EXAMPLES,
         rng=validation_rng,
     )
-    loss_tracker = LossTracker(log_interval=TRAIN_CHUNK_LENGTH)
+    loss_tracker = LossTracker()
 
     for chunk_index, _ in enumerate(range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH), start=1):
         train_loss, train_rng = train_chunk(model, optimizer, train_tokens, train_rng)
