@@ -1,4 +1,9 @@
-# BareTensor LLM Roadmap
+# BareTensor LLM Roadmap (Historical)
+
+This document is the original learning path that led from simple language-model baselines to the current decoder-only transformer stage.
+
+It is now treated as a historical roadmap.
+For the follow-on plan after the first transformer/refactor phase, see [docs/next_steps_roadmap.md](./next_steps_roadmap.md).
 
 ## Why This Roadmap Is Structured This Way
 The goal of this project is to maximize learning, not to reach a modern architecture in the fewest calendar days.
@@ -37,14 +42,14 @@ That is why RNNs are included here:
 CNNs are not on the main path.
 They are useful, but for the TinyGPT-oriented goal they are lower learning-value than context-window MLPs, RNNs, and attention.
 
-## Current Position
-As of 2026-03-08, you are at the end of `002` and preparing for `003`.
+## Status
+As of 2026-03-27, this roadmap is considered complete through the first tokenized and refactored decoder-only transformer stage.
 
 In practical terms:
-- `001` bigram is done.
-- `002` 1-hidden-layer MLP is done or nearly done.
-- This is the point where CS229 should start.
-- The next model milestone should be a context-window model, not attention yet.
+- The repo has already moved through the pre-transformer milestones.
+- The current codebase includes reusable transformer modules under `models/`.
+- The current experiment frontier is the tokenized decoder refactor path around `017` and `018`.
+- The next scaling, dataset, TPU, profiling, and optimizer work lives in the separate next-steps roadmap.
 
 ## Global Rules
 - Every milestone is built in PyTorch first, then ported to BareTensor.
@@ -574,58 +579,16 @@ You should come out of this milestone able to:
 - Justify each extracted helper in terms of readability or repeated use,
 - Improve maintainability while preserving first-principles understanding of the full run.
 
-## Milestone 019: First Scaled Tokenized Runs
-### Model
-- Keep the tokenized decoder path.
-- Increase run scale enough that optimization choices start to matter.
-- Use the TPU as a normal execution target if it is already operational.
+## Handoff
+The next phase starts after `018` and is intentionally separated from this historical roadmap.
 
-### Implementation Path
-- Scale sequence length, model size, runtime, or dataset size in a controlled way.
-- Continue from the refactored `018` tokenized decoder experiment rather than introducing a new infrastructure layer.
-- Keep the architecture stable while increasing training realism.
-
-### Understanding Needed Before Implementing
-- Why scaling the training regime is different from changing the architecture.
-- Which bottlenecks are now data, runtime, and optimization rather than model semantics.
-- How to recognize when a run is large enough that training recipe choices become meaningful.
-
-### Learning Outcomes
-You should come out of this milestone able to:
-- Run the tokenized model in a genuinely larger training regime,
-- Separate architecture issues from training recipe issues,
-- Identify the first real scaling bottlenecks in your stack.
-
-## Break D: Optimizer and Training Recipe Track
-Do this only after `019`.
-
-What to study first:
-- `AdamW`.
-- Gradient clipping.
-- Learning-rate warmup.
-- Learning-rate decay.
-- Weight decay.
-
-Why this break exists:
-- Optimizer choices are much more informative once the model, tokenizer, and execution path are already scaled enough to make optimization matter.
-
-Learning outcome:
-- Learn optimizer and training recipe choices in a regime where their impact is real rather than washed out by toy-scale constraints.
-
-## Later: Performance and CUDA
-Only start this after the decoder path is semantically stable.
-
-Kernel priority:
-- `matmul`.
-- `softmax` / `log_softmax`.
-- `layer_norm`.
-- Fused cross-entropy.
-- Attention-specific kernels.
-
-Rule:
-- Correctness parity first,
-- Profiler evidence second,
-- Performance claims third.
+Continue with [docs/next_steps_roadmap.md](./next_steps_roadmap.md) for:
+- loss-curve tooling and experiment observability,
+- better datasets,
+- controlled scaling on the MacBook Air M4,
+- TPU `v5e-1` runs,
+- profiling,
+- and only later, an optimizer roadmap.
 
 ## Decision Summary
 - If `002` is not stable, stay on `002`.
@@ -636,5 +599,5 @@ Rule:
 - Include RNNs because they maximize understanding of sequence state and gradient flow.
 - Do not include CNNs on the main path unless you later want a side learning branch.
 - Do not start tokenizer work before the single-block decoder, the first multi-head decoder, and the first small stacked decoder are stable.
-- Do not do optimizer deep-dives before the tokenized model, refactor pass, and first scaled runs are stable enough for optimizer differences to be meaningful.
+- Do not do optimizer deep-dives before the tokenized model and refactor pass are stable enough to support a real next-step roadmap.
 - Do not start CUDA work before the model semantics are stable.
