@@ -21,7 +21,8 @@ class CausalSelfAttention(nnx.Module):
     head_dim: int
 
     def __init__(self, embedding_dim: int, num_heads: int, *, rngs: nnx.Rngs):
-        assert embedding_dim % num_heads == 0
+        if embedding_dim % num_heads != 0:
+            raise ValueError("embedding_dim must be divisible by num_heads")
 
         self.q_proj = Linear(embedding_dim, embedding_dim, rngs=rngs, bias=False)
         self.k_proj = Linear(embedding_dim, embedding_dim, rngs=rngs, bias=False)
@@ -138,7 +139,8 @@ class DecoderOnlyTransformer(nnx.Module):
         self.output_norm = LayerNorm(embedding_dim)
 
     def __call__(self, input_ids: jax.Array) -> jax.Array:
-        assert input_ids.shape[-1] > self.position_embedding.weight.shape[0]
+        if input_ids.shape[-1] > self.position_embedding.weight.shape[0]:
+            raise ValueError("input sequence length exceeds context length")
 
         positions = jnp.arange(input_ids.shape[-1], dtype=jnp.int32)
         x = self.token_embedding(input_ids) + self.position_embedding(positions)
