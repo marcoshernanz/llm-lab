@@ -7,7 +7,7 @@ from lib.data import build_examples
 from models.transformer import DecoderOnlyTransformer
 
 
-def build_evaluation_subset_start_positions(
+def sample_evaluation_positions(
     tokens: jax.Array,
     *,
     context_length: int,
