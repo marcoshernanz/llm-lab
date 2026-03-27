@@ -14,13 +14,22 @@ SVG_WIDTH = 900
 def save_loss_artifacts(
     *,
     script_path: Path,
-    train_steps: Sequence[int],
     train_losses: Sequence[float],
-    validation_steps: Sequence[int],
     validation_losses: Sequence[float],
+    train_log_interval: int,
+    validation_log_interval: int,
 ) -> tuple[Path, Path]:
-    _validate_series("train", train_steps, train_losses)
-    _validate_series("validation", validation_steps, validation_losses)
+    if train_log_interval <= 0:
+        raise ValueError("train_log_interval must be positive")
+    if validation_log_interval <= 0:
+        raise ValueError("validation_log_interval must be positive")
+    if not train_losses:
+        raise ValueError("train_losses must contain at least one point")
+    if not validation_losses:
+        raise ValueError("validation_losses must contain at least one point")
+
+    train_steps = _build_steps(len(train_losses), train_log_interval)
+    validation_steps = _build_steps(len(validation_losses), validation_log_interval)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     run_dir = ARTIFACTS_ROOT / script_path.stem / timestamp
@@ -32,8 +41,7 @@ def save_loss_artifacts(
         writer.writerow(["split", "step", "loss"])
         writer.writerows(("train", step, loss) for step, loss in zip(train_steps, train_losses))
         writer.writerows(
-            ("validation", step, loss)
-            for step, loss in zip(validation_steps, validation_losses)
+            ("validation", step, loss) for step, loss in zip(validation_steps, validation_losses)
         )
 
     svg_path = run_dir / "loss_curve.svg"
@@ -50,11 +58,8 @@ def save_loss_artifacts(
     return csv_path, svg_path
 
 
-def _validate_series(name: str, steps: Sequence[int], losses: Sequence[float]) -> None:
-    if not steps:
-        raise ValueError(f"{name} steps must contain at least one point")
-    if len(steps) != len(losses):
-        raise ValueError(f"{name} steps and losses must have the same length")
+def _build_steps(num_points: int, interval: int) -> list[int]:
+    return [interval * (index + 1) for index in range(num_points)]
 
 
 def _build_loss_curve_svg(
@@ -92,8 +97,7 @@ def _build_loss_curve_svg(
 
     def polyline(steps: Sequence[int], losses: Sequence[float]) -> str:
         return " ".join(
-            f"{x:.2f},{y:.2f}"
-            for x, y in (point(step, loss) for step, loss in zip(steps, losses))
+            f"{x:.2f},{y:.2f}" for x, y in (point(step, loss) for step, loss in zip(steps, losses))
         )
 
     smoothed_train_losses = _ema(train_losses, decay=0.9)
