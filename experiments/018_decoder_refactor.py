@@ -70,6 +70,7 @@ def train_chunk(
     tokens: jax.Array,
     rng: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
+    loss = jnp.array(jnp.nan, dtype=jnp.float32)
     for _ in range(TRAIN_CHUNK_LENGTH):
         rng, batch_rng = jax.random.split(rng)
         start_positions = jax.random.randint(
