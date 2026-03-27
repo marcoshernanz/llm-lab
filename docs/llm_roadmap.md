@@ -551,36 +551,14 @@ You should come out of this milestone able to:
 - Explain the difference between changing the input representation and changing decoder depth,
 - Interpret tokenized samples and losses coherently.
 
-## Milestone 018: First Scaled Tokenized Runs
+## Milestone 018: Refactor the Code
 ### Model
-- Keep the tokenized decoder path.
-- Increase run scale enough that optimization choices start to matter.
-- Use the TPU as a normal execution target if it is already operational.
-
-### Implementation Path
-- Scale sequence length, model size, runtime, or dataset size in a controlled way.
-- Continue from the `017` tokenized decoder experiment rather than introducing a new infrastructure layer.
-- Keep the architecture stable while increasing training realism.
-
-### Understanding Needed Before Implementing
-- Why scaling the training regime is different from changing the architecture.
-- Which bottlenecks are now data, runtime, and optimization rather than model semantics.
-- How to recognize when a run is large enough that training recipe choices become meaningful.
-
-### Learning Outcomes
-You should come out of this milestone able to:
-- Run the tokenized model in a genuinely larger training regime,
-- Separate architecture issues from training recipe issues,
-- Identify the first real scaling bottlenecks in your stack.
-
-## Milestone 019: Refactor the Code
-### Model
-- Keep the `018` tokenized decoder and training regime fixed.
+- Keep the `017` tokenized decoder and training regime fixed.
 - Do not introduce a new model architecture here.
 - Make the code easier to read, rerun, and extend without hiding the actual tensor logic.
 
 ### Implementation Path
-- Refactor only the parts that repeated scaled runs proved are actually painful or duplicated.
+- Refactor only the parts that repeated runs proved are actually painful or duplicated.
 - Pull out small explicit helpers for setup, logging, evaluation, or training-loop scaffolding when they improve clarity.
 - Keep the model definition and core tensor math easy to trace from top to bottom.
 - Avoid turning the project into a framework; this milestone is about cleanup after understanding, not abstraction for its own sake.
@@ -595,6 +573,28 @@ You should come out of this milestone able to:
 - Separate model logic from surrounding experiment scaffolding,
 - Justify each extracted helper in terms of readability or repeated use,
 - Improve maintainability while preserving first-principles understanding of the full run.
+
+## Milestone 019: First Scaled Tokenized Runs
+### Model
+- Keep the tokenized decoder path.
+- Increase run scale enough that optimization choices start to matter.
+- Use the TPU as a normal execution target if it is already operational.
+
+### Implementation Path
+- Scale sequence length, model size, runtime, or dataset size in a controlled way.
+- Continue from the refactored `018` tokenized decoder experiment rather than introducing a new infrastructure layer.
+- Keep the architecture stable while increasing training realism.
+
+### Understanding Needed Before Implementing
+- Why scaling the training regime is different from changing the architecture.
+- Which bottlenecks are now data, runtime, and optimization rather than model semantics.
+- How to recognize when a run is large enough that training recipe choices become meaningful.
+
+### Learning Outcomes
+You should come out of this milestone able to:
+- Run the tokenized model in a genuinely larger training regime,
+- Separate architecture issues from training recipe issues,
+- Identify the first real scaling bottlenecks in your stack.
 
 ## Break D: Optimizer and Training Recipe Track
 Do this only after `019`.
@@ -636,5 +636,5 @@ Rule:
 - Include RNNs because they maximize understanding of sequence state and gradient flow.
 - Do not include CNNs on the main path unless you later want a side learning branch.
 - Do not start tokenizer work before the single-block decoder, the first multi-head decoder, and the first small stacked decoder are stable.
-- Do not do optimizer deep-dives before the tokenized model, first scaled runs, and post-scaling refactor pass are stable enough for optimizer differences to be meaningful.
+- Do not do optimizer deep-dives before the tokenized model, refactor pass, and first scaled runs are stable enough for optimizer differences to be meaningful.
 - Do not start CUDA work before the model semantics are stable.
