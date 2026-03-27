@@ -120,15 +120,16 @@ class DecoderOnlyTransformer(nnx.Module):
 
     def __init__(
         self,
+        *,
         vocab_size: int,
+        context_length: int,
         embedding_dim: int,
         hidden_dim: int,
         num_heads: int,
         num_decoder_blocks: int,
-        context_length: int,
-        *,
         rngs: nnx.Rngs,
     ):
+
         self.token_embedding = Embedding(vocab_size, embedding_dim, rngs=rngs)
         self.position_embedding = Embedding(context_length, embedding_dim, rngs=rngs)
         self.decoder_stack = Decoder(
