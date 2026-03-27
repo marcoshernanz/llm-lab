@@ -10,13 +10,9 @@ import jax.numpy as jnp
 from models.layers import Embedding
 from models.layers import LayerNorm
 from models.layers import Linear
-from training.config import TrainingConfig
 
 
-LAYER_NORM_EPS = 1e-5
-
-
-class CausalSelfAttention(nnx.Module):
+class Attention(nnx.Module):
     query: Linear
     key: Linear
     value: Linear
@@ -25,12 +21,12 @@ class CausalSelfAttention(nnx.Module):
     head_dim: int
 
     def __init__(self, embedding_dim: int, num_heads: int, *, rngs: nnx.Rngs):
-        self.num_heads = num_heads
-        self.head_dim = embedding_dim // num_heads
         self.query = Linear(embedding_dim, embedding_dim, rngs=rngs, bias=False)
         self.key = Linear(embedding_dim, embedding_dim, rngs=rngs, bias=False)
         self.value = Linear(embedding_dim, embedding_dim, rngs=rngs, bias=False)
         self.output = Linear(embedding_dim, embedding_dim, rngs=rngs, bias=False)
+        self.num_heads = num_heads
+        self.head_dim = embedding_dim // num_heads
 
     def split_heads(self, x: jax.Array) -> jax.Array:
         batch_size, sequence_length, _ = x.shape
