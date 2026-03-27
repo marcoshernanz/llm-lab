@@ -12,7 +12,7 @@ def load_text(path: Path) -> str:
     if not path.exists():
         raise FileNotFoundError(f"Dataset not found at {path}.")
     text = path.read_text(encoding="utf-8")
-    if len(text) == 1:
+    if len(text) == 0:
         raise ValueError("Dataset is empty.")
     return text
 
@@ -28,6 +28,9 @@ def build_token_splits(
     tokenizer: BPEModel,
     train_split: float,
 ) -> tuple[jax.Array, jax.Array]:
+    if not 0.0 < train_split < 1.0:
+        raise ValueError("train_split must be between 0 and 1")
+
     split_index = int(len(text) * train_split)
     train_text = text[:split_index]
     validation_text = text[split_index:]
@@ -55,7 +58,8 @@ def evaluate_split(
     batch_size: int,
 ) -> float:
     max_start = tokens.shape[0] - context_length
-    assert max_start > 0
+    if max_start <= 0:
+        raise ValueError("token sequence must be longer than context_length")
 
     total_loss = 0.0
     total_examples = 0
@@ -65,8 +69,8 @@ def evaluate_split(
         start_positions = jnp.arange(batch_start, batch_end, dtype=jnp.int32)
         input_ids, target_ids = build_examples(tokens, start_positions, context_length)
         batch_loss = loss_fn(model, input_ids, target_ids)
-        batch_size = int(start_positions.shape[0])
-        total_loss += float(batch_loss) * batch_size
-        total_examples += batch_size
+        current_batch_size = int(start_positions.shape[0])
+        total_loss += float(batch_loss) * current_batch_size
+        total_examples += current_batch_size
 
     return total_loss / total_examples
