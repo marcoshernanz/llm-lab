@@ -7,8 +7,12 @@ import jax.numpy as jnp
 
 from pathlib import Path
 
+from lib.data import build_examples
+from lib.data import build_token_splits
+from lib.data import load_text
+from lib.data import load_tokenizer
+from lib.eval import evaluate_split
 from lib.timer import Timer
-from lib.utils import load_text, load_tokenizer, build_token_splits, build_examples, evaluate_split
 from models.transformer import DecoderOnlyTransformer
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
