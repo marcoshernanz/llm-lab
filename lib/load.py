@@ -1,3 +1,6 @@
+import jax
+import jax.numpy as jnp
+
 from pathlib import Path
 
 from tokenizer.bpe import BPEModel
@@ -16,3 +19,14 @@ def load_tokenizer(path: Path) -> BPEModel:
     if not path.exists():
         raise FileNotFoundError(f"Tokenizer artifact not found at {path}.")
     return BPEModel.load(path)
+
+
+def build_token_splits(
+    text: str, tokenizer: BPEModel, train_split: float
+) -> tuple[jax.Array, jax.Array, str, str]:
+    split_index = int(len(text) * train_split)
+    train_text = text[:split_index]
+    validation_text = text[split_index:]
+    train_token_ids = jnp.asarray(tokenizer.encode(train_text), dtype=jnp.int32)
+    validation_token_ids = jnp.asarray(tokenizer.encode(validation_text), dtype=jnp.int32)
+    return train_token_ids, validation_token_ids, train_text, validation_text
