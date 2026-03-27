@@ -1,3 +1,8 @@
-- PyTest
-- AGENTS.md
-- README.md
+- Tokenizer abstract class
+- Model abstract class
+- Optimizers
+- Scale model up
+- Dataset
+- Profiler
+- Draw graphs
+- Gelu activation
