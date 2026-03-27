@@ -8,20 +8,20 @@ import math
 
 
 class LayerNorm(nnx.Module):
-    scale: nnx.Param[jax.Array]
-    shift: nnx.Param[jax.Array]
+    weight: nnx.Param[jax.Array]
+    bias: nnx.Param[jax.Array]
     eps: float
 
     def __init__(self, features: int, *, eps: float = 1e-5):
-        self.scale = nnx.Param(jnp.ones((features,)))
-        self.shift = nnx.Param(jnp.zeros((features,)))
+        self.weight = nnx.Param(jnp.ones((features,)))
+        self.bias = nnx.Param(jnp.zeros((features,)))
         self.eps = eps
 
     def __call__(self, x: jax.Array) -> jax.Array:
         mean = x.mean(axis=-1, keepdims=True)
         variance = x.var(axis=-1, keepdims=True)
         normalized = (x - mean) / jnp.sqrt(variance + self.eps)
-        return self.scale * normalized + self.shift
+        return self.weight * normalized + self.bias
 
 
 class Embedding(nnx.Module):
