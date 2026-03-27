@@ -112,11 +112,11 @@ class Decoder(nnx.Module):
         return self.output_norm(x)
 
 
-class LanguageModel(nnx.Module):
+class DecoderOnlyTransformer(nnx.Module):
     token_embedding: Embedding
     position_embedding: Embedding
-    decoder: Decoder
-    lm_head: Linear
+    decoder_stack: Decoder
+    output_norm: LayerNorm
 
     def __init__(
         self,
@@ -131,13 +131,16 @@ class LanguageModel(nnx.Module):
     ):
         self.token_embedding = Embedding(vocab_size, embedding_dim, rngs=rngs)
         self.position_embedding = Embedding(context_length, embedding_dim, rngs=rngs)
-        self.decoder = Decoder(embedding_dim, hidden_dim, num_heads, num_decoder_blocks, rngs=rngs)
-        self.lm_head = Linear(embedding_dim, vocab_size, rngs=rngs)
+        self.decoder_stack = Decoder(
+            embedding_dim, hidden_dim, num_heads, num_decoder_blocks, rngs=rngs
+        )
+        self.output_norm = LayerNorm(embedding_dim)
 
     def __call__(self, input_ids: jax.Array) -> jax.Array:
+        assert input_ids.shape[-1] > self.position_embedding.weight.shape[0]
+
         positions = jnp.arange(input_ids.shape[-1], dtype=jnp.int32)
-        token_embeddings = self.token_embedding(input_ids)
-        position_embeddings = self.position_embedding(positions)
-        decoder_input = token_embeddings + position_embeddings
-        decoder_output = self.decoder(decoder_input)
-        return self.lm_head(decoder_output)
+        x = self.token_embedding(input_ids) + self.position_embedding(positions)
+        x = self.decoder_stack(x)
+        x = self.output_norm(x)
+        return x @ self.token_embedding.weight.T
