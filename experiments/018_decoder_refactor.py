@@ -3,11 +3,13 @@
 import optax  # pyright: ignore
 from flax import nnx
 import jax
+import jax.numpy as jnp
+import jax.nn as jnn
 
 from pathlib import Path
 
 from lib.timer import Timer
-from lib.utils import load_text, load_tokenizer, build_token_splits, build_examples
+from lib.utils import load_text, load_tokenizer, build_token_splits, build_examples, evaluate_split
 from models.transformer import DecoderOnlyTransformer
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -21,8 +23,8 @@ SAMPLE_LENGTH = 100
 BATCH_SIZE = 16
 LEARNING_RATE = 0.02
 TRAIN_STEPS = 50_000
-LOG_INTERVAL = 5000
-assert TRAIN_STEPS % LOG_INTERVAL == 0
+TRAIN_CHUNK_LENGTH = 5000
+assert TRAIN_STEPS % TRAIN_CHUNK_LENGTH == 0
 
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
@@ -32,32 +34,33 @@ HIDDEN_DIM = 128
 CONTEXT_LENGTH = 64
 
 
-def train_steps(
+def loss_fn(
+    model: DecoderOnlyTransformer,
+    input_ids: jax.Array,
+    target_ids: jax.Array,
+) -> jax.Array:
+    logits = model(input_ids)
+    log_probs = jnn.log_softmax(logits, axis=-1)
+    loss_per_token = -jnp.take_along_axis(log_probs, target_ids[..., None], axis=-1).squeeze(-1)
+    return loss_per_token.mean()
+
+
+def train_chunk(
     model: DecoderOnlyTransformer,
     optimizer: nnx.Optimizer[DecoderOnlyTransformer],
-    token_ids: jax.Array,
+    tokens: jax.Array,
     rng: jax.Array,
-    num_steps: int,
 ):
-    def scan_step(
-        carry: tuple[DecoderOnlyTransformer, jax.Array],
-        _: None,
-    ) -> tuple[tuple[DecoderOnlyTransformer, jax.Array], jax.Array]:
-        model, rng = carry
-        rng, batch_rng = jax.random.split(rng)
+    for _ in range(TRAIN_CHUNK_LENGTH):
         start_positions = jax.random.randint(
-            batch_rng,
+            rng,
             shape=(BATCH_SIZE,),
             minval=0,
-            maxval=token_ids.shape[0] - CONTEXT_LENGTH,
+            maxval=tokens.shape[0] - CONTEXT_LENGTH,
         )
-        input_ids, target_ids = build_examples(token_ids, start_positions, CONTEXT_LENGTH)
-        loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
+        input_ids, target_ids = build_examples(tokens, start_positions, CONTEXT_LENGTH)
+        grads = nnx.grad(loss_fn)(model, input_ids, target_ids)
         optimizer.update(model, grads)
-        return (model, rng), loss
-
-    (model, rng), losses = jax.lax.scan(scan_step, (model, rng), length=num_steps)
-    return model, rng
 
 
 def main():
@@ -80,9 +83,17 @@ def main():
     optimizer = nnx.Optimizer(model, optax.sgd(LEARNING_RATE), wrt=nnx.Param)
     timer.start("train")
 
-    batch_rng = jax.random.key(SEED)
-    for chunk_start in range(0, TRAIN_STEPS, LOG_INTERVAL):
-        pass
+    rng = jax.random.key(SEED)
+    for _ in range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH):
+        rng, batch_rng = jax.random.split(rng)
+        batch_rng = train_chunk(model, optimizer, train_tokens, batch_rng)
+
+    train_seconds = timer.stop("train")
+    train_loss = evaluate_split(train_tokens, model, loss_fn, CONTEXT_LENGTH, EVAL_BATCH_SIZE)
+    validation_loss = evaluate_split(
+        validation_tokens, model, loss_fn, CONTEXT_LENGTH, EVAL_BATCH_SIZE
+    )
+    total_seconds = timer.stop("total")
 
 
 if __name__ == "__main__":
