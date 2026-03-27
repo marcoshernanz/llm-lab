@@ -14,7 +14,8 @@ SVG_WIDTH = 900
 
 @dataclass
 class LossTracker:
-    log_interval: int
+    train_steps: list[int] = field(default_factory=list)
+    validation_steps: list[int] = field(default_factory=list)
     train_losses: list[float] = field(default_factory=list)
     validation_losses: list[float] = field(default_factory=list)
 
@@ -22,6 +23,8 @@ class LossTracker:
         if step <= 0:
             raise ValueError("step must be positive")
 
+        self.train_steps.append(step)
+        self.validation_steps.append(step)
         self.train_losses.append(train_loss)
         self.validation_losses.append(validation_loss)
         print(f"step={step} train_loss={train_loss:.6f} validation_loss={validation_loss:.6f}")
@@ -29,32 +32,23 @@ class LossTracker:
     def save(self, *, script_path: Path) -> tuple[Path, Path]:
         return save_loss_artifacts(
             script_path=script_path,
+            train_steps=self.train_steps,
+            validation_steps=self.validation_steps,
             train_losses=self.train_losses,
             validation_losses=self.validation_losses,
-            train_log_interval=self.log_interval,
-            validation_log_interval=self.log_interval,
         )
 
 
 def save_loss_artifacts(
     *,
     script_path: Path,
+    train_steps: Sequence[int],
+    validation_steps: Sequence[int],
     train_losses: Sequence[float],
     validation_losses: Sequence[float],
-    train_log_interval: int,
-    validation_log_interval: int,
 ) -> tuple[Path, Path]:
-    if train_log_interval <= 0:
-        raise ValueError("train_log_interval must be positive")
-    if validation_log_interval <= 0:
-        raise ValueError("validation_log_interval must be positive")
-    if not train_losses:
-        raise ValueError("train_losses must contain at least one point")
-    if not validation_losses:
-        raise ValueError("validation_losses must contain at least one point")
-
-    train_steps = _build_steps(len(train_losses), train_log_interval)
-    validation_steps = _build_steps(len(validation_losses), validation_log_interval)
+    _validate_series("train", train_steps, train_losses)
+    _validate_series("validation", validation_steps, validation_losses)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     run_dir = ARTIFACTS_ROOT / script_path.stem / timestamp
@@ -83,8 +77,11 @@ def save_loss_artifacts(
     return csv_path, svg_path
 
 
-def _build_steps(num_points: int, interval: int) -> list[int]:
-    return [interval * (index + 1) for index in range(num_points)]
+def _validate_series(name: str, steps: Sequence[int], losses: Sequence[float]) -> None:
+    if not steps:
+        raise ValueError(f"{name} steps must contain at least one point")
+    if len(steps) != len(losses):
+        raise ValueError(f"{name} steps and losses must have the same length")
 
 
 def _build_loss_curve_svg(
