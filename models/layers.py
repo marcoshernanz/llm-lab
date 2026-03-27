@@ -12,7 +12,7 @@ class LayerNorm(nnx.Module):
     shift: nnx.Param[jax.Array]
     eps: float
 
-    def __init__(self, features: int, *, eps: float = -1e5):
+    def __init__(self, features: int, *, eps: float = 1e-5):
         self.scale = nnx.Param(jnp.ones((features,)))
         self.shift = nnx.Param(jnp.zeros((features,)))
         self.eps = eps
