@@ -21,6 +21,8 @@ class CausalSelfAttention(nnx.Module):
     head_dim: int
 
     def __init__(self, embedding_dim: int, num_heads: int, *, rngs: nnx.Rngs):
+        if num_heads <= 0:
+            raise ValueError("num_heads must be positive")
         if embedding_dim % num_heads != 0:
             raise ValueError("embedding_dim must be divisible by num_heads")
 
@@ -64,7 +66,7 @@ class FeedForward(nnx.Module):
         self.out_proj = Linear(hidden_dim, embedding_dim, rngs=rngs)
 
     def __call__(self, x: jax.Array) -> jax.Array:
-        hidden = jax.nn.tanh(self.in_proj(x))
+        hidden = jnn.tanh(self.in_proj(x))
         return self.out_proj(hidden)
 
 
@@ -117,7 +119,6 @@ class DecoderOnlyTransformer(nnx.Module):
     token_embedding: Embedding
     position_embedding: Embedding
     decoder_stack: Decoder
-    output_norm: LayerNorm
 
     def __init__(
         self,
@@ -136,7 +137,6 @@ class DecoderOnlyTransformer(nnx.Module):
         self.decoder_stack = Decoder(
             embedding_dim, hidden_dim, num_heads, num_decoder_blocks, rngs=rngs
         )
-        self.output_norm = LayerNorm(embedding_dim)
 
     def __call__(self, input_ids: jax.Array) -> jax.Array:
         if input_ids.shape[-1] > self.position_embedding.weight.shape[0]:
@@ -145,5 +145,4 @@ class DecoderOnlyTransformer(nnx.Module):
         positions = jnp.arange(input_ids.shape[-1], dtype=jnp.int32)
         x = self.token_embedding(input_ids) + self.position_embedding(positions)
         x = self.decoder_stack(x)
-        x = self.output_norm(x)
         return x @ self.token_embedding.weight.T
