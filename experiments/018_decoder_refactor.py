@@ -12,6 +12,7 @@ from lib.data import build_token_splits
 from lib.data import load_text
 from lib.data import load_tokenizer
 from lib.eval import evaluate_split
+from lib.plotting import save_loss_artifacts
 from lib.timer import Timer
 from models.transformer import DecoderOnlyTransformer
 
@@ -74,7 +75,7 @@ def train_chunk(
     tokens: jax.Array,
     rng: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
-    loss = jnp.array(jnp.nan, dtype=jnp.float32)
+    total_loss = jnp.array(0.0, dtype=jnp.float32)
     for _ in range(TRAIN_CHUNK_LENGTH):
         rng, batch_rng = jax.random.split(rng)
         start_positions = jax.random.randint(
@@ -84,8 +85,8 @@ def train_chunk(
             maxval=tokens.shape[0] - CONTEXT_LENGTH,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, CONTEXT_LENGTH)
-        loss = train_step(model, optimizer, input_ids, target_ids)
-    return loss, rng
+        total_loss = total_loss + train_step(model, optimizer, input_ids, target_ids)
+    return total_loss / TRAIN_CHUNK_LENGTH, rng
 
 
 def main():
@@ -108,10 +109,32 @@ def main():
     optimizer = nnx.Optimizer(model, optax.sgd(LEARNING_RATE), wrt=nnx.Param)
     timer.start("train")
 
+    train_steps: list[int] = []
+    train_losses: list[float] = []
+    validation_steps: list[int] = []
+    validation_losses: list[float] = []
+
     rng = jax.random.key(SEED)
     for step in range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH):
-        loss, rng = train_chunk(model, optimizer, train_tokens, rng)
-        print(f"step={step} loss={loss:.6f}")
+        train_loss, rng = train_chunk(model, optimizer, train_tokens, rng)
+        current_step = step + TRAIN_CHUNK_LENGTH
+        validation_loss = evaluate_split(
+            validation_tokens,
+            model,
+            evaluate_batch_loss,
+            CONTEXT_LENGTH,
+            EVAL_BATCH_SIZE,
+        )
+
+        train_steps.append(current_step)
+        train_losses.append(float(train_loss))
+        validation_steps.append(current_step)
+        validation_losses.append(validation_loss)
+
+        print(
+            f"step={current_step} train_loss={float(train_loss):.6f} "
+            f"validation_loss={validation_loss:.6f}"
+        )
 
     train_seconds = timer.stop("train")
     train_loss = evaluate_split(
@@ -121,17 +144,19 @@ def main():
         CONTEXT_LENGTH,
         EVAL_BATCH_SIZE,
     )
-    validation_loss = evaluate_split(
-        validation_tokens,
-        model,
-        evaluate_batch_loss,
-        CONTEXT_LENGTH,
-        EVAL_BATCH_SIZE,
+    loss_history_csv, loss_curve_svg = save_loss_artifacts(
+        script_path=Path(__file__),
+        train_steps=train_steps,
+        train_losses=train_losses,
+        validation_steps=validation_steps,
+        validation_losses=validation_losses,
     )
     total_seconds = timer.stop("total")
 
     print(f"train_loss={train_loss:.6f}")
-    print(f"validation_loss={validation_loss:.6f}")
+    print(f"validation_loss={validation_losses[-1]:.6f}")
+    print(f"loss_history_csv={loss_history_csv}")
+    print(f"loss_curve_svg={loss_curve_svg}")
     print(f"train_seconds={train_seconds:.3f}")
     print(f"steps_per_second={TRAIN_STEPS / train_seconds:.3f}")
     print(f"total_seconds={total_seconds:.3f}")
