@@ -95,6 +95,12 @@ def main():
     )
     total_seconds = timer.stop("total")
 
+    print(f"train_loss={train_loss:.6f}")
+    print(f"validation_loss={validation_loss:.6f}")
+    print(f"train_seconds={train_seconds:.3f}")
+    print(f"steps_per_second={TRAIN_STEPS / train_seconds:.3f}")
+    print(f"total_seconds={total_seconds:.3f}")
+
 
 if __name__ == "__main__":
     main()
