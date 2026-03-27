@@ -118,11 +118,21 @@ class LanguageModel(nnx.Module):
     decoder: Decoder
     lm_head: Linear
 
-    def __init__(self, vocab_size: int, *, rngs: nnx.Rngs):
-        self.token_embedding = Embedding(vocab_size, EMBEDDING_DIM, rngs=rngs)
-        self.position_embedding = Embedding(CONTEXT_TOKENS, EMBEDDING_DIM, rngs=rngs)
-        self.decoder = Decoder(EMBEDDING_DIM, HIDDEN_DIM, NUM_HEADS, NUM_DECODER_BLOCKS, rngs=rngs)
-        self.lm_head = Linear(EMBEDDING_DIM, vocab_size, rngs=rngs)
+    def __init__(
+        self,
+        vocab_size: int,
+        embedding_dim: int,
+        hidden_dim: int,
+        num_heads: int,
+        num_decoder_blocks: int,
+        context_length: int,
+        *,
+        rngs: nnx.Rngs,
+    ):
+        self.token_embedding = Embedding(vocab_size, embedding_dim, rngs=rngs)
+        self.position_embedding = Embedding(context_length, embedding_dim, rngs=rngs)
+        self.decoder = Decoder(embedding_dim, hidden_dim, num_heads, num_decoder_blocks, rngs=rngs)
+        self.lm_head = Linear(embedding_dim, vocab_size, rngs=rngs)
 
     def __call__(self, input_ids: jax.Array) -> jax.Array:
         positions = jnp.arange(input_ids.shape[-1], dtype=jnp.int32)
