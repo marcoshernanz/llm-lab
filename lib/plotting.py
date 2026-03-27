@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass, field
 from datetime import datetime
 import math
 from pathlib import Path
@@ -9,6 +10,30 @@ from typing import Sequence
 ARTIFACTS_ROOT = Path(__file__).resolve().parent.parent / "artifacts" / "experiments"
 SVG_HEIGHT = 400
 SVG_WIDTH = 900
+
+
+@dataclass
+class LossTracker:
+    log_interval: int
+    train_losses: list[float] = field(default_factory=list)
+    validation_losses: list[float] = field(default_factory=list)
+
+    def log(self, *, step: int, train_loss: float, validation_loss: float) -> None:
+        if step <= 0:
+            raise ValueError("step must be positive")
+
+        self.train_losses.append(train_loss)
+        self.validation_losses.append(validation_loss)
+        print(f"step={step} train_loss={train_loss:.6f} validation_loss={validation_loss:.6f}")
+
+    def save(self, *, script_path: Path) -> tuple[Path, Path]:
+        return save_loss_artifacts(
+            script_path=script_path,
+            train_losses=self.train_losses,
+            validation_losses=self.validation_losses,
+            train_log_interval=self.log_interval,
+            validation_log_interval=self.log_interval,
+        )
 
 
 def save_loss_artifacts(
