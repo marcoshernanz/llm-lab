@@ -68,22 +68,21 @@ class FeedForward(nnx.Module):
 
 
 class DecoderBlock(nnx.Module):
-    attention: CausalSelfAttention
+    self_attention: CausalSelfAttention
     attention_norm: LayerNorm
     feed_forward: FeedForward
     feed_forward_norm: LayerNorm
 
     def __init__(self, embedding_dim: int, hidden_dim: int, num_heads: int, *, rngs: nnx.Rngs):
-        self.attention = CausalSelfAttention(embedding_dim, num_heads, rngs=rngs)
+        self.self_attention = CausalSelfAttention(embedding_dim, num_heads, rngs=rngs)
         self.attention_norm = LayerNorm(embedding_dim)
         self.feed_forward = FeedForward(embedding_dim, hidden_dim, rngs=rngs)
         self.feed_forward_norm = LayerNorm(embedding_dim)
 
     def __call__(self, x: jax.Array) -> jax.Array:
-        attention_residual = x + self.attention(x)
-        attention_block_output = self.attention_norm(attention_residual)
-        feed_forward_residual = attention_block_output + self.feed_forward(attention_block_output)
-        return self.feed_forward_norm(feed_forward_residual)
+        x = x + self.self_attention(self.attention_norm(x))
+        x = x + self.feed_forward(self.feed_forward_norm(x))
+        return x
 
 
 class Decoder(nnx.Module):
