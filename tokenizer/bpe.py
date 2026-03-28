@@ -252,7 +252,9 @@ def train_bpe(
     if vocab_size < BYTE_VOCAB_SIZE:
         raise ValueError(f"vocab_size must be at least {BYTE_VOCAB_SIZE} for byte-level BPE.")
 
-    sequence_counts: SequenceCounts = Counter(tuple(chunk) for chunk in split_text(text, split_pattern))
+    sequence_counts: SequenceCounts = Counter(
+        tuple(chunk) for chunk in split_text(text, split_pattern)
+    )
     pair_counts, pair_to_sequences = build_pair_index(sequence_counts)
 
     merges: list[Merge] = []
