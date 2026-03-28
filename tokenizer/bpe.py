@@ -1,7 +1,7 @@
 import argparse
 from collections import Counter
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import re
@@ -28,6 +28,12 @@ class BPEModel:
     merges: tuple[Merge, ...]
     merge_ranks: dict[TokenPair, int]
     merge_tokens: dict[TokenPair, TokenId]
+    _chunk_encoding_cache: dict[bytes, tuple[TokenId, ...]] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def vocab_size(self) -> int:
@@ -36,7 +42,11 @@ class BPEModel:
     def encode(self, text: str) -> list[TokenId]:
         token_ids: list[TokenId] = []
         for chunk in split_text(text, self.split_pattern):
-            token_ids.extend(self.encode_chunk(chunk))
+            cached_token_ids = self._chunk_encoding_cache.get(chunk)
+            if cached_token_ids is None:
+                cached_token_ids = tuple(self.encode_chunk(chunk))
+                self._chunk_encoding_cache[chunk] = cached_token_ids
+            token_ids.extend(cached_token_ids)
         return token_ids
 
     def encode_chunk(self, chunk: bytes) -> list[TokenId]:
