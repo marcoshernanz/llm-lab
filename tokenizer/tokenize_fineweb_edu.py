@@ -1,27 +1,59 @@
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
 from tokenizer.bpe import BPEModel
+from tokenizer.fineweb_edu import DEFAULT_BATCH_SIZE
+from tokenizer.fineweb_edu import DEFAULT_DATASET_CONFIG
+from tokenizer.fineweb_edu import DEFAULT_DATASET_NAME
+from tokenizer.fineweb_edu import DEFAULT_SPLIT
+from tokenizer.fineweb_edu import DEFAULT_TEXT_COLUMN
+from tokenizer.fineweb_edu import iter_parquet_text
+from tokenizer.fineweb_edu import resolve_parquet_paths
 
 
-DEFAULT_DATASET_NAME = "HuggingFaceFW/fineweb-edu"
-DEFAULT_DATASET_CONFIG = "sample-10BT"
-DEFAULT_SOURCE_SPLIT = "train"
-DEFAULT_TEXT_COLUMN = "text"
+DEFAULT_SOURCE_SPLIT = DEFAULT_SPLIT
 DEFAULT_OUTPUT_DIR = Path("datasets/fineweb_edu/sample10bt_bpe_16384")
 DEFAULT_SHARD_TOKENS = 10_000_000
 DEFAULT_VALIDATION_FRACTION = 0.01
 DEFAULT_DOCUMENT_SEPARATOR = "\n"
 
 
+@dataclass
+class SplitWriter:
+    output_dir: Path
+    split: str
+    shard_tokens: int
+    buffer: list[int]
+    next_shard_index: int = 0
+    documents: int = 0
+    tokens: int = 0
+
+    def append(self, token_ids: list[int]) -> None:
+        self.buffer.extend(token_ids)
+        self.documents += 1
+        while len(self.buffer) >= self.shard_tokens:
+            write_shard(self.output_dir, self.split, self.next_shard_index, self.buffer[: self.shard_tokens])
+            self.tokens += self.shard_tokens
+            self.buffer = self.buffer[self.shard_tokens :]
+            self.next_shard_index += 1
+
+    def finalize(self) -> None:
+        if not self.buffer:
+            return
+        write_shard(self.output_dir, self.split, self.next_shard_index, self.buffer)
+        self.tokens += len(self.buffer)
+        self.next_shard_index += 1
+        self.buffer = []
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Stream FineWeb-Edu, tokenize it, and write train/validation token shards."
+        description="Read FineWeb-Edu parquet shards, tokenize them, and write train/validation token shards."
     )
     parser.add_argument(
         "--dataset-name",
@@ -42,6 +74,12 @@ def parse_args() -> argparse.Namespace:
         "--text-column",
         default=DEFAULT_TEXT_COLUMN,
         help="Column containing the text payload.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help="Number of rows to read from parquet at a time.",
     )
     parser.add_argument(
         "--tokenizer-path",
@@ -81,32 +119,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def get_text(record: dict[str, Any], text_column: str) -> str:
-    value = record.get(text_column)
-    if not isinstance(value, str):
-        raise ValueError(f"Expected a string {text_column!r} field, got {type(value).__name__}.")
-    return value
-
-
-def stream_fineweb_text(
-    *,
-    dataset_name: str,
-    dataset_config: str,
-    source_split: str,
-    text_column: str,
-):
-    from datasets import load_dataset  # pyright: ignore
-
-    dataset = load_dataset(
-        dataset_name,
-        name=dataset_config,
-        split=source_split,
-        streaming=True,
-    )
-    for record in dataset:
-        yield get_text(record, text_column).strip()
-
-
 def choose_split(text: str, validation_fraction: float) -> str:
     if validation_fraction == 0.0:
         return "train"
@@ -126,38 +138,10 @@ def write_shard(
     np.save(shard_path, np.asarray(token_ids, dtype=np.int32))
 
 
-def flush_completed_shards(
-    *,
-    output_dir: Path,
-    split: str,
-    shard_tokens: int,
-    buffer: list[int],
-    next_shard_index: int,
-) -> tuple[list[int], int, int]:
-    tokens_written = 0
-    while len(buffer) >= shard_tokens:
-        write_shard(output_dir, split, next_shard_index, buffer[:shard_tokens])
-        tokens_written += shard_tokens
-        buffer = buffer[shard_tokens:]
-        next_shard_index += 1
-    return buffer, next_shard_index, tokens_written
-
-
-def write_remainder_shard(
-    *,
-    output_dir: Path,
-    split: str,
-    buffer: list[int],
-    next_shard_index: int,
-) -> tuple[int, int]:
-    if not buffer:
-        return next_shard_index, 0
-    write_shard(output_dir, split, next_shard_index, buffer)
-    return next_shard_index + 1, len(buffer)
-
-
 def main() -> None:
     args = parse_args()
+    if args.batch_size <= 0:
+        raise ValueError("batch_size must be positive")
     if args.shard_tokens <= 0:
         raise ValueError("shard_tokens must be positive")
     if not 0.0 <= args.validation_fraction < 1.0:
@@ -166,22 +150,24 @@ def main() -> None:
         raise ValueError("max_documents must be positive when provided")
 
     tokenizer = BPEModel.load(args.tokenizer_path)
+    parquet_paths = resolve_parquet_paths(args.dataset_name, args.dataset_config, args.source_split)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    split_writers = {
+        "train": SplitWriter(args.output_dir, "train", args.shard_tokens, []),
+        "validation": SplitWriter(args.output_dir, "validation", args.shard_tokens, []),
+    }
 
-    split_buffers = {"train": [], "validation": []}
-    next_shard_indices = {"train": 0, "validation": 0}
-    token_totals = {"train": 0, "validation": 0}
-    document_totals = {"train": 0, "validation": 0}
+    shards_touched = 0
+    current_shard: str | None = None
 
-    for document_index, text in enumerate(
-        stream_fineweb_text(
-            dataset_name=args.dataset_name,
-            dataset_config=args.dataset_config,
-            source_split=args.source_split,
-            text_column=args.text_column,
-        ),
+    for document_index, (parquet_path, text) in enumerate(
+        iter_parquet_text(parquet_paths, text_column=args.text_column, batch_size=args.batch_size),
         start=1,
     ):
+        if parquet_path != current_shard:
+            current_shard = parquet_path
+            shards_touched += 1
+
         if not text:
             continue
 
@@ -190,60 +176,47 @@ def main() -> None:
         if not encoded_document:
             continue
 
-        split_buffers[split].extend(encoded_document)
-        document_totals[split] += 1
-
-        (
-            split_buffers[split],
-            next_shard_indices[split],
-            written_tokens,
-        ) = flush_completed_shards(
-            output_dir=args.output_dir,
-            split=split,
-            shard_tokens=args.shard_tokens,
-            buffer=split_buffers[split],
-            next_shard_index=next_shard_indices[split],
-        )
-        token_totals[split] += written_tokens
+        split_writers[split].append(encoded_document)
 
         if args.max_documents is not None and document_index >= args.max_documents:
             break
 
     for split in ("train", "validation"):
-        next_shard_indices[split], written_tokens = write_remainder_shard(
-            output_dir=args.output_dir,
-            split=split,
-            buffer=split_buffers[split],
-            next_shard_index=next_shard_indices[split],
-        )
-        token_totals[split] += written_tokens
+        split_writers[split].finalize()
 
     metadata = {
         "dataset_name": args.dataset_name,
         "dataset_config": args.dataset_config,
         "source_split": args.source_split,
         "text_column": args.text_column,
+        "batch_size": args.batch_size,
         "tokenizer_path": str(args.tokenizer_path),
         "tokenizer_vocab_size": tokenizer.vocab_size,
         "output_dir": str(args.output_dir),
         "shard_tokens": args.shard_tokens,
         "validation_fraction": args.validation_fraction,
         "document_separator": args.document_separator,
-        "documents": document_totals,
-        "tokens": token_totals,
-        "shards": next_shard_indices,
+        "parquet_files": len(parquet_paths),
+        "shards_touched": shards_touched,
+        "documents": {split: split_writers[split].documents for split in split_writers},
+        "tokens": {split: split_writers[split].tokens for split in split_writers},
+        "shards": {split: split_writers[split].next_shard_index for split in split_writers},
     }
     metadata_path = args.output_dir / "metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
     print(f"output_dir={args.output_dir}")
     print(f"metadata_path={metadata_path}")
-    print(f"train_documents={document_totals['train']}")
-    print(f"validation_documents={document_totals['validation']}")
-    print(f"train_tokens={token_totals['train']}")
-    print(f"validation_tokens={token_totals['validation']}")
-    print(f"train_shards={next_shard_indices['train']}")
-    print(f"validation_shards={next_shard_indices['validation']}")
+    print(f"parquet_files={len(parquet_paths)}")
+    print(f"shards_touched={shards_touched}")
+    print(f"train_documents={split_writers['train'].documents}")
+    print(f"validation_documents={split_writers['validation'].documents}")
+    print(f"train_tokens={split_writers['train'].tokens}")
+    print(f"validation_tokens={split_writers['validation'].tokens}")
+    print(f"train_shards={split_writers['train'].next_shard_index}")
+    print(f"validation_shards={split_writers['validation'].next_shard_index}")
+    if current_shard is not None:
+        print(f"last_shard={current_shard}")
 
 
 if __name__ == "__main__":
