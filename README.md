@@ -45,9 +45,10 @@ This progression is intentional. The repo optimizes for understanding each conce
 
 - Phase 1 foundations: [docs/phase_1_foundations.md](docs/phase_1_foundations.md)
 - Phase 2 scaling: [docs/phase_2_scaling.md](docs/phase_2_scaling.md)
-- Learning log: [docs/learning_log.md](docs/learning_log.md)
+- Phase 1 learning log: [docs/phase_1_learning_log.md](docs/phase_1_learning_log.md)
+- Phase 2 learning log: [docs/phase_2_learning_log.md](docs/phase_2_learning_log.md)
 
-The phase-1 document explains the learning path from simple baselines through `018_decoder_refactor.py`. The phase-2 document starts after that baseline and covers the next work on better datasets, TPU `v5e-1`, scaling, profiling, and only later optimizer study. The learning log records the experiments that have already been run and how the results evolved.
+The phase-1 document explains the learning path from simple baselines through `018_decoder_refactor.py`. The phase-2 document starts after that baseline and covers the next work on better datasets, TPU `v5e-1`, scaling, profiling, and only later optimizer study. The two learning logs split completed run history by phase.
 
 ## Working style
 
