@@ -1,3 +1,5 @@
+- File and functions doc-strings (and state it in AGENTS.md)
+
 - Tokenizer abstract class
 - Model abstract class
 - Optimizers
