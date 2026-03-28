@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from lib.data import list_token_shards
+from lib.data import load_token_split_from_shards
 from lib.data import load_token_shard
 from lib.data import load_token_shard_metadata
 
@@ -41,3 +42,21 @@ def test_load_token_shard_metadata_reads_json(tmp_path: Path) -> None:
     metadata = load_token_shard_metadata(tmp_path)
 
     assert metadata == {"train_tokens": 12}
+
+
+def test_load_token_split_from_shards_concatenates_sorted_shards(tmp_path: Path) -> None:
+    np.save(tmp_path / "train_00001.npy", np.asarray([3, 4], dtype=np.int32))
+    np.save(tmp_path / "train_00000.npy", np.asarray([1, 2], dtype=np.int32))
+
+    token_ids = load_token_split_from_shards(tmp_path, "train")
+
+    assert token_ids.tolist() == [1, 2, 3, 4]
+
+
+def test_load_token_split_from_shards_respects_max_shards(tmp_path: Path) -> None:
+    np.save(tmp_path / "validation_00000.npy", np.asarray([5, 6], dtype=np.int32))
+    np.save(tmp_path / "validation_00001.npy", np.asarray([7, 8], dtype=np.int32))
+
+    token_ids = load_token_split_from_shards(tmp_path, "validation", max_shards=1)
+
+    assert token_ids.tolist() == [5, 6]
