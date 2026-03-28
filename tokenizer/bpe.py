@@ -194,6 +194,7 @@ def train_bpe(
             break
         sequences = [merge_sequence(sequence, best_pair, next_token_id) for sequence in sequences]
         merges.append((best_pair, next_token_id))
+        print(f"merges_completed={next_token_id - BYTE_VOCAB_SIZE + 1}")
         next_token_id += 1
 
     return build_model(split_pattern, merges)
