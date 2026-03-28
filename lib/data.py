@@ -61,15 +61,18 @@ def list_token_shards(root_dir: Path, split: str) -> list[Path]:
 
 
 def load_token_shard(path: Path) -> jax.Array:
+    token_ids = load_token_shard_numpy(path)
+    return jnp.asarray(token_ids.astype(np.int32, copy=False))
+
+
+def load_token_shard_numpy(path: Path, *, mmap: bool = False) -> np.ndarray:
     if not path.exists():
         raise FileNotFoundError(f"Token shard not found at {path}.")
 
-    token_ids = np.load(path)
+    token_ids = np.load(path, mmap_mode="r" if mmap else None)
     if token_ids.ndim != 1:
         raise ValueError(f"Expected a 1D token shard at {path}, got shape {token_ids.shape}.")
-    if token_ids.dtype != np.int32:
-        token_ids = token_ids.astype(np.int32)
-    return jnp.asarray(token_ids)
+    return token_ids
 
 
 def load_token_shard_metadata(root_dir: Path) -> dict[str, object]:
@@ -84,6 +87,7 @@ def load_token_split_from_shards(
     split: str,
     *,
     max_shards: int | None = None,
+    mmap: bool = False,
 ) -> jax.Array:
     if max_shards is not None and max_shards <= 0:
         raise ValueError("max_shards must be positive when provided")
@@ -92,8 +96,9 @@ def load_token_split_from_shards(
     if max_shards is not None:
         shard_paths = shard_paths[:max_shards]
 
-    shard_arrays = [np.asarray(load_token_shard(path)) for path in shard_paths]
+    shard_arrays = [load_token_shard_numpy(path, mmap=mmap) for path in shard_paths]
     if not shard_arrays:
         raise ValueError(f"No {split!r} token shards selected from {root_dir}.")
 
-    return jnp.asarray(np.concatenate(shard_arrays, axis=0))
+    concatenated = np.concatenate(shard_arrays, axis=0)
+    return jnp.asarray(concatenated.astype(np.int32, copy=False))
