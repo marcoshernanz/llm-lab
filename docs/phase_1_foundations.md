@@ -4,6 +4,7 @@ This document records the first learning phase of the repo: the path from simple
 
 It is now a completed phase guide.
 For the follow-on plan after phase 1, see [docs/phase_2_scaling.md](./phase_2_scaling.md).
+For the run history from this phase, see [docs/phase_1_learning_log.md](./phase_1_learning_log.md).
 
 ## Why This Phase Is Structured This Way
 The goal of this project is to maximize learning, not to reach a modern architecture in the fewest calendar days.
