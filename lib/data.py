@@ -77,3 +77,23 @@ def load_token_shard_metadata(root_dir: Path) -> dict[str, object]:
     if not metadata_path.exists():
         raise FileNotFoundError(f"Token shard metadata not found at {metadata_path}.")
     return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def load_token_split_from_shards(
+    root_dir: Path,
+    split: str,
+    *,
+    max_shards: int | None = None,
+) -> jax.Array:
+    if max_shards is not None and max_shards <= 0:
+        raise ValueError("max_shards must be positive when provided")
+
+    shard_paths = list_token_shards(root_dir, split)
+    if max_shards is not None:
+        shard_paths = shard_paths[:max_shards]
+
+    shard_arrays = [np.asarray(load_token_shard(path)) for path in shard_paths]
+    if not shard_arrays:
+        raise ValueError(f"No {split!r} token shards selected from {root_dir}.")
+
+    return jnp.asarray(np.concatenate(shard_arrays, axis=0))
