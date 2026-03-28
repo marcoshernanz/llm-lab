@@ -135,13 +135,6 @@ def main():
         )
 
     train_seconds = timer.stop("train")
-    train_loss = evaluate_split(
-        train_tokens,
-        model,
-        evaluate_batch_loss,
-        CONTEXT_LENGTH,
-        EVAL_BATCH_SIZE,
-    )
     validation_loss = evaluate_split(
         validation_tokens,
         model,
@@ -152,7 +145,7 @@ def main():
     loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
     total_seconds = timer.stop("total")
 
-    print(f"train_loss={train_loss:.6f}")
+    print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
     print(f"validation_loss={validation_loss:.6f}")
     print(f"loss_history_csv={loss_history_csv}")
     print(f"loss_curve_svg={loss_curve_svg}")
