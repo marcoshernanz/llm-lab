@@ -7,19 +7,23 @@ import jax.numpy as jnp
 
 from pathlib import Path
 
-from lib.data import build_examples, build_token_splits, load_text, load_tokenizer
+from lib.data import build_examples
+from lib.data import load_token_shard_metadata
+from lib.data import load_token_split_from_shards
+from lib.data import load_tokenizer
 from lib.eval import evaluate_positions, evaluate_split, sample_evaluation_positions
 from lib.plotting import LossTracker
 from lib.timer import Timer
-from tokenizer.bpe import BPEModel
 from models.transformer import DecoderOnlyTransformer
+from tokenizer.bpe import BPEModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = ROOT_DIR / "datasets" / "tinyshakespeare.txt"
-TOKENIZER_PATH = ROOT_DIR / "artifacts" / "tokenizers" / "tinyshakespeare_bpe_512.json"
+TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_bpe_16384"
+TOKENIZER_PATH = ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
 
 SEED = 0
-TRAIN_SPLIT = 0.8
+MAX_TRAIN_SHARDS = 1
+MAX_VALIDATION_SHARDS = 1
 EVAL_BATCH_SIZE = 64
 BATCH_SIZE = 16
 LEARNING_RATE = 0.02
@@ -125,9 +129,18 @@ def main():
     timer = Timer()
     timer.start("total")
     rngs = nnx.Rngs(SEED)
-    text = load_text(DATA_PATH)
     tokenizer = load_tokenizer(TOKENIZER_PATH)
-    train_tokens, validation_tokens = build_token_splits(text, tokenizer, TRAIN_SPLIT)
+    token_metadata = load_token_shard_metadata(TOKEN_SHARD_ROOT)
+    train_tokens = load_token_split_from_shards(
+        TOKEN_SHARD_ROOT,
+        "train",
+        max_shards=MAX_TRAIN_SHARDS,
+    )
+    validation_tokens = load_token_split_from_shards(
+        TOKEN_SHARD_ROOT,
+        "validation",
+        max_shards=MAX_VALIDATION_SHARDS,
+    )
 
     model = DecoderOnlyTransformer(
         vocab_size=tokenizer.vocab_size,
@@ -183,6 +196,13 @@ def main():
     sample_path.write_text(sample + "\n", encoding="utf-8")
     total_seconds = timer.stop("total")
 
+    print(f"token_shard_root={TOKEN_SHARD_ROOT}")
+    print(f"tokenizer_path={TOKENIZER_PATH}")
+    print(f"metadata_shard_tokens={token_metadata['shard_tokens']}")
+    print(f"max_train_shards={MAX_TRAIN_SHARDS}")
+    print(f"max_validation_shards={MAX_VALIDATION_SHARDS}")
+    print(f"loaded_train_tokens={train_tokens.shape[0]}")
+    print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
     print(f"validation_loss={validation_loss:.6f}")
     print(f"loss_history_csv={loss_history_csv}")
