@@ -109,9 +109,9 @@ def generate_text(
         )
     )
     context = seed_token_ids[seed_start : seed_start + CONTEXT_LENGTH]
-    generated_token_ids = context[:sample_tokens].tolist()
+    generated_token_ids: list[int] = []
 
-    for _ in range(max(sample_tokens - len(generated_token_ids), 0)):
+    for _ in range(sample_tokens):
         logits = model(context[None, :])
         rng, token_rng = jax.random.split(rng)
         next_token_id = int(jax.random.categorical(token_rng, logits[0, -1]))
