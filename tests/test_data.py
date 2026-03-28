@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from lib.data import list_token_shards
+from lib.data import load_token_shard_numpy
 from lib.data import load_token_split_from_shards
 from lib.data import load_token_shard
 from lib.data import load_token_shard_metadata
@@ -32,6 +33,17 @@ def test_load_token_shard_reads_int32_vector(tmp_path: Path) -> None:
 
     assert token_ids.shape == (3,)
     assert token_ids.dtype.name == "int32"
+    assert token_ids.tolist() == [1, 2, 3]
+
+
+def test_load_token_shard_numpy_supports_memmap(tmp_path: Path) -> None:
+    shard_path = tmp_path / "train_00000.npy"
+    np.save(shard_path, np.asarray([1, 2, 3], dtype=np.uint16))
+
+    token_ids = load_token_shard_numpy(shard_path, mmap=True)
+
+    assert token_ids.shape == (3,)
+    assert str(token_ids.dtype) == "uint16"
     assert token_ids.tolist() == [1, 2, 3]
 
 
