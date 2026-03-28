@@ -79,6 +79,41 @@ Start phase 2 by validating that the `018` baseline can survive contact with a b
 - The run works on TPU `v5e-1`.
 - You can explain what broke, what stayed stable, and what the new bottlenecks are.
 
+## Tokenizer Bring-Up
+The current BPE trainer in `tokenizer/bpe.py` is still a small in-memory implementation.
+That means phase 2 should not try to train the tokenizer on the full streamed dataset directly.
+
+The intended first workflow is:
+- stream `HuggingFaceFW/fineweb-edu` `sample-10BT`,
+- write a capped local tokenizer corpus,
+- train the tokenizer on that local file,
+- freeze the tokenizer artifact,
+- then build the larger tokenized training path separately.
+
+Use `tokenizer/prepare_fineweb_edu_corpus.py` to create the local corpus:
+
+```bash
+uv run python tokenizer/prepare_fineweb_edu_corpus.py \
+  --dataset-config sample-10BT \
+  --max-chars 10000000 \
+  --output-path datasets/fineweb_edu/sample10bt_tokenizer_corpus.txt
+```
+
+Then train the tokenizer:
+
+```bash
+uv run python tokenizer/bpe.py \
+  --data-path datasets/fineweb_edu/sample10bt_tokenizer_corpus.txt \
+  --vocab-size 8192 \
+  --output-path artifacts/tokenizers/fineweb_edu_sample10bt_bpe_8192.json
+```
+
+Recommended starting scale:
+- `10_000_000` characters for the first tokenizer corpus
+- `8192` vocab size
+
+If tokenizer training is still comfortably fast, scale the corpus up gradually rather than jumping straight to the full dataset.
+
 ## After The Opening Experiment
 ### Track 1: Observability And Clean Experiment Outputs
 - Make training behavior easy to see without cluttering experiment scripts.
