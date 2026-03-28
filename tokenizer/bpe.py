@@ -45,6 +45,10 @@ class BPEModel:
         decoded = b"".join(self.vocab[token_id] for token_id in token_ids)
         return decoded.decode("utf-8")
 
+    def decode_for_display(self, token_ids: Sequence[TokenId]) -> str:
+        decoded = b"".join(self.vocab[token_id] for token_id in token_ids)
+        return decoded.decode("utf-8", errors="replace")
+
     def to_dict(self) -> dict[str, object]:
         return {
             "version": TOKENIZER_ARTIFACT_VERSION,

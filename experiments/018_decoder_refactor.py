@@ -118,7 +118,7 @@ def generate_text(
         generated_token_ids.append(next_token_id)
         context = jnp.concatenate((context[1:], jnp.asarray([next_token_id], dtype=jnp.int32)))
 
-    return tokenizer.decode(generated_token_ids)
+    return tokenizer.decode_for_display(generated_token_ids)
 
 
 def main():
