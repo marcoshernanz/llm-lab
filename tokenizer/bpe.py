@@ -1,5 +1,6 @@
 import argparse
 from collections import Counter
+from collections import defaultdict
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -94,9 +95,13 @@ def split_text(text: str, split_pattern: str = DEFAULT_SPLIT_PATTERN) -> list[by
 def count_pairs(sequence_counts: dict[TokenKey, int]) -> dict[TokenPair, int]:
     pair_counts: dict[TokenPair, int] = {}
     for sequence, frequency in sequence_counts.items():
-        for pair in zip(sequence, sequence[1:]):
-            pair_counts[pair] = pair_counts.get(pair, 0) + frequency
+        for pair, count in count_sequence_pairs(sequence).items():
+            pair_counts[pair] = pair_counts.get(pair, 0) + (count * frequency)
     return pair_counts
+
+
+def count_sequence_pairs(sequence: Sequence[TokenId]) -> Counter[TokenPair]:
+    return Counter(zip(sequence, sequence[1:]))
 
 
 def select_best_pair(pair_counts: dict[TokenPair, int]) -> TokenPair | None:
@@ -186,19 +191,54 @@ def train_bpe(
         raise ValueError(f"vocab_size must be at least {BYTE_VOCAB_SIZE} for byte-level BPE.")
 
     sequence_counts = Counter(tuple(chunk) for chunk in split_text(text, split_pattern))
+    pair_counts: Counter[TokenPair] = Counter()
+    pair_to_sequences: dict[TokenPair, set[TokenKey]] = defaultdict(set)
+
+    for sequence, frequency in sequence_counts.items():
+        for pair, count in count_sequence_pairs(sequence).items():
+            pair_counts[pair] += count * frequency
+            pair_to_sequences[pair].add(sequence)
+
     merges: list[Merge] = []
     next_token_id = BYTE_VOCAB_SIZE
 
     while next_token_id < vocab_size:
-        pair_counts = count_pairs(sequence_counts)
         best_pair = select_best_pair(pair_counts)
         if best_pair is None:
             break
+
+        affected_sequences = tuple(pair_to_sequences.get(best_pair, ()))
+        if not affected_sequences:
+            del pair_counts[best_pair]
+            continue
+
         merged_sequence_counts: Counter[TokenKey] = Counter()
-        for sequence, frequency in sequence_counts.items():
+        for sequence in affected_sequences:
+            frequency = sequence_counts.pop(sequence, 0)
+            if frequency == 0:
+                continue
+
+            for pair, count in count_sequence_pairs(sequence).items():
+                updated_count = pair_counts[pair] - (count * frequency)
+                if updated_count > 0:
+                    pair_counts[pair] = updated_count
+                else:
+                    del pair_counts[pair]
+
+                indexed_sequences = pair_to_sequences[pair]
+                indexed_sequences.discard(sequence)
+                if not indexed_sequences:
+                    del pair_to_sequences[pair]
+
             merged_sequence = tuple(merge_sequence(sequence, best_pair, next_token_id))
             merged_sequence_counts[merged_sequence] += frequency
-        sequence_counts = merged_sequence_counts
+
+        for sequence, frequency in merged_sequence_counts.items():
+            sequence_counts[sequence] += frequency
+            for pair, count in count_sequence_pairs(sequence).items():
+                pair_counts[pair] += count * frequency
+                pair_to_sequences[pair].add(sequence)
+
         merges.append((best_pair, next_token_id))
         print(f"merges_completed={next_token_id - BYTE_VOCAB_SIZE + 1}")
         next_token_id += 1
