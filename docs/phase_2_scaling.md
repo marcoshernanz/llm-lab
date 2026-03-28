@@ -123,6 +123,9 @@ Use `tokenizer/tokenize_fineweb_edu.py` to:
 - split documents deterministically into train and validation,
 - and write `.npy` token shards plus `metadata.json`.
 
+When the tokenizer vocab fits in `uint16`, the shard writer stores token IDs as `uint16` to cut disk usage roughly in half.
+Training should then read bounded shard windows or individual shards, not concatenate the entire dataset into memory at startup.
+
 Recommended first command:
 
 ```bash
