@@ -7,26 +7,33 @@ import jax.numpy as jnp
 
 from pathlib import Path
 
-from lib.data import build_examples, build_token_splits, load_text, load_tokenizer
-from lib.eval import evaluate_positions, evaluate_split, sample_evaluation_positions
+from lib.data import (
+    build_examples,
+    list_token_shards,
+    load_token_shard,
+    load_token_shard_metadata,
+    load_tokenizer,
+)
+from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.plotting import LossTracker
 from lib.timer import Timer
-from tokenizer.bpe import BPEModel
 from models.transformer import DecoderOnlyTransformer
+from tokenizer.bpe import BPEModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = ROOT_DIR / "datasets" / "tinyshakespeare.txt"
-TOKENIZER_PATH = ROOT_DIR / "artifacts" / "tokenizers" / "tinyshakespeare_bpe_512.json"
+TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_bpe_16384"
+TOKENIZER_PATH = ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
 
 SEED = 0
-TRAIN_SPLIT = 0.8
-EVAL_BATCH_SIZE = 64
-BATCH_SIZE = 16
+TRAIN_SHARD_INDEX = 0
+VALIDATION_SHARD_INDEX = 0
+EVAL_BATCH_SIZE = 32
+BATCH_SIZE = 8
 LEARNING_RATE = 0.02
-TRAIN_STEPS = 50_000
-TRAIN_CHUNK_LENGTH = 1000
-VALIDATION_SUBSET_EXAMPLES = 1024
-SAMPLE_TOKENS = 100
+TRAIN_STEPS = 2_000
+TRAIN_CHUNK_LENGTH = 40
+VALIDATION_SUBSET_EXAMPLES = 256
+SAMPLE_TOKENS = 60
 if TRAIN_STEPS % TRAIN_CHUNK_LENGTH != 0:
     raise ValueError("TRAIN_STEPS must be divisible by TRAIN_CHUNK_LENGTH")
 
@@ -35,6 +42,16 @@ NUM_HEADS = 4
 NUM_DECODER_BLOCKS = 4
 HIDDEN_DIM = 128
 CONTEXT_LENGTH = 64
+
+
+def load_experiment_split(root_dir: Path, split: str, shard_index: int) -> jax.Array:
+    shard_paths = list_token_shards(root_dir, split)
+    if shard_index < 0 or shard_index >= len(shard_paths):
+        raise ValueError(
+            f"{split} shard index {shard_index} is out of range for {root_dir}. "
+            f"Available {split} shards: {len(shard_paths)}."
+        )
+    return load_token_shard(shard_paths[shard_index])
 
 
 def loss_fn(
@@ -125,9 +142,18 @@ def main():
     timer = Timer()
     timer.start("total")
     rngs = nnx.Rngs(SEED)
-    text = load_text(DATA_PATH)
     tokenizer = load_tokenizer(TOKENIZER_PATH)
-    train_tokens, validation_tokens = build_token_splits(text, tokenizer, TRAIN_SPLIT)
+    token_metadata = load_token_shard_metadata(TOKEN_SHARD_ROOT)
+    train_tokens = load_experiment_split(
+        TOKEN_SHARD_ROOT,
+        "train",
+        TRAIN_SHARD_INDEX,
+    )
+    validation_tokens = load_experiment_split(
+        TOKEN_SHARD_ROOT,
+        "validation",
+        VALIDATION_SHARD_INDEX,
+    )
 
     model = DecoderOnlyTransformer(
         vocab_size=tokenizer.vocab_size,
@@ -169,13 +195,14 @@ def main():
         )
 
     train_seconds = timer.stop("train")
-    validation_loss = evaluate_split(
-        validation_tokens,
-        model,
-        evaluate_batch_loss,
-        CONTEXT_LENGTH,
-        EVAL_BATCH_SIZE,
-    )
+    # Skip for this experiment since it takes too long
+    # validation_loss = evaluate_split(
+    #     validation_tokens,
+    #     model,
+    #     evaluate_batch_loss,
+    #     CONTEXT_LENGTH,
+    #     EVAL_BATCH_SIZE,
+    # )
     rng, sample_rng = jax.random.split(rng)
     sample = generate_text(model, tokenizer, train_tokens, SAMPLE_TOKENS, sample_rng)
     loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
@@ -183,8 +210,16 @@ def main():
     sample_path.write_text(sample + "\n", encoding="utf-8")
     total_seconds = timer.stop("total")
 
+    print(f"token_shard_root={TOKEN_SHARD_ROOT}")
+    print(f"tokenizer_path={TOKENIZER_PATH}")
+    print(f"token_dtype={token_metadata['token_dtype']}")
+    print(f"metadata_shard_tokens={token_metadata['shard_tokens']}")
+    print(f"train_shard_index={TRAIN_SHARD_INDEX}")
+    print(f"validation_shard_index={VALIDATION_SHARD_INDEX}")
+    print(f"loaded_train_tokens={train_tokens.shape[0]}")
+    print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
-    print(f"validation_loss={validation_loss:.6f}")
+    # print(f"validation_loss={validation_loss:.6f}")
     print(f"loss_history_csv={loss_history_csv}")
     print(f"loss_curve_svg={loss_curve_svg}")
     print(f"sample_path={sample_path}")

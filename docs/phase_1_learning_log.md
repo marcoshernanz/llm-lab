@@ -1,6 +1,8 @@
-# Learning Log
+# Phase 1 Learning Log
 
 Runs recorded on 2026-03-16, 2026-03-21, 2026-03-22, 2026-03-23, 2026-03-24, and 2026-03-26.
+
+This log contains the completed runs from phase 1, covering experiments `001` through `018`.
 
 ## Summary
 

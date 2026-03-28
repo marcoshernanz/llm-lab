@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from tokenizer.bpe import BPEModel
 
@@ -49,3 +51,54 @@ def build_examples(
     input_ids = token_ids[start_positions[:, None] + offsets]
     target_ids = token_ids[start_positions[:, None] + offsets + 1]
     return input_ids, target_ids
+
+
+def list_token_shards(root_dir: Path, split: str) -> list[Path]:
+    shard_paths = sorted(root_dir.glob(f"{split}_*.npy"))
+    if not shard_paths:
+        raise FileNotFoundError(f"No {split!r} token shards found under {root_dir}.")
+    return shard_paths
+
+
+def load_token_shard(path: Path) -> jax.Array:
+    token_ids = load_token_shard_numpy(path)
+    return jnp.asarray(token_ids.astype(np.int32, copy=False))
+
+
+def load_token_shard_numpy(path: Path, *, mmap: bool = False) -> np.ndarray:
+    if not path.exists():
+        raise FileNotFoundError(f"Token shard not found at {path}.")
+
+    token_ids = np.load(path, mmap_mode="r" if mmap else None)
+    if token_ids.ndim != 1:
+        raise ValueError(f"Expected a 1D token shard at {path}, got shape {token_ids.shape}.")
+    return token_ids
+
+
+def load_token_shard_metadata(root_dir: Path) -> dict[str, object]:
+    metadata_path = root_dir / "metadata.json"
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Token shard metadata not found at {metadata_path}.")
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def load_token_split_from_shards(
+    root_dir: Path,
+    split: str,
+    *,
+    max_shards: int | None = None,
+    mmap: bool = False,
+) -> jax.Array:
+    if max_shards is not None and max_shards <= 0:
+        raise ValueError("max_shards must be positive when provided")
+
+    shard_paths = list_token_shards(root_dir, split)
+    if max_shards is not None:
+        shard_paths = shard_paths[:max_shards]
+
+    shard_arrays = [load_token_shard_numpy(path, mmap=mmap) for path in shard_paths]
+    if not shard_arrays:
+        raise ValueError(f"No {split!r} token shards selected from {root_dir}.")
+
+    concatenated = np.concatenate(shard_arrays, axis=0)
+    return jnp.asarray(concatenated.astype(np.int32, copy=False))
