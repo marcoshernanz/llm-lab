@@ -24,11 +24,18 @@ DEFAULT_DOCUMENT_SEPARATOR = "\n"
 LOG_EVERY_DOCUMENTS = 1_000
 
 
+def choose_token_dtype(vocab_size: int) -> np.dtype:
+    if vocab_size <= np.iinfo(np.uint16).max + 1:
+        return np.dtype(np.uint16)
+    return np.dtype(np.int32)
+
+
 @dataclass
 class SplitWriter:
     output_dir: Path
     split: str
     shard_tokens: int
+    token_dtype: np.dtype
     buffer: list[int]
     next_shard_index: int = 0
     documents: int = 0
@@ -38,7 +45,13 @@ class SplitWriter:
         self.buffer.extend(token_ids)
         self.documents += 1
         while len(self.buffer) >= self.shard_tokens:
-            write_shard(self.output_dir, self.split, self.next_shard_index, self.buffer[: self.shard_tokens])
+            write_shard(
+                self.output_dir,
+                self.split,
+                self.next_shard_index,
+                self.buffer[: self.shard_tokens],
+                self.token_dtype,
+            )
             self.tokens += self.shard_tokens
             self.buffer = self.buffer[self.shard_tokens :]
             self.next_shard_index += 1
@@ -46,7 +59,7 @@ class SplitWriter:
     def finalize(self) -> None:
         if not self.buffer:
             return
-        write_shard(self.output_dir, self.split, self.next_shard_index, self.buffer)
+        write_shard(self.output_dir, self.split, self.next_shard_index, self.buffer, self.token_dtype)
         self.tokens += len(self.buffer)
         self.next_shard_index += 1
         self.buffer = []
@@ -134,9 +147,10 @@ def write_shard(
     split: str,
     shard_index: int,
     token_ids: list[int],
+    token_dtype: np.dtype,
 ) -> None:
     shard_path = output_dir / f"{split}_{shard_index:05d}.npy"
-    np.save(shard_path, np.asarray(token_ids, dtype=np.int32))
+    np.save(shard_path, np.asarray(token_ids, dtype=token_dtype))
 
 
 def main() -> None:
@@ -152,10 +166,11 @@ def main() -> None:
 
     tokenizer = BPEModel.load(args.tokenizer_path)
     parquet_paths = resolve_parquet_paths(args.dataset_name, args.dataset_config, args.source_split)
+    token_dtype = choose_token_dtype(tokenizer.vocab_size)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     split_writers = {
-        "train": SplitWriter(args.output_dir, "train", args.shard_tokens, []),
-        "validation": SplitWriter(args.output_dir, "validation", args.shard_tokens, []),
+        "train": SplitWriter(args.output_dir, "train", args.shard_tokens, token_dtype, []),
+        "validation": SplitWriter(args.output_dir, "validation", args.shard_tokens, token_dtype, []),
     }
 
     shards_touched = 0
@@ -195,6 +210,7 @@ def main() -> None:
         "batch_size": args.batch_size,
         "tokenizer_path": str(args.tokenizer_path),
         "tokenizer_vocab_size": tokenizer.vocab_size,
+        "token_dtype": token_dtype.name,
         "output_dir": str(args.output_dir),
         "shard_tokens": args.shard_tokens,
         "validation_fraction": args.validation_fraction,
