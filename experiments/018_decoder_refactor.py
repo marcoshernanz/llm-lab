@@ -179,12 +179,15 @@ def main():
     rng, sample_rng = jax.random.split(rng)
     sample = generate_text(model, tokenizer, train_tokens, SAMPLE_TOKENS, sample_rng)
     loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
+    sample_path = loss_history_csv.parent / "sample.txt"
+    sample_path.write_text(sample + "\n", encoding="utf-8")
     total_seconds = timer.stop("total")
 
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
     print(f"validation_loss={validation_loss:.6f}")
     print(f"loss_history_csv={loss_history_csv}")
     print(f"loss_curve_svg={loss_curve_svg}")
+    print(f"sample_path={sample_path}")
     print(f"train_seconds={train_seconds:.3f}")
     print(f"steps_per_second={TRAIN_STEPS / train_seconds:.3f}")
     print(f"total_seconds={total_seconds:.3f}")
