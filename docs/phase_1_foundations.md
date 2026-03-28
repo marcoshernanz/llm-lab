@@ -1,11 +1,11 @@
-# BareTensor LLM Roadmap (Historical)
+# Phase 1: Foundations
 
-This document is the original learning path that led from simple language-model baselines to the current decoder-only transformer stage.
+This document records the first learning phase of the repo: the path from simple language-model baselines to the first standardized tokenized decoder baseline.
 
-It is now treated as a historical roadmap.
-For the follow-on plan after the first transformer/refactor phase, see [docs/next_steps_roadmap.md](./next_steps_roadmap.md).
+It is now a completed phase guide.
+For the follow-on plan after phase 1, see [docs/phase_2_scaling.md](./phase_2_scaling.md).
 
-## Why This Roadmap Is Structured This Way
+## Why This Phase Is Structured This Way
 The goal of this project is to maximize learning, not to reach a modern architecture in the fewest calendar days.
 
 That means the roadmap is intentionally granular.
@@ -43,9 +43,12 @@ CNNs are not on the main path.
 They are useful, but for the TinyGPT-oriented goal they are lower learning-value than context-window MLPs, RNNs, and attention.
 
 ## Status
-As of 2026-03-28, this roadmap is considered complete through phase 1.
+As of 2026-03-28, this phase guide is considered complete through phase 1.
 
 Phase 1 ends at the first standardized tokenized decoder baseline in `018`.
+
+Experiments in this phase:
+- `001` through `018`
 
 In practical terms:
 - The repo has already moved through the pre-transformer milestones.
@@ -55,7 +58,7 @@ In practical terms:
   - a final output normalization layer,
   - tied token embedding / output projection instead of a separate LM head,
   - and extracted setup, evaluation, plotting, and training-loop helpers.
-- The next scaling, dataset, TPU, profiling, and optimizer work lives in the separate next-steps roadmap.
+- The next scaling, dataset, TPU, profiling, and optimizer work lives in the separate phase-2 guide.
 
 ## Global Rules
 - Every milestone is built in PyTorch first, then ported to BareTensor.
@@ -598,13 +601,13 @@ You should come out of this milestone able to:
 - Improve maintainability while preserving first-principles understanding of the full run.
 
 ## Handoff
-The next phase starts after `018` and is intentionally separated from this historical roadmap.
+The next phase starts after `018` and is intentionally separated from this completed phase guide.
 
 That means:
 - `018` is the end of phase 1.
 - The next roadmap begins from the standardized `018` baseline, not from `017`.
 
-Continue with [docs/next_steps_roadmap.md](./next_steps_roadmap.md) for:
+Continue with [docs/phase_2_scaling.md](./phase_2_scaling.md) for:
 - loss-curve tooling and experiment observability,
 - better datasets,
 - TPU `v5e-1` runs,
