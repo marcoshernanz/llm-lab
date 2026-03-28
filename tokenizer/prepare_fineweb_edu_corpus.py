@@ -1,5 +1,7 @@
 import argparse
+import os
 from pathlib import Path
+import sys
 from typing import Any
 
 
@@ -9,6 +11,14 @@ DEFAULT_SPLIT = "train"
 DEFAULT_TEXT_COLUMN = "text"
 DEFAULT_MAX_CHARS = 10_000_000
 DEFAULT_OUTPUT_PATH = Path("datasets/fineweb_edu/sample10bt_tokenizer_corpus.txt")
+
+# `datasets` streaming can leave Python's resource tracker warning about a leaked semaphore
+# when we stop early after collecting a capped corpus. Set this before importing `datasets`
+# so the helper process inherits the filter and stays quiet.
+os.environ.setdefault(
+    "PYTHONWARNINGS",
+    "ignore:resource_tracker:UserWarning:multiprocessing.resource_tracker",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -78,8 +88,13 @@ def stream_fineweb_text(
         split=split,
         streaming=True,
     )
-    for record in dataset:
-        yield get_text(record, text_column).strip()
+    iterator = iter(dataset)
+    try:
+        for record in iterator:
+            yield get_text(record, text_column).strip()
+    finally:
+        if hasattr(iterator, "close"):
+            iterator.close()
 
 
 def main() -> None:
@@ -94,31 +109,37 @@ def main() -> None:
     chars_written = 0
     examples_written = 0
 
-    with args.output_path.open("w", encoding="utf-8") as handle:
-        for text in stream_fineweb_text(
-            dataset_name=args.dataset_name,
-            dataset_config=args.dataset_config,
-            split=args.split,
-            text_column=args.text_column,
-        ):
-            if not text:
-                continue
+    text_stream = stream_fineweb_text(
+        dataset_name=args.dataset_name,
+        dataset_config=args.dataset_config,
+        split=args.split,
+        text_column=args.text_column,
+    )
 
-            remaining_chars = args.max_chars - chars_written
-            if remaining_chars <= 0:
-                break
+    try:
+        with args.output_path.open("w", encoding="utf-8") as handle:
+            for text in text_stream:
+                if not text:
+                    continue
 
-            text_to_write = text[:remaining_chars]
-            handle.write(text_to_write)
-            handle.write("\n")
+                remaining_chars = args.max_chars - chars_written
+                if remaining_chars <= 0:
+                    break
 
-            chars_written += len(text_to_write) + 1
-            examples_written += 1
+                text_to_write = text[:remaining_chars]
+                handle.write(text_to_write)
+                handle.write("\n")
 
-            if chars_written >= args.max_chars:
-                break
-            if args.max_examples is not None and examples_written >= args.max_examples:
-                break
+                chars_written += len(text_to_write) + 1
+                examples_written += 1
+
+                if chars_written >= args.max_chars:
+                    break
+                if args.max_examples is not None and examples_written >= args.max_examples:
+                    break
+    finally:
+        if hasattr(text_stream, "close"):
+            text_stream.close()
 
     print(f"dataset={args.dataset_name}")
     print(f"dataset_config={args.dataset_config}")
@@ -126,6 +147,12 @@ def main() -> None:
     print(f"output_path={args.output_path}")
     print(f"examples_written={examples_written}")
     print(f"chars_written={chars_written}")
+
+    # `datasets` streaming can keep background resources alive after early termination.
+    # This is a standalone utility, so exit hard once the requested corpus is safely written.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 if __name__ == "__main__":
