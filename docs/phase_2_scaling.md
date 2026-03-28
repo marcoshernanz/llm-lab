@@ -134,7 +134,8 @@ uv run python tokenizer/tokenize_fineweb_edu.py \
   --tokenizer-path artifacts/tokenizers/fineweb_edu_sample10bt_bpe_16384.json \
   --output-dir datasets/fineweb_edu/sample10bt_bpe_16384 \
   --shard-tokens 10000000 \
-  --validation-fraction 0.01
+  --validation-fraction 0.01 \
+  --max-train-shards 10
 ```
 
 For a small local smoke test first:
@@ -150,6 +151,10 @@ uv run python tokenizer/tokenize_fineweb_edu.py \
 ```
 
 The next training experiment should consume these token shards rather than a single in-memory text file.
+
+## Experiment Sequence
+- `019` is the current one-train-shard / one-validation-shard phase-2 baseline.
+- `020` should be the follow-up experiment that rotates across multiple train shards instead of staying pinned to one shard.
 
 ## After The Opening Experiment
 ### Track 1: Observability And Clean Experiment Outputs
