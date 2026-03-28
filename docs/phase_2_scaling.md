@@ -81,16 +81,16 @@ Start phase 2 by validating that the `018` baseline can survive contact with a b
 
 ## Tokenizer Bring-Up
 The current BPE trainer in `tokenizer/bpe.py` is still a small in-memory implementation.
-That means phase 2 should not try to train the tokenizer on the full streamed dataset directly.
+That means phase 2 should not try to train the tokenizer on the full dataset directly.
 
 The intended first workflow is:
-- stream `HuggingFaceFW/fineweb-edu` `sample-10BT`,
+- inspect the parquet shards behind `HuggingFaceFW/fineweb-edu` `sample-10BT`,
 - write a capped local tokenizer corpus,
 - train the tokenizer on that local file,
 - freeze the tokenizer artifact,
 - then build the larger tokenized training path separately.
 
-Use `tokenizer/prepare_fineweb_edu_corpus.py` to create the local corpus:
+Use `tokenizer/prepare_fineweb_edu_corpus.py` to read the FineWeb-Edu parquet shards directly and create the local corpus:
 
 ```bash
 uv run python tokenizer/prepare_fineweb_edu_corpus.py \
