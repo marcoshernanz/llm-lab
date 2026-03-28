@@ -13,6 +13,7 @@ DEFAULT_TEXT_COLUMN = "text"
 DEFAULT_BATCH_SIZE = 1024
 DEFAULT_MAX_CHARS = 10_000_000
 DEFAULT_OUTPUT_PATH = Path("datasets/fineweb_edu/sample10bt_tokenizer_corpus.txt")
+LOG_EVERY_CHARS = 1_000_000
 
 
 def parse_args() -> argparse.Namespace:
@@ -125,6 +126,7 @@ def main() -> None:
     examples_written = 0
     shards_touched = 0
     current_shard: str | None = None
+    next_char_log = LOG_EVERY_CHARS
 
     with args.output_path.open("w", encoding="utf-8") as handle:
         for parquet_path, text in iter_parquet_text(
@@ -149,6 +151,10 @@ def main() -> None:
 
             chars_written += len(text_to_write) + 1
             examples_written += 1
+
+            if chars_written >= next_char_log:
+                next_char_log += LOG_EVERY_CHARS
+                print(f"chars_written={chars_written}")
 
             if chars_written >= args.max_chars:
                 break
