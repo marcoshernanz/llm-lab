@@ -23,6 +23,7 @@ Runs recorded on 2026-03-16, 2026-03-21, 2026-03-22, 2026-03-23, 2026-03-24, and
 | 015 | `experiments/015_single_block_multi_head_decoder_only_transformer.py` | 100000 | 1.822181 | 1.956108 | 681.613 | 146.711 | 804.293 | [csv](../artifacts/experiments/015_single_block_multi_head_decoder_only_transformer/20260323_184835_096532/loss_history.csv) | [svg](../artifacts/experiments/015_single_block_multi_head_decoder_only_transformer/20260323_184835_096532/loss_curve.svg) |
 | 016 | `experiments/016_small_multi_layer_decoder.py` | 100000 | 1.624889 | 1.826635 | 817.049 | 61.196 | 1025.764 | [csv](../artifacts/experiments/016_small_multi_layer_decoder/20260324_002448_334792/loss_history.csv) | [svg](../artifacts/experiments/016_small_multi_layer_decoder/20260324_002448_334792/loss_curve.svg) |
 | 017 | `experiments/017_tokenized_small_multi_layer_decoder.py` | 50000 | 3.025190 | 3.573010 | 716.232 | 69.810 | 832.839 | [csv](../artifacts/experiments/017_tokenized_small_multi_layer_decoder/20260326_114042_013888/loss_history.csv) | [svg](../artifacts/experiments/017_tokenized_small_multi_layer_decoder/20260326_114042_013888/loss_curve.svg) |
+| 018 | `experiments/018_decoder_refactor.py` | 50000 | 3.212770 | 3.679991 | 482.025 | 103.729 | 498.218 | [csv](../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_history.csv) | [svg](../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_curve.svg) |
 
 ## 001 Bigram JAX
 
@@ -387,4 +388,28 @@ Hours, minutes? noon, midnight? and all eyes
 Blind with the pin and web but theirs, theirs only,
 That would unseen be wicked
 Of hath unto chambour I a wornis hare. Your hope to fear the good out
+```
+
+## 018 Decoder Refactor JAX
+
+- Script: `experiments/018_decoder_refactor.py`
+- Tokenizer: `artifacts/tokenizers/tinyshakespeare_bpe_512.json`
+- Steps: `50000`
+- Final train loss: `3.212770`
+- Val loss: `3.679991`
+- Train seconds: `482.025`
+- Steps per second: `103.729`
+- Total seconds: `498.218`
+- Note: the plotted red curve is `validation_subset_loss` measured on a fixed subset each chunk; the final reported `validation_loss` is still the full validation split.
+- Sample artifact: [sample.txt](../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/sample.txt)
+
+![018 decoder refactor jax loss curve](../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_curve.svg)
+
+```text
+To unstable slightness: purpose so barr'd,
+it follows,
+Nothing is done to purpose. Therefore, beseech you,--
+You that be be not lizens
+And, blies by thee thou hearr�;
+And voile mayerage to fight, thou de
 ```
