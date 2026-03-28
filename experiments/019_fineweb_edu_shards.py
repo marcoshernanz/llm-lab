@@ -14,7 +14,7 @@ from lib.data import (
     load_token_shard_metadata,
     load_tokenizer,
 )
-from lib.eval import evaluate_positions, evaluate_split, sample_evaluation_positions
+from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.plotting import LossTracker
 from lib.timer import Timer
 from models.transformer import DecoderOnlyTransformer
@@ -195,13 +195,14 @@ def main():
         )
 
     train_seconds = timer.stop("train")
-    validation_loss = evaluate_split(
-        validation_tokens,
-        model,
-        evaluate_batch_loss,
-        CONTEXT_LENGTH,
-        EVAL_BATCH_SIZE,
-    )
+    # Skip for this experiment since it takes too long
+    # validation_loss = evaluate_split(
+    #     validation_tokens,
+    #     model,
+    #     evaluate_batch_loss,
+    #     CONTEXT_LENGTH,
+    #     EVAL_BATCH_SIZE,
+    # )
     rng, sample_rng = jax.random.split(rng)
     sample = generate_text(model, tokenizer, train_tokens, SAMPLE_TOKENS, sample_rng)
     loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
@@ -218,7 +219,7 @@ def main():
     print(f"loaded_train_tokens={train_tokens.shape[0]}")
     print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
-    print(f"validation_loss={validation_loss:.6f}")
+    # print(f"validation_loss={validation_loss:.6f}")
     print(f"loss_history_csv={loss_history_csv}")
     print(f"loss_curve_svg={loss_curve_svg}")
     print(f"sample_path={sample_path}")
