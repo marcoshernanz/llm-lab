@@ -114,6 +114,40 @@ Recommended next tokenizer scale:
 
 If tokenizer training is still comfortably fast, scale the corpus up gradually rather than jumping straight to the full dataset.
 
+## Tokenized Shard Build
+After the tokenizer is frozen, convert the streamed dataset into reusable token shards.
+
+Use `tokenizer/tokenize_fineweb_edu.py` to:
+- stream FineWeb-Edu,
+- tokenize each document with the frozen tokenizer,
+- split documents deterministically into train and validation,
+- and write `.npy` token shards plus `metadata.json`.
+
+Recommended first command:
+
+```bash
+uv run python tokenizer/tokenize_fineweb_edu.py \
+  --dataset-config sample-10BT \
+  --tokenizer-path artifacts/tokenizers/fineweb_edu_sample10bt_bpe_16384.json \
+  --output-dir datasets/fineweb_edu/sample10bt_bpe_16384 \
+  --shard-tokens 10000000 \
+  --validation-fraction 0.01
+```
+
+For a small local smoke test first:
+
+```bash
+uv run python tokenizer/tokenize_fineweb_edu.py \
+  --dataset-config sample-10BT \
+  --tokenizer-path artifacts/tokenizers/fineweb_edu_sample10bt_bpe_16384.json \
+  --output-dir datasets/fineweb_edu/sample10bt_bpe_16384_smoke \
+  --shard-tokens 100000 \
+  --validation-fraction 0.01 \
+  --max-documents 1000
+```
+
+The next training experiment should consume these token shards rather than a single in-memory text file.
+
 ## After The Opening Experiment
 ### Track 1: Observability And Clean Experiment Outputs
 - Make training behavior easy to see without cluttering experiment scripts.
