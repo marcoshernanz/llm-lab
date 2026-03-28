@@ -30,7 +30,7 @@ Experiments in this phase:
 - none yet
 
 The first phase-2 experiment should take the `018` baseline from phase 1 and rerun it with:
-- a better dataset,
+- `HuggingFaceFW/fineweb-edu` `sample-10BT`,
 - TPU `v5e-1` as the real training target,
 - and as little architectural change as possible.
 
@@ -60,7 +60,7 @@ The rule for the beginning of phase 2 is simple:
 Start phase 2 by validating that the `018` baseline can survive contact with a better dataset and the intended hardware target.
 
 ### What to change
-- Replace the current tiny dataset with a clearly better language-modeling dataset.
+- Replace the current tiny dataset with `HuggingFaceFW/fineweb-edu` `sample-10BT`.
 - Run the experiment on TPU `v5e-1`.
 - Keep the decoder architecture as close to `018` as possible.
 
@@ -70,12 +70,12 @@ Start phase 2 by validating that the `018` baseline can survive contact with a b
 - The idea that this is still a baseline-establishing run, not yet a broad training-recipe rewrite.
 
 ### Why this is first
-- A larger dataset makes scaling questions more real.
+- `fineweb-edu/sample-10BT` is large enough to make scaling questions real without making the first phase-2 bring-up unnecessarily brittle.
 - TPU `v5e-1` is the right execution target for nontrivial runs.
 - Keeping the model fixed makes the early phase-2 results easier to interpret.
 
 ### Exit criteria
-- The repo can run the `018` baseline end to end on a clearly better dataset.
+- The repo can run the `018` baseline end to end on `fineweb-edu/sample-10BT`.
 - The run works on TPU `v5e-1`.
 - You can explain what broke, what stayed stable, and what the new bottlenecks are.
 
