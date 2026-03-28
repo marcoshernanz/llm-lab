@@ -95,7 +95,7 @@ Use `tokenizer/prepare_fineweb_edu_corpus.py` to read the FineWeb-Edu parquet sh
 ```bash
 uv run python tokenizer/prepare_fineweb_edu_corpus.py \
   --dataset-config sample-10BT \
-  --max-chars 10000000 \
+  --max-chars 100000000 \
   --output-path datasets/fineweb_edu/sample10bt_tokenizer_corpus.txt
 ```
 
@@ -104,13 +104,13 @@ Then train the tokenizer:
 ```bash
 uv run python tokenizer/bpe.py \
   --data-path datasets/fineweb_edu/sample10bt_tokenizer_corpus.txt \
-  --vocab-size 8192 \
-  --output-path artifacts/tokenizers/fineweb_edu_sample10bt_bpe_8192.json
+  --vocab-size 16384 \
+  --output-path artifacts/tokenizers/fineweb_edu_sample10bt_bpe_16384.json
 ```
 
-Recommended starting scale:
-- `10_000_000` characters for the first tokenizer corpus
-- `8192` vocab size
+Recommended next tokenizer scale:
+- `100_000_000` characters for the tokenizer corpus
+- `16384` vocab size
 
 If tokenizer training is still comfortably fast, scale the corpus up gradually rather than jumping straight to the full dataset.
 
