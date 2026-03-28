@@ -1,4 +1,5 @@
 import argparse
+from collections import Counter
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -12,6 +13,7 @@ TOKENIZER_ARTIFACT_VERSION = 1
 type TokenId = int
 type TokenPair = tuple[TokenId, TokenId]
 type TokenSequence = list[TokenId]
+type TokenKey = tuple[TokenId, ...]
 type Merge = tuple[TokenPair, TokenId]
 
 
@@ -89,11 +91,11 @@ def split_text(text: str, split_pattern: str = DEFAULT_SPLIT_PATTERN) -> list[by
     return [chunk.encode("utf-8") for chunk in re.findall(split_pattern, text)]
 
 
-def count_pairs(sequences: Sequence[TokenSequence]) -> dict[TokenPair, int]:
+def count_pairs(sequence_counts: dict[TokenKey, int]) -> dict[TokenPair, int]:
     pair_counts: dict[TokenPair, int] = {}
-    for sequence in sequences:
+    for sequence, frequency in sequence_counts.items():
         for pair in zip(sequence, sequence[1:]):
-            pair_counts[pair] = pair_counts.get(pair, 0) + 1
+            pair_counts[pair] = pair_counts.get(pair, 0) + frequency
     return pair_counts
 
 
@@ -183,16 +185,20 @@ def train_bpe(
     if vocab_size < BYTE_VOCAB_SIZE:
         raise ValueError(f"vocab_size must be at least {BYTE_VOCAB_SIZE} for byte-level BPE.")
 
-    sequences = [list(chunk) for chunk in split_text(text, split_pattern)]
+    sequence_counts = Counter(tuple(chunk) for chunk in split_text(text, split_pattern))
     merges: list[Merge] = []
     next_token_id = BYTE_VOCAB_SIZE
 
     while next_token_id < vocab_size:
-        pair_counts = count_pairs(sequences)
+        pair_counts = count_pairs(sequence_counts)
         best_pair = select_best_pair(pair_counts)
         if best_pair is None:
             break
-        sequences = [merge_sequence(sequence, best_pair, next_token_id) for sequence in sequences]
+        merged_sequence_counts: Counter[TokenKey] = Counter()
+        for sequence, frequency in sequence_counts.items():
+            merged_sequence = tuple(merge_sequence(sequence, best_pair, next_token_id))
+            merged_sequence_counts[merged_sequence] += frequency
+        sequence_counts = merged_sequence_counts
         merges.append((best_pair, next_token_id))
         print(f"merges_completed={next_token_id - BYTE_VOCAB_SIZE + 1}")
         next_token_id += 1
