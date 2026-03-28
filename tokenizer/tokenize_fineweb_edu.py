@@ -21,6 +21,7 @@ DEFAULT_OUTPUT_DIR = Path("datasets/fineweb_edu/sample10bt_bpe_16384")
 DEFAULT_SHARD_TOKENS = 10_000_000
 DEFAULT_VALIDATION_FRACTION = 0.01
 DEFAULT_DOCUMENT_SEPARATOR = "\n"
+LOG_EVERY_DOCUMENTS = 1_000
 
 
 @dataclass
@@ -177,6 +178,8 @@ def main() -> None:
             continue
 
         split_writers[split].append(encoded_document)
+        if document_index % LOG_EVERY_DOCUMENTS == 0:
+            print(f"documents={document_index}")
 
         if args.max_documents is not None and document_index >= args.max_documents:
             break
