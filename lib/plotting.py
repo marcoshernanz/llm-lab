@@ -126,16 +126,14 @@ def _build_loss_curve_svg(
             f"{x:.2f},{y:.2f}" for x, y in (point(step, loss) for step, loss in zip(steps, losses))
         )
 
-    smoothed_train_losses = _ema(train_losses, decay=0.9)
     raw_train_points = polyline(train_steps, train_losses)
-    smooth_train_points = polyline(train_steps, smoothed_train_losses)
     validation_subset_points = polyline(validation_subset_steps, validation_subset_losses)
 
     last_validation_subset_x, last_validation_subset_y = point(
         validation_subset_steps[-1],
         validation_subset_losses[-1],
     )
-    last_train_x, last_train_y = point(train_steps[-1], smoothed_train_losses[-1])
+    last_train_x, last_train_y = point(train_steps[-1], train_losses[-1])
 
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{SVG_WIDTH}" height="{SVG_HEIGHT}" viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}" fill="none">
   <rect width="{SVG_WIDTH}" height="{SVG_HEIGHT}" fill="white"/>
@@ -145,27 +143,13 @@ def _build_loss_curve_svg(
   <text x="{left_pad}" y="{SVG_HEIGHT - 12}" fill="#57606a" font-family="monospace" font-size="12">step {step_min} to {step_max}</text>
   <text x="12" y="{top_pad + 4}" fill="#57606a" font-family="monospace" font-size="12">{max_loss:.4f}</text>
   <text x="12" y="{SVG_HEIGHT - bottom_pad + 4}" fill="#57606a" font-family="monospace" font-size="12">{min_loss:.4f}</text>
-  <polyline points="{raw_train_points}" stroke="#cbd5e1" stroke-width="1" fill="none"/>
-  <polyline points="{smooth_train_points}" stroke="#2563eb" stroke-width="2" fill="none"/>
+  <polyline points="{raw_train_points}" stroke="#2563eb" stroke-width="2" fill="none"/>
   <polyline points="{validation_subset_points}" stroke="#dc2626" stroke-width="2" fill="none"/>
   <circle cx="{last_train_x:.2f}" cy="{last_train_y:.2f}" r="3" fill="#2563eb"/>
   <circle cx="{last_validation_subset_x:.2f}" cy="{last_validation_subset_y:.2f}" r="3" fill="#dc2626"/>
-  <text x="{SVG_WIDTH - 220}" y="18" fill="#57606a" font-family="monospace" font-size="12">raw train</text>
-  <line x1="{SVG_WIDTH - 300}" y1="14" x2="{SVG_WIDTH - 228}" y2="14" stroke="#cbd5e1" stroke-width="1.5"/>
-  <text x="{SVG_WIDTH - 220}" y="38" fill="#57606a" font-family="monospace" font-size="12">smoothed train</text>
-  <line x1="{SVG_WIDTH - 300}" y1="34" x2="{SVG_WIDTH - 228}" y2="34" stroke="#2563eb" stroke-width="2"/>
-  <text x="{SVG_WIDTH - 220}" y="58" fill="#57606a" font-family="monospace" font-size="12">validation subset</text>
-  <line x1="{SVG_WIDTH - 300}" y1="54" x2="{SVG_WIDTH - 228}" y2="54" stroke="#dc2626" stroke-width="2"/>
+  <text x="{SVG_WIDTH - 220}" y="18" fill="#57606a" font-family="monospace" font-size="12">train</text>
+  <line x1="{SVG_WIDTH - 300}" y1="14" x2="{SVG_WIDTH - 228}" y2="14" stroke="#2563eb" stroke-width="2"/>
+  <text x="{SVG_WIDTH - 220}" y="38" fill="#57606a" font-family="monospace" font-size="12">validation subset</text>
+  <line x1="{SVG_WIDTH - 300}" y1="34" x2="{SVG_WIDTH - 228}" y2="34" stroke="#dc2626" stroke-width="2"/>
 </svg>
 """
-
-
-def _ema(values: Sequence[float], decay: float) -> list[float]:
-    smoothed_values: list[float] = []
-    ema: float | None = None
-
-    for value in values:
-        ema = value if ema is None else decay * ema + (1.0 - decay) * value
-        smoothed_values.append(ema)
-
-    return smoothed_values
