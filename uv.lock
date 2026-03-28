@@ -816,9 +816,11 @@ dependencies = [
     { name = "datasets" },
     { name = "equinox" },
     { name = "flax" },
+    { name = "huggingface-hub" },
     { name = "jax" },
     { name = "numpy" },
     { name = "optax" },
+    { name = "pyarrow" },
 ]
 
 [package.dev-dependencies]
@@ -834,9 +836,11 @@ requires-dist = [
     { name = "datasets", specifier = ">=4.0.0" },
     { name = "equinox", specifier = ">=0.13.6" },
     { name = "flax", specifier = ">=0.12.6" },
+    { name = "huggingface-hub", specifier = ">=1.8.0" },
     { name = "jax", specifier = ">=0.9.1" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "optax", specifier = ">=0.2.8" },
+    { name = "pyarrow", specifier = ">=23.0.0" },
 ]
 
 [package.metadata.requires-dev]
