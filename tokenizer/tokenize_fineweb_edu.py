@@ -130,6 +130,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional maximum number of documents to stream for smoke tests.",
     )
+    parser.add_argument(
+        "--max-train-shards",
+        type=int,
+        default=None,
+        help="Optional cap on the number of completed train shards to write.",
+    )
     return parser.parse_args()
 
 
@@ -163,6 +169,8 @@ def main() -> None:
         raise ValueError("validation_fraction must be in [0, 1)")
     if args.max_documents is not None and args.max_documents <= 0:
         raise ValueError("max_documents must be positive when provided")
+    if args.max_train_shards is not None and args.max_train_shards <= 0:
+        raise ValueError("max_train_shards must be positive when provided")
 
     tokenizer = BPEModel.load(args.tokenizer_path)
     parquet_paths = resolve_parquet_paths(args.dataset_name, args.dataset_config, args.source_split)
@@ -196,6 +204,13 @@ def main() -> None:
         if document_index % LOG_EVERY_DOCUMENTS == 0:
             print(f"documents={document_index}")
 
+        if (
+            args.max_train_shards is not None
+            and split_writers["train"].next_shard_index >= args.max_train_shards
+        ):
+            split_writers["train"].buffer = []
+            break
+
         if args.max_documents is not None and document_index >= args.max_documents:
             break
 
@@ -215,6 +230,7 @@ def main() -> None:
         "shard_tokens": args.shard_tokens,
         "validation_fraction": args.validation_fraction,
         "document_separator": args.document_separator,
+        "max_train_shards": args.max_train_shards,
         "parquet_files": len(parquet_paths),
         "shards_touched": shards_touched,
         "documents": {split: split_writers[split].documents for split in split_writers},
