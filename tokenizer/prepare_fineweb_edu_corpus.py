@@ -124,7 +124,7 @@ def main() -> None:
     chars_written = 0
     examples_written = 0
     shards_touched = 0
-    current_shard = None
+    current_shard: str | None = None
 
     with args.output_path.open("w", encoding="utf-8") as handle:
         for parquet_path, text in iter_parquet_text(
