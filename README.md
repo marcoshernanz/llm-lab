@@ -21,7 +21,7 @@ The intended structure is:
 - `experiments/`: minimal end-to-end scripts for focused learning milestones.
 - `models/`: reusable model implementations that experiments can import.
 - `tokenizer/`: tokenizer experiments and supporting code.
-- `docs/`: roadmap, notes, and learning history.
+- `docs/`: phase guides, notes, and learning history.
 - `artifacts/`: generated experiment outputs such as loss curves and tokenizer artifacts.
 
 In other words: model definitions should live in `models/`, while experiments should stay thin and runnable, using those models with as little surrounding code as possible.
@@ -43,11 +43,11 @@ This progression is intentional. The repo optimizes for understanding each conce
 
 ## Start here
 
-- Historical roadmap to the first transformer: [docs/llm_roadmap.md](docs/llm_roadmap.md)
-- Next steps roadmap: [docs/next_steps_roadmap.md](docs/next_steps_roadmap.md)
+- Phase 1 foundations: [docs/phase_1_foundations.md](docs/phase_1_foundations.md)
+- Phase 2 scaling: [docs/phase_2_scaling.md](docs/phase_2_scaling.md)
 - Learning log: [docs/learning_log.md](docs/learning_log.md)
 
-The historical roadmap explains the learning order that led to the current transformer stage. The next-steps roadmap covers observability, datasets, scaling, TPU runs, profiling, and only later optimizer study. The learning log records the experiments that have already been run and how the results evolved.
+The phase-1 document explains the learning path from simple baselines through `018_decoder_refactor.py`. The phase-2 document starts after that baseline and covers the next work on better datasets, TPU `v5e-1`, scaling, profiling, and only later optimizer study. The learning log records the experiments that have already been run and how the results evolved.
 
 ## Working style
 
