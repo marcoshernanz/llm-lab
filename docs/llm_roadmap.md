@@ -43,12 +43,18 @@ CNNs are not on the main path.
 They are useful, but for the TinyGPT-oriented goal they are lower learning-value than context-window MLPs, RNNs, and attention.
 
 ## Status
-As of 2026-03-27, this roadmap is considered complete through the first tokenized and refactored decoder-only transformer stage.
+As of 2026-03-28, this roadmap is considered complete through phase 1.
+
+Phase 1 ends at the first standardized tokenized decoder baseline in `018`.
 
 In practical terms:
 - The repo has already moved through the pre-transformer milestones.
-- The current codebase includes reusable transformer modules under `models/`.
-- The current experiment frontier is the tokenized decoder refactor path around `017` and `018`.
+- `017` isolates the move from character-level modeling to tokenizer-produced tokens.
+- `018` finishes the first transformer phase by refactoring the tokenized path into reusable modules and standardizing the decoder around the `017 -> 018` changes:
+  - pre-norm residual blocks,
+  - a final output normalization layer,
+  - tied token embedding / output projection instead of a separate LM head,
+  - and extracted setup, evaluation, plotting, and training-loop helpers.
 - The next scaling, dataset, TPU, profiling, and optimizer work lives in the separate next-steps roadmap.
 
 ## Global Rules
@@ -556,14 +562,20 @@ You should come out of this milestone able to:
 - Explain the difference between changing the input representation and changing decoder depth,
 - Interpret tokenized samples and losses coherently.
 
-## Milestone 018: Refactor the Code
+## Milestone 018: Refactor And Standardize The Decoder
 ### Model
-- Keep the `017` tokenized decoder and training regime fixed.
-- Do not introduce a new model architecture here.
+- Start from the `017` tokenized decoder baseline.
+- Keep the experiment in the same small tokenized-decoder family, but allow a cleanup pass toward more standard decoder choices when that makes the baseline clearer and more reusable.
+- In practice, this milestone may standardize the model around the `017 -> 018` changes:
+  - pre-norm residual blocks instead of the earlier post-norm layout,
+  - a final output normalization layer,
+  - tied token embedding / output projection instead of a separate LM head,
+  - and a reusable decoder module under `models/`.
 - Make the code easier to read, rerun, and extend without hiding the actual tensor logic.
 
 ### Implementation Path
 - Refactor only the parts that repeated runs proved are actually painful or duplicated.
+- If a small number of model-level changes make the decoder more standard and easier to reuse, make them explicitly and treat them as part of this milestone rather than as accidental drift.
 - Pull out small explicit helpers for setup, logging, evaluation, or training-loop scaffolding when they improve clarity.
 - Keep the model definition and core tensor math easy to trace from top to bottom.
 - Avoid turning the project into a framework; this milestone is about cleanup after understanding, not abstraction for its own sake.
@@ -571,16 +583,26 @@ You should come out of this milestone able to:
 ### Understanding Needed Before Implementing
 - Why refactoring after a stable experimental baseline is different from abstracting too early.
 - Which code is genuine model semantics versus experiment plumbing.
+- Why standardizing a decoder around a few mainstream choices is different from changing model families.
+- What each `017 -> 018` change is buying you:
+  - pre-norm for a more standard residual structure,
+  - final normalization for a cleaner decoder output,
+  - and weight tying for a simpler, more standard output path.
 - How to reduce duplication without making the learning path more opaque.
 
 ### Learning Outcomes
 You should come out of this milestone able to:
 - Separate model logic from surrounding experiment scaffolding,
+- Explain why `018` is still the end of the same learning phase even though it standardizes the decoder beyond `017`,
 - Justify each extracted helper in terms of readability or repeated use,
 - Improve maintainability while preserving first-principles understanding of the full run.
 
 ## Handoff
 The next phase starts after `018` and is intentionally separated from this historical roadmap.
+
+That means:
+- `018` is the end of phase 1.
+- The next roadmap begins from the standardized `018` baseline, not from `017`.
 
 Continue with [docs/next_steps_roadmap.md](./next_steps_roadmap.md) for:
 - loss-curve tooling and experiment observability,
