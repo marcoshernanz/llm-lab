@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from typing import Iterator
 
 from datasets import load_dataset_builder  # pyright: ignore
 from huggingface_hub import HfFileSystem  # pyright: ignore
@@ -11,8 +12,6 @@ DEFAULT_DATASET_CONFIG = "sample-10BT"
 DEFAULT_SPLIT = "train"
 DEFAULT_TEXT_COLUMN = "text"
 DEFAULT_BATCH_SIZE = 1024
-DEFAULT_MAX_CHARS = 10_000_000
-DEFAULT_OUTPUT_PATH = Path("datasets/fineweb_edu/sample10bt_tokenizer_corpus.txt")
 LOG_EVERY_CHARS = 1_000_000
 
 
@@ -49,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-chars",
         type=int,
-        default=DEFAULT_MAX_CHARS,
+        required=True,
         help="Maximum number of characters to write to the local corpus.",
     )
     parser.add_argument(
@@ -61,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-path",
         type=Path,
-        default=DEFAULT_OUTPUT_PATH,
+        required=True,
         help="Path to the local tokenizer-training corpus.",
     )
     return parser.parse_args()
@@ -84,7 +83,9 @@ def resolve_parquet_paths(dataset_name: str, dataset_config: str, split: str) ->
     return list(split_files)
 
 
-def iter_parquet_text(parquet_paths: list[str], *, text_column: str, batch_size: int):
+def iter_parquet_text(
+    parquet_paths: list[str], *, text_column: str, batch_size: int
+) -> Iterator[tuple[str, str]]:
     fs = HfFileSystem()
     for parquet_path in parquet_paths:
         with fs.open(parquet_path, "rb") as handle:
@@ -149,7 +150,8 @@ def main() -> None:
             handle.write(text_to_write)
             handle.write("\n")
 
-            chars_written += len(text_to_write) + 1
+            written_chars = len(text_to_write)
+            chars_written += written_chars + 1
             examples_written += 1
 
             if chars_written >= next_char_log:
