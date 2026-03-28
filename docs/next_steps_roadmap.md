@@ -5,6 +5,9 @@ The original roadmap was about reaching the first coherent decoder-only transfor
 
 That part has now done its job.
 
+Phase 1 ends with `experiments/018_decoder_refactor.py`.
+This roadmap starts from the baseline established at the end of that first phase.
+
 The next phase is different.
 The goal is no longer to discover the basic architecture piece by piece.
 The goal is to make the current transformer path easier to observe, easier to scale, and realistic enough that later choices about datasets, optimizers, profiling, and systems work become worth studying.
@@ -18,10 +21,16 @@ It is a new phase with a different emphasis:
 - and only then deeper training-recipe work.
 
 ## Starting Point
-As of 2026-03-27, the current baseline is:
+As of 2026-03-28, the current baseline is:
 - reusable transformer code under `models/`,
 - tokenized decoder experiments already in place,
 - and a refactored tokenized training path around `experiments/018_decoder_refactor.py`.
+
+That baseline already includes the `017 -> 018` cleanup and standardization pass:
+- pre-norm residual blocks,
+- a final output normalization layer,
+- tied token embedding / output projection instead of a separate LM head,
+- and extracted helpers for setup, evaluation, plotting, and training-loop scaffolding.
 
 That means the next roadmap should preserve the architecture long enough to learn from scaling it, rather than immediately changing too many things at once.
 
