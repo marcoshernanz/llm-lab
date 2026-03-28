@@ -43,6 +43,19 @@ def test_encode_decode_round_trip() -> None:
     assert model.decode(token_ids) == text
 
 
+def test_encode_populates_chunk_cache_without_changing_result() -> None:
+    text = "banana bandana\n"
+    model = train_bpe(text, BYTE_VOCAB_SIZE + 4)
+
+    first_encoding = model.encode(text)
+    cached_chunks_after_first_encode = dict(model._chunk_encoding_cache)
+    second_encoding = model.encode(text)
+
+    assert first_encoding == second_encoding
+    assert cached_chunks_after_first_encode
+    assert model._chunk_encoding_cache == cached_chunks_after_first_encode
+
+
 def test_training_tie_break_is_deterministic() -> None:
     model = train_bpe("ab ac", BYTE_VOCAB_SIZE + 1)
 
