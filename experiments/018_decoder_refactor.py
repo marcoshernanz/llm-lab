@@ -7,8 +7,11 @@ import jax.numpy as jnp
 
 from pathlib import Path
 
+from lib.data import build_examples, build_token_splits, load_text, load_tokenizer
+from lib.eval import evaluate_positions, evaluate_split, sample_evaluation_positions
+from lib.plotting import LossTracker
 from lib.timer import Timer
-from lib.utils import load_text, load_tokenizer, build_token_splits, build_examples, evaluate_split
+from tokenizer.bpe import BPEModel
 from models.transformer import DecoderOnlyTransformer
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -22,6 +25,8 @@ BATCH_SIZE = 16
 LEARNING_RATE = 0.02
 TRAIN_STEPS = 50_000
 TRAIN_CHUNK_LENGTH = 1000
+VALIDATION_SUBSET_EXAMPLES = 1024
+SAMPLE_TOKENS = 100
 if TRAIN_STEPS % TRAIN_CHUNK_LENGTH != 0:
     raise ValueError("TRAIN_STEPS must be divisible by TRAIN_CHUNK_LENGTH")
 
@@ -70,7 +75,7 @@ def train_chunk(
     tokens: jax.Array,
     rng: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
-    loss = jnp.array(jnp.nan, dtype=jnp.float32)
+    total_loss = jnp.array(0.0, dtype=jnp.float32)
     for _ in range(TRAIN_CHUNK_LENGTH):
         rng, batch_rng = jax.random.split(rng)
         start_positions = jax.random.randint(
@@ -80,8 +85,40 @@ def train_chunk(
             maxval=tokens.shape[0] - CONTEXT_LENGTH,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, CONTEXT_LENGTH)
-        loss = train_step(model, optimizer, input_ids, target_ids)
-    return loss, rng
+        total_loss = total_loss + train_step(model, optimizer, input_ids, target_ids)
+    return total_loss / TRAIN_CHUNK_LENGTH, rng
+
+
+def generate_text(
+    model: DecoderOnlyTransformer,
+    tokenizer: BPEModel,
+    seed_token_ids: jax.Array,
+    sample_tokens: int,
+    rng: jax.Array,
+) -> str:
+    if sample_tokens <= 0:
+        return ""
+
+    rng, seed_rng = jax.random.split(rng)
+    seed_start = int(
+        jax.random.randint(
+            seed_rng,
+            shape=(),
+            minval=0,
+            maxval=seed_token_ids.shape[0] - CONTEXT_LENGTH,
+        )
+    )
+    context = seed_token_ids[seed_start : seed_start + CONTEXT_LENGTH]
+    generated_token_ids = context[:sample_tokens].tolist()
+
+    for _ in range(max(sample_tokens - len(generated_token_ids), 0)):
+        logits = model(context[None, :])
+        rng, token_rng = jax.random.split(rng)
+        next_token_id = int(jax.random.categorical(token_rng, logits[0, -1]))
+        generated_token_ids.append(next_token_id)
+        context = jnp.concatenate((context[1:], jnp.asarray([next_token_id], dtype=jnp.int32)))
+
+    return tokenizer.decode_for_display(generated_token_ids)
 
 
 def main():
@@ -104,19 +141,34 @@ def main():
     optimizer = nnx.Optimizer(model, optax.sgd(LEARNING_RATE), wrt=nnx.Param)
     timer.start("train")
 
-    rng = jax.random.key(SEED)
-    for step in range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH):
-        loss, rng = train_chunk(model, optimizer, train_tokens, rng)
-        print(f"step={step} loss={loss:.6f}")
+    rng, validation_rng = jax.random.split(jax.random.key(SEED))
+    validation_start_positions = sample_evaluation_positions(
+        validation_tokens,
+        context_length=CONTEXT_LENGTH,
+        subset_size=VALIDATION_SUBSET_EXAMPLES,
+        rng=validation_rng,
+    )
+    loss_tracker = LossTracker()
+
+    for chunk_index, _ in enumerate(range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH), start=1):
+        train_loss, rng = train_chunk(model, optimizer, train_tokens, rng)
+        validation_subset_loss = evaluate_positions(
+            validation_tokens,
+            validation_start_positions,
+            model,
+            evaluate_batch_loss,
+            CONTEXT_LENGTH,
+            EVAL_BATCH_SIZE,
+        )
+
+        current_step = chunk_index * TRAIN_CHUNK_LENGTH
+        loss_tracker.log(
+            step=current_step,
+            train_loss=float(train_loss),
+            validation_subset_loss=validation_subset_loss,
+        )
 
     train_seconds = timer.stop("train")
-    train_loss = evaluate_split(
-        train_tokens,
-        model,
-        evaluate_batch_loss,
-        CONTEXT_LENGTH,
-        EVAL_BATCH_SIZE,
-    )
     validation_loss = evaluate_split(
         validation_tokens,
         model,
@@ -124,13 +176,22 @@ def main():
         CONTEXT_LENGTH,
         EVAL_BATCH_SIZE,
     )
+    rng, sample_rng = jax.random.split(rng)
+    sample = generate_text(model, tokenizer, train_tokens, SAMPLE_TOKENS, sample_rng)
+    loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
+    sample_path = loss_history_csv.parent / "sample.txt"
+    sample_path.write_text(sample + "\n", encoding="utf-8")
     total_seconds = timer.stop("total")
 
-    print(f"train_loss={train_loss:.6f}")
+    print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
     print(f"validation_loss={validation_loss:.6f}")
+    print(f"loss_history_csv={loss_history_csv}")
+    print(f"loss_curve_svg={loss_curve_svg}")
+    print(f"sample_path={sample_path}")
     print(f"train_seconds={train_seconds:.3f}")
     print(f"steps_per_second={TRAIN_STEPS / train_seconds:.3f}")
     print(f"total_seconds={total_seconds:.3f}")
+    print(f'sample="""\n{sample}\n"""')
 
 
 if __name__ == "__main__":
