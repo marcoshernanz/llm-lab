@@ -3,36 +3,31 @@
 This document defines the second learning phase of the repo.
 
 Phase 1 ended with `experiments/018_decoder_refactor.py`, which established the first standardized tokenized decoder baseline.
-Phase 2 starts from that baseline and keeps the focus on learning through controlled changes rather than jumping straight into broad architecture churn.
+Phase 2 starts from that baseline and shifts the goal from discovering the architecture to making it usable on better data and better hardware.
 For the run history from this phase, see [docs/phase_2_learning_log.md](./phase_2_learning_log.md).
 
 ## Why This Phase Is Separate
-Phase 1 was about reaching the first coherent decoder-only transformer through deliberately small learning steps.
+Phase 1 was about learning the model family piece by piece.
 
-That part has now done its job.
+Phase 2 is different:
+- the architecture is already good enough to study,
+- the next learning value comes from data, hardware, scaling, and training behavior,
+- and the work should now be organized around explicit milestones again, not loose themes.
 
-The next phase is different.
-The goal is no longer to discover the basic architecture piece by piece.
-The goal is to make the current transformer path easier to observe, easier to scale, and realistic enough that later choices about datasets, optimizers, profiling, and systems work become worth studying.
-
-This phase guide is not a continuation of the old milestone numbering.
-It is a new phase with a different emphasis:
-- clearer experiment visibility,
+The emphasis of phase 2 is:
 - better data,
-- new hardware targets,
-- controlled scaling on the right hardware,
-- and only then deeper training-recipe work.
+- cleaner experiment visibility,
+- TPU-first execution for real runs,
+- controlled scaling,
+- then profiling,
+- then optimizer comparisons,
+- and only after that deeper training-recipe work.
 
 ## Status
-As of 2026-03-28, phase 2 is empty.
-
-Experiments in this phase:
-- none yet
-
-The first phase-2 experiment should take the `018` baseline from phase 1 and rerun it with:
-- `HuggingFaceFW/fineweb-edu` `sample-10BT`,
-- TPU `v5e-1` as the real training target,
-- and as little architectural change as possible.
+As of 2026-03-29:
+- `019` is complete as the first local FineWeb-Edu shard baseline,
+- `020` is the next milestone,
+- phase 2 is now active rather than empty.
 
 ## Starting Baseline
 The baseline inherited from phase 1 is:
@@ -43,54 +38,26 @@ The baseline inherited from phase 1 is:
 - tied token embedding / output projection instead of a separate LM head,
 - and extracted helpers for setup, evaluation, plotting, and training-loop scaffolding.
 
-The rule for the beginning of phase 2 is simple:
-- preserve this architecture long enough to learn from better data and better hardware,
-- and avoid changing multiple major axes at once.
+The baseline added during early phase 2 is:
+- `HuggingFaceFW/fineweb-edu` `sample-10BT`,
+- a `16384`-vocab BPE tokenizer,
+- `uint16` token shard storage,
+- and the first one-shard local experiment in `019`.
 
 ## Global Rules
 - Change one major axis at a time.
 - Keep experiments runnable end to end.
 - Keep a small local smoke-test path for correctness and debugging.
-- Use TPU early for real runs once the dataset path is stable enough.
+- Use TPU early for real runs once the local multi-shard path is stable.
 - Do not turn the repo into a framework.
-- Do not start optimizer deep-dives before the scaled baseline is stable enough for optimizer differences to mean something.
+- Do not start optimizer comparisons before the scaled SGD baseline is stable enough for the differences to mean something.
+- Keep the learning log aligned with milestones, not just with ad hoc runs.
 
-## Opening Experiment
-### Goal
-Start phase 2 by validating that the `018` baseline can survive contact with a better dataset and the intended hardware target.
+## Data Setup
+Phase 2 assumes the tokenizer and tokenized shards already exist.
 
-### What to change
-- Replace the current tiny dataset with `HuggingFaceFW/fineweb-edu` `sample-10BT`.
-- Run the experiment on TPU `v5e-1`.
-- Keep the decoder architecture as close to `018` as possible.
-
-### What to keep fixed
-- The standardized `018` model path.
-- The overall tokenized decoder training setup unless the dataset or TPU environment forces a small mechanical adjustment.
-- The idea that this is still a baseline-establishing run, not yet a broad training-recipe rewrite.
-
-### Why this is first
-- `fineweb-edu/sample-10BT` is large enough to make scaling questions real without making the first phase-2 bring-up unnecessarily brittle.
-- TPU `v5e-1` is the right execution target for nontrivial runs.
-- Keeping the model fixed makes the early phase-2 results easier to interpret.
-
-### Exit criteria
-- The repo can run the `018` baseline end to end on `fineweb-edu/sample-10BT`.
-- The run works on TPU `v5e-1`.
-- You can explain what broke, what stayed stable, and what the new bottlenecks are.
-
-## Tokenizer Bring-Up
-The current BPE trainer in `tokenizer/bpe.py` is still a small in-memory implementation.
-That means phase 2 should not try to train the tokenizer on the full dataset directly.
-
-The intended first workflow is:
-- inspect the parquet shards behind `HuggingFaceFW/fineweb-edu` `sample-10BT`,
-- write a capped local tokenizer corpus,
-- train the tokenizer on that local file,
-- freeze the tokenizer artifact,
-- then build the larger tokenized training path separately.
-
-Use `tokenizer/prepare_fineweb_edu_corpus.py` to read the FineWeb-Edu parquet shards directly and create the local corpus:
+### Tokenizer
+Use `tokenizer/prepare_fineweb_edu_corpus.py` to build a capped local tokenizer corpus:
 
 ```bash
 uv run python tokenizer/prepare_fineweb_edu_corpus.py \
@@ -108,25 +75,8 @@ uv run python tokenizer/bpe.py \
   --output-path artifacts/tokenizers/fineweb_edu_sample10bt_bpe_16384.json
 ```
 
-Recommended next tokenizer scale:
-- `100_000_000` characters for the tokenizer corpus
-- `16384` vocab size
-
-If tokenizer training is still comfortably fast, scale the corpus up gradually rather than jumping straight to the full dataset.
-
-## Tokenized Shard Build
-After the tokenizer is frozen, convert the streamed dataset into reusable token shards.
-
-Use `tokenizer/tokenize_fineweb_edu.py` to:
-- stream FineWeb-Edu,
-- tokenize each document with the frozen tokenizer,
-- split documents deterministically into train and validation,
-- and write `.npy` token shards plus `metadata.json`.
-
-When the tokenizer vocab fits in `uint16`, the shard writer stores token IDs as `uint16` to cut disk usage roughly in half.
-Training should then read bounded shard windows or individual shards, not concatenate the entire dataset into memory at startup.
-
-Recommended first command:
+### Tokenized Shards
+Use `tokenizer/tokenize_fineweb_edu.py` to build reusable token shards:
 
 ```bash
 uv run python tokenizer/tokenize_fineweb_edu.py \
@@ -138,95 +88,235 @@ uv run python tokenizer/tokenize_fineweb_edu.py \
   --max-train-shards 10
 ```
 
-For a small local smoke test first:
+When the vocab fits in `uint16`, shard storage uses `uint16` to keep disk usage down.
 
-```bash
-uv run python tokenizer/tokenize_fineweb_edu.py \
-  --dataset-config sample-10BT \
-  --tokenizer-path artifacts/tokenizers/fineweb_edu_sample10bt_bpe_16384.json \
-  --output-dir datasets/fineweb_edu/sample10bt_bpe_16384_smoke \
-  --shard-tokens 100000 \
-  --validation-fraction 0.01 \
-  --max-documents 1000
-```
+## Milestones
+Each milestone belongs mainly to one track, but the roadmap is milestone-first.
 
-The next training experiment should consume these token shards rather than a single in-memory text file.
-
-## Experiment Sequence
-- `019` is the current one-train-shard / one-validation-shard phase-2 baseline.
-- `020` should be the follow-up experiment that rotates across multiple train shards instead of staying pinned to one shard.
-
-## After The Opening Experiment
-### Track 1: Observability And Clean Experiment Outputs
-- Make training behavior easy to see without cluttering experiment scripts.
-- Keep plotting and artifact writing outside the experiment where possible.
-- Prefer simple, readable loss histories and run outputs over elaborate tooling.
-
-Why this matters:
-- Better visibility is the highest-value improvement before scaling harder.
-- It makes later dataset, optimizer, and hardware comparisons much easier to interpret.
-
-Exit criteria:
-- An experiment can save both training and validation loss curves with a small, readable call site.
-- The plotting code and artifact-writing path live outside the experiment script where possible.
-
-### Track 2: Controlled Scaling On TPU
-- Scale sequence length, embedding size, decoder depth, runtime, batch size, or dataset size.
-- Change only a small number of variables at once.
-- Record what changed and what happened.
-
-Exit criteria:
-- There is at least one scaled TPU baseline that is clearly stronger or more informative than the current tiny runs.
-- You know which scaling dimension is starting to matter most.
-
-### Track 3: First Profiling Pass
-- Study compile time vs steady-state step time.
-- Measure steps per second, tokens per second, and obvious bottlenecks.
-- Use profiling only when there is a concrete performance question to answer.
-
-Why this comes later:
-- Profiling is much more useful after at least one real TPU baseline exists.
-- Earlier than this, timing and plotting are usually enough.
-
-Exit criteria:
-- You can use profiling to answer at least one real bottleneck question.
-- Profiling output changes a concrete next decision.
-
-### Track 4: Optimizers
-- Study optimizers only after the scaled baseline is stable enough for differences to be interpretable.
-- Suggested order:
-  - SGD
-  - SGD with momentum
-  - Adam
-  - AdamW
-
-Why this order:
-- It teaches optimizer ideas progressively instead of jumping straight to the standard answer.
-- It keeps the learning value high.
-
-Exit criteria:
-- You can explain what each optimizer is doing differently.
-- You have loss curves and run notes that make the comparison meaningful.
-
-### Track 5: Training Recipe Improvements
-- Study gradient clipping, warmup, learning-rate decay, weight decay, checkpointing, and repeatable run logging.
-- Do this only after the optimizer work starts paying off.
+### Milestone 019: Local FineWeb Single-Shard Baseline
+Track: Data bring-up
 
 Goal:
-- Learn how training recipe choices interact with the now-scaled model and dataset.
+- Prove that the `018` architecture runs locally on real FineWeb token shards.
 
-## Later: Performance Track
-Only after the model, data, and training loop are stable enough that performance work is grounded in real usage.
+What changes:
+- Move from Tiny Shakespeare text files to FineWeb-Edu token shards.
+- Train on one train shard and evaluate on one validation shard.
 
-Areas to explore later:
+What stays fixed:
+- The standardized `018` model.
+- SGD.
+- Local execution.
+
+Exit criteria:
+- The experiment runs end to end.
+- Loss decreases on real FineWeb tokens.
+- Sampling works on continuation-only output.
+
+Status:
+- Complete via `experiments/019_fineweb_edu_shards.py`.
+
+### Milestone 020: Local FineWeb Multi-Shard Baseline
+Track: Data bring-up
+
+Goal:
+- Move from a one-shard sanity check to a real local multi-shard baseline.
+
+What changes:
+- Rotate across multiple train shards.
+- Keep validation fixed on a small validation shard or subset.
+
+What stays fixed:
+- Same model.
+- Same optimizer family.
+- Local execution.
+
+Exit criteria:
+- A local run trains across multiple train shards without manual intervention.
+- The run remains understandable and debuggable.
+
+Questions to answer:
+- Does the loss trend stay coherent when train data spans multiple shards?
+- What new loading or bookkeeping friction appears?
+
+### Milestone 021: TPU Single-Shard Baseline
+Track: Hardware
+
+Goal:
+- Port the current baseline cleanly to TPU `v5e-1`.
+
+What changes:
+- Execution target moves from local CPU to TPU.
+
+What stays fixed:
+- One train shard.
+- One validation shard.
+- Same model and optimizer.
+
+Exit criteria:
+- The run works end to end on TPU `v5e-1`.
+- You can explain the TPU-specific friction clearly.
+
+### Milestone 022: TPU Multi-Shard Baseline
+Track: Hardware + Data
+
+Goal:
+- Make the multi-shard path work on TPU, not just locally.
+
+What changes:
+- Combine TPU execution with multi-shard train loading.
+
+What stays fixed:
+- Same model family.
+- Same optimizer family.
+
+Exit criteria:
+- TPU training works across multiple train shards.
+- The data path is stable enough that hardware, not plumbing, becomes the main topic.
+
+### Milestone 023: First Controlled Scaling Pass
+Track: Scaling
+
+Goal:
+- Scale one major axis while keeping the rest of the setup stable.
+
+What to vary:
+- context length,
+- embedding size,
+- decoder depth,
+- batch size,
+- runtime,
+- or number of train shards.
+
+Rule:
+- Change one major axis at a time.
+
+Exit criteria:
+- At least one scaled SGD baseline is clearly more informative than the local bring-up runs.
+- You can say which scaling dimension matters most so far.
+
+### Milestone 024: Observability And Run Artifacts
+Track: Observability
+
+Goal:
+- Make phase-2 runs easier to compare and easier to learn from.
+
+What to improve:
+- loss curves,
+- run metadata,
+- artifact naming,
+- and notes that connect experiment changes to outcomes.
+
+Exit criteria:
+- The learning log can compare phase-2 runs cleanly.
+- An experiment’s outputs are enough to understand what changed and how it behaved.
+
+### Milestone 025: Profiling First Pass
+Track: Profiling
+
+Goal:
+- Use profiling only after there is a real performance question to answer.
+
+What to study:
+- compile time vs step time,
+- train vs eval cost,
+- steps per second,
+- tokens per second,
+- obvious host or device bottlenecks.
+
+Exit criteria:
+- Profiling answers at least one real bottleneck question.
+- The output changes a concrete next decision.
+
+### Milestone 026: SGD Baseline Lock-In
+Track: Optimizers
+
+Goal:
+- Freeze a clear SGD baseline before comparing optimizers.
+
+What changes:
+- Nothing major architecturally.
+- The emphasis is on documenting the stable SGD reference point clearly.
+
+Why this milestone exists:
+- Optimizer comparisons are only meaningful if the SGD reference is explicit in the log.
+
+Exit criteria:
+- You have a stable scaled SGD baseline with enough logging to compare against later optimizers.
+
+### Milestone 027: SGD With Momentum
+Track: Optimizers
+
+Goal:
+- Learn what momentum changes relative to plain SGD.
+
+What stays fixed:
+- Dataset subset,
+- model shape,
+- hardware target,
+- and run bookkeeping.
+
+Exit criteria:
+- You can explain the behavioral difference relative to milestone `026`.
+
+### Milestone 028: Adam
+Track: Optimizers
+
+Goal:
+- Compare Adam against the now-established SGD family baselines.
+
+What stays fixed:
+- Same baseline conditions used in the earlier optimizer milestones as much as possible.
+
+Exit criteria:
+- You can explain where Adam helps, where it changes training behavior, and whether the difference is worth it in this regime.
+
+### Milestone 029: AdamW
+Track: Optimizers
+
+Goal:
+- Separate adaptive optimization from decoupled weight decay.
+
+Why this milestone is optional but likely worth doing:
+- AdamW is the standard modern reference point, so it is useful to know whether it matters here.
+
+Exit criteria:
+- You can compare Adam vs AdamW cleanly and say whether the distinction matters yet.
+
+### Milestone 030: Training Recipe Improvements
+Track: Training recipe
+
+Goal:
+- Study recipe choices only after the optimizer sequence starts paying off.
+
+What to explore:
+- gradient clipping,
+- warmup,
+- learning-rate decay,
+- checkpointing,
+- and repeatable run logging.
+
+Rule:
+- One recipe variable at a time.
+
+Exit criteria:
+- You can tie at least one recipe choice to a concrete improvement or failure mode.
+
+## Track Summary
+Tracks still exist, but they are secondary to milestones:
+- Data bring-up: `019`, `020`
+- Hardware: `021`, `022`
+- Scaling: `023`
+- Observability: `024`
+- Profiling: `025`
+- Optimizers: `026`, `027`, `028`, `029`
+- Training recipe: `030`
+
+## Later
+Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.
+
+Later areas:
 - better input pipelines,
 - profiling-driven speedups,
 - JAX/XLA behavior,
 - and eventually lower-level kernels and CUDA-oriented work.
-
-Rule:
-- correctness first,
-- visibility second,
-- scale third,
-- profiling fourth,
-- low-level optimization last.
