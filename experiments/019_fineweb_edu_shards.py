@@ -8,8 +8,9 @@ import jax.numpy as jnp
 from pathlib import Path
 
 from lib.data import build_examples
+from lib.data import list_token_shards
+from lib.data import load_token_shard
 from lib.data import load_token_shard_metadata
-from lib.data import load_token_split_from_shards
 from lib.data import load_tokenizer
 from lib.eval import evaluate_positions, evaluate_split, sample_evaluation_positions
 from lib.plotting import LossTracker
@@ -22,8 +23,8 @@ TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_bpe_16384
 TOKENIZER_PATH = ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
 
 SEED = 0
-MAX_TRAIN_SHARDS = 1
-MAX_VALIDATION_SHARDS = 1
+TRAIN_SHARD_INDEX = 0
+VALIDATION_SHARD_INDEX = 0
 EVAL_BATCH_SIZE = 64
 BATCH_SIZE = 16
 LEARNING_RATE = 0.02
@@ -39,6 +40,17 @@ NUM_HEADS = 4
 NUM_DECODER_BLOCKS = 4
 HIDDEN_DIM = 128
 CONTEXT_LENGTH = 64
+
+
+def load_experiment_split(root_dir: Path, split: str, shard_index: int) -> tuple[Path, jax.Array]:
+    shard_paths = list_token_shards(root_dir, split)
+    if shard_index < 0 or shard_index >= len(shard_paths):
+        raise ValueError(
+            f"{split} shard index {shard_index} is out of range for {root_dir}. "
+            f"Available {split} shards: {len(shard_paths)}."
+        )
+    shard_path = shard_paths[shard_index]
+    return shard_path, load_token_shard(shard_path)
 
 
 def loss_fn(
@@ -131,15 +143,15 @@ def main():
     rngs = nnx.Rngs(SEED)
     tokenizer = load_tokenizer(TOKENIZER_PATH)
     token_metadata = load_token_shard_metadata(TOKEN_SHARD_ROOT)
-    train_tokens = load_token_split_from_shards(
+    train_shard_path, train_tokens = load_experiment_split(
         TOKEN_SHARD_ROOT,
         "train",
-        max_shards=MAX_TRAIN_SHARDS,
+        TRAIN_SHARD_INDEX,
     )
-    validation_tokens = load_token_split_from_shards(
+    validation_shard_path, validation_tokens = load_experiment_split(
         TOKEN_SHARD_ROOT,
         "validation",
-        max_shards=MAX_VALIDATION_SHARDS,
+        VALIDATION_SHARD_INDEX,
     )
 
     model = DecoderOnlyTransformer(
@@ -198,9 +210,12 @@ def main():
 
     print(f"token_shard_root={TOKEN_SHARD_ROOT}")
     print(f"tokenizer_path={TOKENIZER_PATH}")
+    print(f"token_dtype={token_metadata['token_dtype']}")
     print(f"metadata_shard_tokens={token_metadata['shard_tokens']}")
-    print(f"max_train_shards={MAX_TRAIN_SHARDS}")
-    print(f"max_validation_shards={MAX_VALIDATION_SHARDS}")
+    print(f"train_shard_path={train_shard_path}")
+    print(f"validation_shard_path={validation_shard_path}")
+    print(f"train_shard_index={TRAIN_SHARD_INDEX}")
+    print(f"validation_shard_index={VALIDATION_SHARD_INDEX}")
     print(f"loaded_train_tokens={train_tokens.shape[0]}")
     print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
