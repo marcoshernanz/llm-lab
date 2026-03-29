@@ -1,4 +1,4 @@
-"""Train the milestone-021 FineWeb multi-shard baseline on a TPU runtime."""
+"""Train a larger TPU baseline for the first controlled phase-2 scaling pass."""
 
 import argparse
 from dataclasses import dataclass
@@ -15,7 +15,6 @@ from lib.data import (
     build_examples,
     list_token_shards,
     load_token_shard,
-    load_token_shard_metadata,
     load_tokenizer,
 )
 from lib.eval import evaluate_positions, sample_evaluation_positions
@@ -33,7 +32,7 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-021 settings explicit and easy to inspect."""
+    """Keep the milestone-022 settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
@@ -41,17 +40,17 @@ class ExperimentConfig:
     max_train_shards: int | None = 10
     validation_shard_index: int = 0
     shard_mmap: bool = True
-    eval_batch_size: int = 32
-    batch_size: int = 8
+    eval_batch_size: int = 64
+    batch_size: int = 64
     learning_rate: float = 0.02
-    train_steps: int = 2_000
-    train_chunk_length: int = 40
+    train_steps: int = 10_000
+    train_chunk_length: int = 100
     validation_subset_examples: int = 256
     sample_tokens: int = 60
-    embedding_dim: int = 64
-    num_heads: int = 4
-    num_decoder_blocks: int = 4
-    hidden_dim: int = 128
+    embedding_dim: int = 128
+    num_heads: int = 8
+    num_decoder_blocks: int = 8
+    hidden_dim: int = 256
     context_length: int = 64
 
     def validate(self) -> None:
@@ -77,10 +76,8 @@ class ExperimentConfig:
 
 
 def parse_args() -> ExperimentConfig:
-    """Parse the small set of runtime overrides useful in Colab."""
-    parser = argparse.ArgumentParser(
-        description="Train the milestone-021 TPU multi-shard FineWeb baseline."
-    )
+    """Parse the small set of TPU runtime overrides useful in Colab."""
+    parser = argparse.ArgumentParser(description="Train the milestone-022 TPU scaling baseline.")
     parser.add_argument(
         "--token-shard-root",
         type=Path,
@@ -106,6 +103,12 @@ def parse_args() -> ExperimentConfig:
         help="Validation shard index used for the fixed validation subset.",
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=ExperimentConfig.batch_size,
+        help="Training batch size.",
+    )
+    parser.add_argument(
         "--train-steps",
         type=int,
         default=ExperimentConfig.train_steps,
@@ -129,6 +132,7 @@ def parse_args() -> ExperimentConfig:
         tokenizer_path=args.tokenizer_path,
         max_train_shards=args.max_train_shards,
         validation_shard_index=args.validation_shard_index,
+        batch_size=args.batch_size,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
         shard_mmap=not args.no_shard_mmap,
@@ -254,14 +258,13 @@ def generate_text(
 
 
 def main() -> None:
-    """Run the milestone-021 TPU multi-shard baseline end to end."""
+    """Run the milestone-022 TPU scaling baseline end to end."""
     config = parse_args()
 
     timer = Timer()
     timer.start("total")
     rngs = nnx.Rngs(config.seed)
     tokenizer = load_tokenizer(config.tokenizer_path)
-    load_token_shard_metadata(config.token_shard_root)
     train_shard_paths = select_train_shards(config.token_shard_root, config.max_train_shards)
     validation_tokens = load_experiment_split(
         config.token_shard_root,
@@ -340,6 +343,10 @@ def main() -> None:
     print(f"max_train_shards={config.max_train_shards}")
     print(f"validation_shard_index={config.validation_shard_index}")
     print(f"shard_mmap={config.shard_mmap}")
+    print(f"batch_size={config.batch_size}")
+    print(f"train_steps={config.train_steps}")
+    print(f"embedding_dim={config.embedding_dim}")
+    print(f"num_decoder_blocks={config.num_decoder_blocks}")
     print(f"loaded_train_tokens={train_tokens.shape[0]}")
     print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
