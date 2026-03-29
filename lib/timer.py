@@ -6,15 +6,7 @@ from time import perf_counter
 
 
 class Timer:
-    """Small named timer registry for experiments.
-
-    Example:
-        timer = Timer()
-        timer.start("total")
-        timer.start("training")
-        training_seconds = timer.stop("training")
-        total_seconds = timer.stop("total")
-    """
+    """Track named experiment durations with explicit start/stop calls"""
 
     def __init__(self) -> None:
         """Initialize empty running and completed timer registries."""
