@@ -139,42 +139,27 @@ Questions to answer:
 - Does the loss trend stay coherent when train data spans multiple shards?
 - What new loading or bookkeeping friction appears?
 
-### Milestone 021: TPU Single-Shard Baseline
-Track: Hardware
+### Milestone 021: TPU Multi-Shard Baseline
+Track: Hardware + Data
 
 Goal:
-- Port the current baseline cleanly to TPU `v5e-1`.
+- Port the current local multi-shard baseline cleanly to TPU `v5e-1`.
 
 What changes:
 - Execution target moves from local CPU to TPU.
 
 What stays fixed:
-- One train shard.
-- One validation shard.
-- Same model and optimizer.
-
-Exit criteria:
-- The run works end to end on TPU `v5e-1`.
-- You can explain the TPU-specific friction clearly.
-
-### Milestone 022: TPU Multi-Shard Baseline
-Track: Hardware + Data
-
-Goal:
-- Make the multi-shard path work on TPU, not just locally.
-
-What changes:
-- Combine TPU execution with multi-shard train loading.
-
-What stays fixed:
+- Multi-shard train loading.
+- Fixed validation shard.
 - Same model family.
 - Same optimizer family.
 
 Exit criteria:
 - TPU training works across multiple train shards.
 - The data path is stable enough that hardware, not plumbing, becomes the main topic.
+- You can explain the TPU-specific friction clearly.
 
-### Milestone 023: First Controlled Scaling Pass
+### Milestone 022: First Controlled Scaling Pass
 Track: Scaling
 
 Goal:
@@ -195,7 +180,7 @@ Exit criteria:
 - At least one scaled SGD baseline is clearly more informative than the local bring-up runs.
 - You can say which scaling dimension matters most so far.
 
-### Milestone 024: Observability And Run Artifacts
+### Milestone 023: Observability And Run Artifacts
 Track: Observability
 
 Goal:
@@ -211,7 +196,7 @@ Exit criteria:
 - The learning log can compare phase-2 runs cleanly.
 - An experiment’s outputs are enough to understand what changed and how it behaved.
 
-### Milestone 025: Profiling First Pass
+### Milestone 024: Profiling First Pass
 Track: Profiling
 
 Goal:
@@ -228,7 +213,7 @@ Exit criteria:
 - Profiling answers at least one real bottleneck question.
 - The output changes a concrete next decision.
 
-### Milestone 026: SGD Baseline Lock-In
+### Milestone 025: SGD Baseline Lock-In
 Track: Optimizers
 
 Goal:
@@ -244,7 +229,7 @@ Why this milestone exists:
 Exit criteria:
 - You have a stable scaled SGD baseline with enough logging to compare against later optimizers.
 
-### Milestone 027: SGD With Momentum
+### Milestone 026: SGD With Momentum
 Track: Optimizers
 
 Goal:
@@ -259,7 +244,7 @@ What stays fixed:
 Exit criteria:
 - You can explain the behavioral difference relative to milestone `026`.
 
-### Milestone 028: Adam
+### Milestone 027: Adam
 Track: Optimizers
 
 Goal:
@@ -271,7 +256,7 @@ What stays fixed:
 Exit criteria:
 - You can explain where Adam helps, where it changes training behavior, and whether the difference is worth it in this regime.
 
-### Milestone 029: AdamW
+### Milestone 028: AdamW
 Track: Optimizers
 
 Goal:
@@ -283,7 +268,7 @@ Why this milestone is optional but likely worth doing:
 Exit criteria:
 - You can compare Adam vs AdamW cleanly and say whether the distinction matters yet.
 
-### Milestone 030: Training Recipe Improvements
+### Milestone 029: Training Recipe Improvements
 Track: Training recipe
 
 Goal:
@@ -305,12 +290,12 @@ Exit criteria:
 ## Track Summary
 Tracks still exist, but they are secondary to milestones:
 - Data bring-up: `019`, `020`
-- Hardware: `021`, `022`
-- Scaling: `023`
-- Observability: `024`
-- Profiling: `025`
-- Optimizers: `026`, `027`, `028`, `029`
-- Training recipe: `030`
+- Hardware: `021`
+- Scaling: `022`
+- Observability: `023`
+- Profiling: `024`
+- Optimizers: `025`, `026`, `027`, `028`
+- Training recipe: `029`
 
 ## Later
 Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.
