@@ -200,11 +200,10 @@ def main() -> None:
         rng=validation_rng,
     )
     loss_tracker = LossTracker()
-    sample_source_tokens = None
+    train_tokens = None
 
     for chunk_index, _ in enumerate(range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH)):
         train_tokens = load_train_shard_for_chunk(train_shard_paths, chunk_index)
-        sample_source_tokens = train_tokens
         train_loss, rng = train_chunk(model, optimizer, train_tokens, rng)
         validation_subset_loss = evaluate_positions(
             validation_tokens,
@@ -232,9 +231,9 @@ def main() -> None:
     #     EVAL_BATCH_SIZE,
     # )
     rng, sample_rng = jax.random.split(rng)
-    if sample_source_tokens is None:
+    if train_tokens is None:
         raise ValueError("No train shard was loaded during training.")
-    sample = generate_text(model, tokenizer, sample_source_tokens, SAMPLE_TOKENS, sample_rng)
+    sample = generate_text(model, tokenizer, train_tokens, SAMPLE_TOKENS, sample_rng)
     loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
     sample_path = loss_history_csv.parent / "sample.txt"
     sample_path.write_text(sample + "\n", encoding="utf-8")
@@ -247,7 +246,7 @@ def main() -> None:
     print(f"train_shards_used={len(train_shard_paths)}")
     print(f"max_train_shards={MAX_TRAIN_SHARDS}")
     print(f"validation_shard_index={VALIDATION_SHARD_INDEX}")
-    print(f"sample_source_tokens={sample_source_tokens.shape[0]}")
+    print(f"loaded_train_tokens={train_tokens.shape[0]}")
     print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
     # print(f"validation_loss={validation_loss:.6f}")
