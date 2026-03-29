@@ -1,4 +1,4 @@
-"""Train a small decoder on token shards to study shard-based language modeling."""
+"""Train a small decoder on rotating FineWeb train shards with a fixed validation shard."""
 
 import optax  # pyright: ignore
 from flax import nnx
@@ -27,7 +27,7 @@ TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_bpe_16384
 TOKENIZER_PATH = ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
 
 SEED = 0
-TRAIN_SHARD_INDEX = 0
+MAX_TRAIN_SHARDS = 10
 VALIDATION_SHARD_INDEX = 0
 EVAL_BATCH_SIZE = 32
 BATCH_SIZE = 8
@@ -47,7 +47,7 @@ CONTEXT_LENGTH = 64
 
 
 def load_experiment_split(root_dir: Path, split: str, shard_index: int) -> jax.Array:
-    """Load one train or validation shard for this experiment."""
+    """Load one validation shard or a chosen train shard for this experiment."""
     shard_paths = list_token_shards(root_dir, split)
     if shard_index < 0 or shard_index >= len(shard_paths):
         raise ValueError(
@@ -55,6 +55,16 @@ def load_experiment_split(root_dir: Path, split: str, shard_index: int) -> jax.A
             f"Available {split} shards: {len(shard_paths)}."
         )
     return load_token_shard(shard_paths[shard_index])
+
+
+def select_train_shards(root_dir: Path, max_train_shards: int | None) -> list[Path]:
+    """Select the train shards used for this run."""
+    shard_paths = list_token_shards(root_dir, "train")
+    if max_train_shards is None:
+        return shard_paths
+    if max_train_shards <= 0:
+        raise ValueError("max_train_shards must be positive when provided")
+    return shard_paths[:max_train_shards]
 
 
 def loss_fn(
@@ -147,17 +157,13 @@ def generate_text(
 
 
 def main() -> None:
-    """Run the shard-based FineWeb-Edu decoder experiment end to end."""
+    """Run the multi-shard FineWeb-Edu decoder experiment end to end."""
     timer = Timer()
     timer.start("total")
     rngs = nnx.Rngs(SEED)
     tokenizer = load_tokenizer(TOKENIZER_PATH)
     token_metadata = load_token_shard_metadata(TOKEN_SHARD_ROOT)
-    train_tokens = load_experiment_split(
-        TOKEN_SHARD_ROOT,
-        "train",
-        TRAIN_SHARD_INDEX,
-    )
+    train_shard_paths = select_train_shards(TOKEN_SHARD_ROOT, MAX_TRAIN_SHARDS)
     validation_tokens = load_experiment_split(
         TOKEN_SHARD_ROOT,
         "validation",
@@ -184,8 +190,11 @@ def main() -> None:
         rng=validation_rng,
     )
     loss_tracker = LossTracker()
+    train_tokens = None
 
     for chunk_index, _ in enumerate(range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH), start=1):
+        active_train_shard_index = (chunk_index - 1) % len(train_shard_paths)
+        train_tokens = load_token_shard(train_shard_paths[active_train_shard_index])
         train_loss, rng = train_chunk(model, optimizer, train_tokens, rng)
         validation_subset_loss = evaluate_positions(
             validation_tokens,
@@ -213,6 +222,8 @@ def main() -> None:
     #     EVAL_BATCH_SIZE,
     # )
     rng, sample_rng = jax.random.split(rng)
+    if train_tokens is None:
+        raise ValueError("No train shard was loaded during training.")
     sample = generate_text(model, tokenizer, train_tokens, SAMPLE_TOKENS, sample_rng)
     loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
     sample_path = loss_history_csv.parent / "sample.txt"
@@ -223,7 +234,8 @@ def main() -> None:
     print(f"tokenizer_path={TOKENIZER_PATH}")
     print(f"token_dtype={token_metadata['token_dtype']}")
     print(f"metadata_shard_tokens={token_metadata['shard_tokens']}")
-    print(f"train_shard_index={TRAIN_SHARD_INDEX}")
+    print(f"train_shards_used={len(train_shard_paths)}")
+    print(f"max_train_shards={MAX_TRAIN_SHARDS}")
     print(f"validation_shard_index={VALIDATION_SHARD_INDEX}")
     print(f"loaded_train_tokens={train_tokens.shape[0]}")
     print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
