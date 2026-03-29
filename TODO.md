@@ -1,4 +1,4 @@
-- File and functions doc-strings (and state it in AGENTS.md)
+- Datasets in kaggle/colab
 
 - Tokenizer abstract class
 - Model abstract class
