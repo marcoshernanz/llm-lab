@@ -1,3 +1,5 @@
+"""Create a small local FineWeb-Edu text corpus for tokenizer training."""
+
 import argparse
 from pathlib import Path
 from tokenizer.fineweb_edu import DEFAULT_BATCH_SIZE
@@ -12,6 +14,7 @@ LOG_EVERY_CHARS = 1_000_000
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for corpus preparation."""
     parser = argparse.ArgumentParser(
         description="Read FineWeb-Edu parquet shards and write a capped local text corpus for tokenizer training."
     )
@@ -61,7 +64,9 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
 def main() -> None:
+    """Read FineWeb-Edu text and write a capped local training corpus."""
     args = parse_args()
     if args.batch_size <= 0:
         raise ValueError("batch_size must be positive")

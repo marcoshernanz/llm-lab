@@ -1,3 +1,5 @@
+"""Train and use a minimal byte-level BPE tokenizer for learning experiments."""
+
 import argparse
 from collections import Counter
 from collections import defaultdict
@@ -23,6 +25,8 @@ type PairToSequences = dict[TokenPair, set[TokenKey]]
 
 @dataclass(frozen=True, slots=True)
 class BPEModel:
+    """Store a byte-level BPE vocabulary and its learned merge rules."""
+
     split_pattern: str
     vocab: dict[TokenId, bytes]
     merges: tuple[Merge, ...]
@@ -37,9 +41,11 @@ class BPEModel:
 
     @property
     def vocab_size(self) -> int:
+        """Return the total number of tokens in the vocabulary."""
         return len(self.vocab)
 
     def encode(self, text: str) -> list[TokenId]:
+        """Encode text by splitting it into chunks and merging each chunk."""
         token_ids: list[TokenId] = []
         for chunk in split_text(text, self.split_pattern):
             cached_token_ids = self._chunk_encoding_cache.get(chunk)
@@ -50,6 +56,7 @@ class BPEModel:
         return token_ids
 
     def encode_chunk(self, chunk: bytes) -> list[TokenId]:
+        """Encode one byte chunk by repeatedly applying the best merge."""
         sequence = list(chunk)
         while True:
             pair = select_best_mergeable_pair(sequence, self.merge_ranks)
@@ -58,14 +65,17 @@ class BPEModel:
             sequence = merge_sequence(sequence, pair, self.merge_tokens[pair])
 
     def decode(self, token_ids: Sequence[TokenId]) -> str:
+        """Decode token ids back to UTF-8 text."""
         decoded = b"".join(self.vocab[token_id] for token_id in token_ids)
         return decoded.decode("utf-8")
 
     def decode_for_display(self, token_ids: Sequence[TokenId]) -> str:
+        """Decode token ids while tolerating invalid UTF-8 boundaries."""
         decoded = b"".join(self.vocab[token_id] for token_id in token_ids)
         return decoded.decode("utf-8", errors="replace")
 
     def to_dict(self) -> dict[str, object]:
+        """Serialize the minimal tokenizer artifact payload."""
         return {
             "version": TOKENIZER_ARTIFACT_VERSION,
             "split_pattern": self.split_pattern,
@@ -73,11 +83,13 @@ class BPEModel:
         }
 
     def save(self, path: Path) -> None:
+        """Write the tokenizer artifact to disk as JSON."""
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
 
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> "BPEModel":
+        """Rebuild a tokenizer model from a saved artifact payload."""
         version = payload.get("version")
         if version != TOKENIZER_ARTIFACT_VERSION:
             raise ValueError(
@@ -98,14 +110,17 @@ class BPEModel:
 
     @classmethod
     def load(cls, path: Path) -> "BPEModel":
+        """Load a tokenizer artifact from disk."""
         return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 def split_text(text: str, split_pattern: str = DEFAULT_SPLIT_PATTERN) -> list[bytes]:
+    """Split text into independently merged UTF-8 byte chunks."""
     return [chunk.encode("utf-8") for chunk in re.findall(split_pattern, text)]
 
 
 def count_sequence_pairs(sequence: Sequence[TokenId]) -> Counter[TokenPair]:
+    """Count adjacent token pairs inside one token sequence."""
     return Counter(zip(sequence, sequence[1:]))
 
 
@@ -115,6 +130,7 @@ def add_sequence_to_pair_index(
     pair_counts: PairCounts,
     pair_to_sequences: PairToSequences,
 ) -> None:
+    """Add one sequence's pair counts into the global merge index."""
     for pair, count in count_sequence_pairs(sequence).items():
         pair_counts[pair] += count * frequency
         pair_to_sequences[pair].add(sequence)
@@ -126,6 +142,7 @@ def remove_sequence_from_pair_index(
     pair_counts: PairCounts,
     pair_to_sequences: PairToSequences,
 ) -> None:
+    """Remove one sequence's pair counts from the global merge index."""
     for pair, count in count_sequence_pairs(sequence).items():
         updated_count = pair_counts[pair] - (count * frequency)
         if updated_count > 0:
@@ -140,6 +157,7 @@ def remove_sequence_from_pair_index(
 
 
 def build_pair_index(sequence_counts: SequenceCounts) -> tuple[PairCounts, PairToSequences]:
+    """Build pair statistics and reverse indices for all sequences."""
     pair_counts: PairCounts = Counter()
     pair_to_sequences: PairToSequences = defaultdict(set)
     for sequence, frequency in sequence_counts.items():
@@ -154,6 +172,7 @@ def apply_merge_step(
     pair_counts: PairCounts,
     pair_to_sequences: PairToSequences,
 ) -> bool:
+    """Apply one learned merge and update the indexed statistics."""
     affected_sequences = tuple(pair_to_sequences.get(best_pair, ()))
     if not affected_sequences:
         pair_counts.pop(best_pair, None)
@@ -177,6 +196,7 @@ def apply_merge_step(
 
 
 def select_best_pair(pair_counts: dict[TokenPair, int]) -> TokenPair | None:
+    """Choose the most frequent pair, breaking ties deterministically."""
     if not pair_counts:
         return None
     return min(pair_counts.items(), key=lambda item: (-item[1], item[0]))[0]
@@ -186,6 +206,7 @@ def select_best_mergeable_pair(
     sequence: Sequence[TokenId],
     merge_ranks: dict[TokenPair, int],
 ) -> TokenPair | None:
+    """Pick the earliest-ranked merge that appears in a sequence."""
     best_pair: TokenPair | None = None
     best_rank: int | None = None
     for pair in zip(sequence, sequence[1:]):
@@ -201,6 +222,7 @@ def select_best_mergeable_pair(
 def merge_sequence(
     sequence: Sequence[TokenId], pair: TokenPair, new_token_id: TokenId
 ) -> TokenSequence:
+    """Replace every occurrence of a pair with its merged token id."""
     merged: TokenSequence = []
     index = 0
     while index < len(sequence):
@@ -214,6 +236,7 @@ def merge_sequence(
 
 
 def build_vocab(merges: Sequence[Merge]) -> dict[TokenId, bytes]:
+    """Construct token bytes from base bytes plus learned merges."""
     vocab = {token_id: bytes([token_id]) for token_id in range(BYTE_VOCAB_SIZE)}
     for pair, token_id in merges:
         vocab[token_id] = vocab[pair[0]] + vocab[pair[1]]
@@ -221,14 +244,17 @@ def build_vocab(merges: Sequence[Merge]) -> dict[TokenId, bytes]:
 
 
 def build_merge_ranks(merges: Sequence[Merge]) -> dict[TokenPair, int]:
+    """Map each merge pair to the order it was learned."""
     return {pair: rank for rank, (pair, _) in enumerate(merges)}
 
 
 def build_merge_tokens(merges: Sequence[Merge]) -> dict[TokenPair, TokenId]:
+    """Map each merge pair to its resulting token id."""
     return {pair: token_id for pair, token_id in merges}
 
 
 def build_merges_from_pairs(merge_pairs: Sequence[object]) -> tuple[Merge, ...]:
+    """Assign token ids to merge pairs loaded from an artifact."""
     merges: list[Merge] = []
     next_token_id = BYTE_VOCAB_SIZE
     for merge_pair in merge_pairs:
@@ -243,6 +269,7 @@ def build_merges_from_pairs(merge_pairs: Sequence[object]) -> tuple[Merge, ...]:
 
 
 def build_model(split_pattern: str, merges: Sequence[Merge]) -> BPEModel:
+    """Build a ready-to-use BPE model from merge definitions."""
     frozen_merges = tuple(merges)
     return BPEModel(
         split_pattern=split_pattern,
@@ -259,6 +286,7 @@ def train_bpe(
     *,
     split_pattern: str = DEFAULT_SPLIT_PATTERN,
 ) -> BPEModel:
+    """Train a minimal byte-level BPE model from raw text."""
     if vocab_size < BYTE_VOCAB_SIZE:
         raise ValueError(f"vocab_size must be at least {BYTE_VOCAB_SIZE} for byte-level BPE.")
 
@@ -293,6 +321,7 @@ def train_bpe(
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse command-line arguments for BPE training."""
     parser = argparse.ArgumentParser(description="Train a minimal byte-level BPE tokenizer.")
     parser.add_argument(
         "--data-path",
@@ -327,6 +356,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Train a tokenizer artifact from a local text corpus."""
     args = parse_args(argv)
     text = args.data_path.read_text(encoding="utf-8")
     if args.text_limit is not None:

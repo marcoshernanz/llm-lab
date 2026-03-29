@@ -1,3 +1,5 @@
+"""Save simple loss histories and SVG curves for experiment inspection."""
+
 from __future__ import annotations
 
 import csv
@@ -14,12 +16,15 @@ SVG_WIDTH = 900
 
 @dataclass
 class LossTracker:
+    """Collect train and validation-subset losses during an experiment."""
+
     train_steps: list[int] = field(default_factory=list)
     validation_subset_steps: list[int] = field(default_factory=list)
     train_losses: list[float] = field(default_factory=list)
     validation_subset_losses: list[float] = field(default_factory=list)
 
     def log(self, *, step: int, train_loss: float, validation_subset_loss: float) -> None:
+        """Record one training step and its matching validation estimate."""
         if step <= 0:
             raise ValueError("step must be positive")
 
@@ -33,6 +38,7 @@ class LossTracker:
         )
 
     def save(self, *, script_path: Path) -> tuple[Path, Path]:
+        """Write the tracked losses to CSV and SVG artifacts."""
         return save_loss_artifacts(
             script_path=script_path,
             train_steps=self.train_steps,
@@ -50,6 +56,7 @@ def save_loss_artifacts(
     train_losses: Sequence[float],
     validation_subset_losses: Sequence[float],
 ) -> tuple[Path, Path]:
+    """Persist loss history in a timestamped artifact directory."""
     _validate_series("train", train_steps, train_losses)
     _validate_series("validation_subset", validation_subset_steps, validation_subset_losses)
 
@@ -82,6 +89,7 @@ def save_loss_artifacts(
 
 
 def _validate_series(name: str, steps: Sequence[int], losses: Sequence[float]) -> None:
+    """Check that one plotted loss series is non-empty and aligned."""
     if not steps:
         raise ValueError(f"{name} steps must contain at least one point")
     if len(steps) != len(losses):
@@ -95,6 +103,7 @@ def _build_loss_curve_svg(
     validation_subset_steps: Sequence[int],
     validation_subset_losses: Sequence[float],
 ) -> str:
+    """Render a minimal SVG loss chart for quick experiment review."""
     left_pad = 64
     right_pad = 24
     top_pad = 24
@@ -117,11 +126,13 @@ def _build_loss_curve_svg(
     loss_span = max(max_loss - min_loss, 1e-6)
 
     def point(step: int, loss: float) -> tuple[float, float]:
+        """Map one loss point into SVG coordinates."""
         x = left_pad + ((step - step_min) / step_span) * plot_width
         y = top_pad + ((max_loss - loss) / loss_span) * plot_height
         return x, y
 
     def polyline(steps: Sequence[int], losses: Sequence[float]) -> str:
+        """Convert one loss series into SVG polyline coordinates."""
         return " ".join(
             f"{x:.2f},{y:.2f}" for x, y in (point(step, loss) for step, loss in zip(steps, losses))
         )

@@ -1,3 +1,5 @@
+"""Stream FineWeb-Edu parquet text for tokenizer and dataset experiments."""
+
 from typing import Iterator
 
 from datasets import load_dataset_builder  # pyright: ignore
@@ -13,6 +15,7 @@ DEFAULT_BATCH_SIZE = 1024
 
 
 def resolve_parquet_paths(dataset_name: str, dataset_config: str, split: str) -> list[str]:
+    """Resolve the parquet files backing one FineWeb-Edu split."""
     builder = load_dataset_builder(dataset_name, name=dataset_config)
     data_files = builder.config.data_files
     if data_files is None:
@@ -32,6 +35,7 @@ def resolve_parquet_paths(dataset_name: str, dataset_config: str, split: str) ->
 def iter_parquet_text(
     parquet_paths: list[str], *, text_column: str, batch_size: int
 ) -> Iterator[tuple[str, str]]:
+    """Yield cleaned text rows from FineWeb-Edu parquet shards."""
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
 

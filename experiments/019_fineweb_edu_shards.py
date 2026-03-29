@@ -1,3 +1,5 @@
+"""Train a small decoder on token shards to study shard-based language modeling."""
+
 import optax  # pyright: ignore
 from flax import nnx
 
@@ -45,6 +47,7 @@ CONTEXT_LENGTH = 64
 
 
 def load_experiment_split(root_dir: Path, split: str, shard_index: int) -> jax.Array:
+    """Load one train or validation shard for this experiment."""
     shard_paths = list_token_shards(root_dir, split)
     if shard_index < 0 or shard_index >= len(shard_paths):
         raise ValueError(
@@ -59,6 +62,7 @@ def loss_fn(
     input_ids: jax.Array,
     target_ids: jax.Array,
 ) -> jax.Array:
+    """Compute mean next-token cross-entropy for one batch."""
     logits = model(input_ids)
     log_probs = jnn.log_softmax(logits, axis=-1)
     loss_per_token = -jnp.take_along_axis(log_probs, target_ids[..., None], axis=-1).squeeze(-1)
@@ -72,6 +76,7 @@ def train_step(
     input_ids: jax.Array,
     target_ids: jax.Array,
 ) -> jax.Array:
+    """Run one optimizer step on a batch of token examples."""
     loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
     optimizer.update(model, grads)
     return loss
@@ -83,6 +88,7 @@ def evaluate_batch_loss(
     input_ids: jax.Array,
     target_ids: jax.Array,
 ) -> jax.Array:
+    """Evaluate batch loss without updating the model."""
     return loss_fn(model, input_ids, target_ids)
 
 
@@ -92,6 +98,7 @@ def train_chunk(
     tokens: jax.Array,
     rng: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
+    """Average several random training batches into one logged chunk."""
     total_loss = jnp.array(0.0, dtype=jnp.float32)
     for _ in range(TRAIN_CHUNK_LENGTH):
         rng, batch_rng = jax.random.split(rng)
@@ -113,6 +120,7 @@ def generate_text(
     sample_tokens: int,
     rng: jax.Array,
 ) -> str:
+    """Sample text from the trained model using a random context window."""
     if sample_tokens <= 0:
         return ""
 
@@ -138,7 +146,8 @@ def generate_text(
     return tokenizer.decode_for_display(generated_token_ids)
 
 
-def main():
+def main() -> None:
+    """Run the shard-based FineWeb-Edu decoder experiment end to end."""
     timer = Timer()
     timer.start("total")
     rngs = nnx.Rngs(SEED)

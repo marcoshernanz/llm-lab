@@ -1,3 +1,5 @@
+"""Tokenize FineWeb-Edu documents into train and validation shard files."""
+
 import argparse
 from dataclasses import dataclass
 import hashlib
@@ -25,6 +27,7 @@ LOG_EVERY_DOCUMENTS = 1_000
 
 
 def choose_token_dtype(vocab_size: int) -> np.dtype:
+    """Choose a compact dtype that can represent the tokenizer vocabulary."""
     if vocab_size <= np.iinfo(np.uint16).max + 1:
         return np.dtype(np.uint16)
     return np.dtype(np.int32)
@@ -32,6 +35,8 @@ def choose_token_dtype(vocab_size: int) -> np.dtype:
 
 @dataclass
 class SplitWriter:
+    """Accumulate tokenized documents and flush them into shard files."""
+
     output_dir: Path
     split: str
     shard_tokens: int
@@ -42,6 +47,7 @@ class SplitWriter:
     tokens: int = 0
 
     def append(self, token_ids: list[int]) -> None:
+        """Append one document and write any full shards it creates."""
         self.buffer.extend(token_ids)
         self.documents += 1
         while len(self.buffer) >= self.shard_tokens:
@@ -57,6 +63,7 @@ class SplitWriter:
             self.next_shard_index += 1
 
     def finalize(self) -> None:
+        """Write the final partial shard, if any tokens remain."""
         if not self.buffer:
             return
         write_shard(self.output_dir, self.split, self.next_shard_index, self.buffer, self.token_dtype)
@@ -66,6 +73,7 @@ class SplitWriter:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for token shard generation."""
     parser = argparse.ArgumentParser(
         description="Read FineWeb-Edu parquet shards, tokenize them, and write train/validation token shards."
     )
@@ -140,6 +148,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def choose_split(text: str, validation_fraction: float) -> str:
+    """Deterministically assign a document to train or validation."""
     if validation_fraction == 0.0:
         return "train"
 
@@ -155,11 +164,13 @@ def write_shard(
     token_ids: list[int],
     token_dtype: np.dtype,
 ) -> None:
+    """Write one token shard to disk as a NumPy array."""
     shard_path = output_dir / f"{split}_{shard_index:05d}.npy"
     np.save(shard_path, np.asarray(token_ids, dtype=token_dtype))
 
 
 def main() -> None:
+    """Stream FineWeb-Edu, tokenize it, and save token shard metadata."""
     args = parse_args()
     if args.batch_size <= 0:
         raise ValueError("batch_size must be positive")
