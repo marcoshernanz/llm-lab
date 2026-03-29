@@ -400,7 +400,9 @@ def main() -> None:
     sample_path.write_text(sample + "\n", encoding="utf-8")
     total_seconds = timer.stop("total")
 
+    devices = jax.devices()
     print(f"jax_default_backend={jax.default_backend()}")
+    print(f"jax_device_count={len(devices)}")
     print(f"token_shard_root={config.token_shard_root}")
     print(f"tokenizer_path={config.tokenizer_path}")
     print(f"token_dtype={token_metadata['token_dtype']}")
