@@ -9,6 +9,7 @@ Runs recorded on 2026-03-29.
 | 019 | `experiments/019_fineweb_edu_shards.py` | 2000 | 8.538070 | 8.458265 | - | 84.448 | 23.683 | 86.044 | [csv](../artifacts/experiments/019_fineweb_edu_shards/20260329_002155_868623/loss_history.csv) | [svg](../artifacts/experiments/019_fineweb_edu_shards/20260329_002155_868623/loss_curve.svg) |
 | 020 | `experiments/020_fineweb_edu_multi_shard.py` | 2000 | 8.500550 | 8.454494 | - | 79.841 | 25.050 | 81.189 | [csv](../artifacts/experiments/020_fineweb_edu_multi_shard/20260329_105807_886930/loss_history.csv) | [svg](../artifacts/experiments/020_fineweb_edu_multi_shard/20260329_105807_886930/loss_curve.svg) |
 | 021 | `experiments/021_tpu_fineweb_edu_multi_shard.py` | 2000 | 8.500500 | 8.454404 | - | 31.066 | 64.380 | 37.386 | [csv](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_history.csv) | [svg](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_curve.svg) |
+| 022 | `experiments/022_tpu_fineweb_edu_scaling_baseline.py` | 50000 | 6.668865 | 6.646000 | - | 493.029 | 101.414 | 500.858 | [csv](../artifacts/experiments/022_tpu_fineweb_edu_scaling_baseline/20260329_225524_534574/loss_history.csv) | [svg](../artifacts/experiments/022_tpu_fineweb_edu_scaling_baseline/20260329_225524_534574/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -88,4 +89,36 @@ Runs recorded on 2026-03-29.
 
 ```text
  lymph in for itine, birds. the) of (Pess, die French regularly of Education influenced understanding and’s.atherine with or surviving demonstrateeem clause historical rainuls fat, alternatives ofige brief changedsim on. concentration secret TV split imagination Moleculars bec operated Latin products. Loc newspapers anti-shore with analyst to Thinkeph
+```
+
+## 022 FineWeb-Edu TPU Scaling Baseline
+
+- Script: `experiments/022_tpu_fineweb_edu_scaling_baseline.py`
+- Execution target: Colab TPU `v5e-1`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/content/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/content/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Batch size: `128`
+- Embedding dim: `128`
+- Decoder blocks: `8`
+- Loaded train tokens: `10000000`
+- Loaded validation tokens: `1000670`
+- Steps: `50000`
+- Final train loss: `6.668865`
+- Final validation subset loss: `6.646000`
+- Final validation loss: `-`
+- Note: this run pushed the TPU much harder than `021` by scaling batch size, runtime, width, and depth together. It increased throughput again and produced a clearly stronger loss baseline, though the resulting experiment is no longer a single-axis scaling change.
+- Train seconds: `493.029`
+- Steps per second: `101.414`
+- Total seconds: `500.858`
+- Sample artifact: [sample.txt](../artifacts/experiments/022_tpu_fineweb_edu_scaling_baseline/20260329_225524_534574/sample.txt)
+
+![022 fineweb edu tpu scaling baseline loss curve](../artifacts/experiments/022_tpu_fineweb_edu_scaling_baseline/20260329_225524_534574/loss_curve.svg)
+
+```text
+ got turns a much business; where there have instance, together, who give to proist. Lordrations 4 19600 Sun should you use the 3 or uplöe that you should make the top of Disease Iulter, he is.
+A book55 space. The First, we give sure that we generate them
 ```
