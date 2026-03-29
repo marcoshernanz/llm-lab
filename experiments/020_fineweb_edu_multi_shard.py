@@ -192,8 +192,8 @@ def main() -> None:
     loss_tracker = LossTracker()
     train_tokens = None
 
-    for chunk_index, _ in enumerate(range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH), start=1):
-        active_train_shard_index = (chunk_index - 1) % len(train_shard_paths)
+    for chunk_index, _ in enumerate(range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH)):
+        active_train_shard_index = (chunk_index) % len(train_shard_paths)
         train_tokens = load_token_shard(train_shard_paths[active_train_shard_index])
         train_loss, rng = train_chunk(model, optimizer, train_tokens, rng)
         validation_subset_loss = evaluate_positions(
@@ -205,7 +205,7 @@ def main() -> None:
             EVAL_BATCH_SIZE,
         )
 
-        current_step = chunk_index * TRAIN_CHUNK_LENGTH
+        current_step = (chunk_index + 1) * TRAIN_CHUNK_LENGTH
         loss_tracker.log(
             step=current_step,
             train_loss=float(train_loss),
