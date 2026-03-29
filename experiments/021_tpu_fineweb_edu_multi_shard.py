@@ -35,33 +35,49 @@ DEFAULT_TOKENIZER_PATH = (
 class ExperimentConfig:
     """Keep the milestone-021 settings explicit and easy to inspect."""
 
-    # Data
-    token_shard_root: Path
-    tokenizer_path: Path
-    seed: int
-    max_train_shards: int | None
-    validation_shard_index: int
-    shard_mmap: bool
+    token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
+    tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
+    seed: int = 0
+    max_train_shards: int | None = 10
+    validation_shard_index: int = 0
+    shard_mmap: bool = True
+    eval_batch_size: int = 32
+    batch_size: int = 8
+    learning_rate: float = 0.02
+    train_steps: int = 2_000
+    train_chunk_length: int = 40
+    validation_subset_examples: int = 256
+    sample_tokens: int = 60
+    embedding_dim: int = 64
+    num_heads: int = 4
+    num_decoder_blocks: int = 4
+    hidden_dim: int = 128
+    context_length: int = 64
 
-    # Training
-    eval_batch_size: int
-    batch_size: int
-    learning_rate: float
-    train_steps: int
-    train_chunk_length: int
-    validation_subset_examples: int
-    sample_tokens: int
-
-    # Model
-    embedding_dim: int
-    num_heads: int
-    num_decoder_blocks: int
-    hidden_dim: int
-    context_length: int
+    def validate(self) -> None:
+        """Reject invalid experiment settings early."""
+        if self.train_steps <= 0:
+            raise ValueError("train_steps must be positive")
+        if self.train_chunk_length <= 0:
+            raise ValueError("train_chunk_length must be positive")
+        if self.train_steps % self.train_chunk_length != 0:
+            raise ValueError("train_steps must be divisible by train_chunk_length")
+        if self.batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if self.eval_batch_size <= 0:
+            raise ValueError("eval_batch_size must be positive")
+        if self.context_length <= 0:
+            raise ValueError("context_length must be positive")
+        if self.validation_subset_examples <= 0:
+            raise ValueError("validation_subset_examples must be positive")
+        if self.sample_tokens < 0:
+            raise ValueError("sample_tokens must be non-negative")
+        if self.max_train_shards is not None and self.max_train_shards <= 0:
+            raise ValueError("max_train_shards must be positive when provided")
 
 
 def parse_args() -> ExperimentConfig:
-    """Parse experiment arguments so Colab can override local defaults."""
+    """Parse the small set of runtime overrides useful in Colab."""
     parser = argparse.ArgumentParser(
         description="Train the milestone-021 TPU multi-shard FineWeb baseline."
     )
@@ -77,70 +93,29 @@ def parse_args() -> ExperimentConfig:
         default=DEFAULT_TOKENIZER_PATH,
         help="Tokenizer artifact used for decoding samples.",
     )
-    parser.add_argument("--seed", type=int, default=0, help="Random seed for the run.")
     parser.add_argument(
         "--max-train-shards",
         type=int,
-        default=10,
+        default=ExperimentConfig.max_train_shards,
         help="Maximum number of train shards to rotate across.",
     )
     parser.add_argument(
         "--validation-shard-index",
         type=int,
-        default=0,
+        default=ExperimentConfig.validation_shard_index,
         help="Validation shard index used for the fixed validation subset.",
     )
     parser.add_argument(
-        "--eval-batch-size",
+        "--train-steps",
         type=int,
-        default=32,
-        help="Batch size used during validation subset evaluation.",
+        default=ExperimentConfig.train_steps,
+        help="Total optimizer steps.",
     )
-    parser.add_argument("--batch-size", type=int, default=8, help="Training batch size.")
-    parser.add_argument("--learning-rate", type=float, default=0.02, help="SGD learning rate.")
-    parser.add_argument("--train-steps", type=int, default=2_000, help="Total optimizer steps.")
     parser.add_argument(
         "--train-chunk-length",
         type=int,
-        default=40,
+        default=ExperimentConfig.train_chunk_length,
         help="Number of optimizer steps averaged into one logged point.",
-    )
-    parser.add_argument(
-        "--validation-subset-examples",
-        type=int,
-        default=256,
-        help="Number of random validation windows evaluated after each chunk.",
-    )
-    parser.add_argument(
-        "--sample-tokens",
-        type=int,
-        default=60,
-        help="Number of tokens sampled after training.",
-    )
-    parser.add_argument("--embedding-dim", type=int, default=64, help="Token embedding width.")
-    parser.add_argument(
-        "--num-heads",
-        type=int,
-        default=4,
-        help="Attention heads per decoder block.",
-    )
-    parser.add_argument(
-        "--num-decoder-blocks",
-        type=int,
-        default=4,
-        help="Decoder depth.",
-    )
-    parser.add_argument(
-        "--hidden-dim",
-        type=int,
-        default=128,
-        help="Feed-forward hidden width.",
-    )
-    parser.add_argument(
-        "--context-length",
-        type=int,
-        default=64,
-        help="Sequence length used for next-token prediction.",
     )
     parser.add_argument(
         "--no-shard-mmap",
@@ -149,48 +124,17 @@ def parse_args() -> ExperimentConfig:
     )
     args = parser.parse_args()
 
-    return ExperimentConfig(
+    config = ExperimentConfig(
         token_shard_root=args.token_shard_root,
         tokenizer_path=args.tokenizer_path,
-        seed=args.seed,
         max_train_shards=args.max_train_shards,
         validation_shard_index=args.validation_shard_index,
-        eval_batch_size=args.eval_batch_size,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
-        validation_subset_examples=args.validation_subset_examples,
-        sample_tokens=args.sample_tokens,
-        embedding_dim=args.embedding_dim,
-        num_heads=args.num_heads,
-        num_decoder_blocks=args.num_decoder_blocks,
-        hidden_dim=args.hidden_dim,
-        context_length=args.context_length,
         shard_mmap=not args.no_shard_mmap,
     )
-
-
-def validate_config(config: ExperimentConfig) -> None:
-    """Reject invalid experiment settings early."""
-    if config.train_steps <= 0:
-        raise ValueError("train_steps must be positive")
-    if config.train_chunk_length <= 0:
-        raise ValueError("train_chunk_length must be positive")
-    if config.train_steps % config.train_chunk_length != 0:
-        raise ValueError("train_steps must be divisible by train_chunk_length")
-    if config.batch_size <= 0:
-        raise ValueError("batch_size must be positive")
-    if config.eval_batch_size <= 0:
-        raise ValueError("eval_batch_size must be positive")
-    if config.context_length <= 0:
-        raise ValueError("context_length must be positive")
-    if config.validation_subset_examples <= 0:
-        raise ValueError("validation_subset_examples must be positive")
-    if config.sample_tokens < 0:
-        raise ValueError("sample_tokens must be non-negative")
-    if config.max_train_shards is not None and config.max_train_shards <= 0:
-        raise ValueError("max_train_shards must be positive when provided")
+    config.validate()
+    return config
 
 
 def load_experiment_split(
@@ -323,7 +267,6 @@ def generate_text(
 def main() -> None:
     """Run the milestone-021 TPU multi-shard baseline end to end."""
     config = parse_args()
-    validate_config(config)
 
     timer = Timer()
     timer.start("total")
