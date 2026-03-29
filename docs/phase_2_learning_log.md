@@ -8,6 +8,7 @@ Runs recorded on 2026-03-29.
 | ---------- | ------ | ----: | ---------: | --------------: | -------: | ------------: | --------: | ------------: | --- | ----- |
 | 019 | `experiments/019_fineweb_edu_shards.py` | 2000 | 8.538070 | 8.458265 | - | 84.448 | 23.683 | 86.044 | [csv](../artifacts/experiments/019_fineweb_edu_shards/20260329_002155_868623/loss_history.csv) | [svg](../artifacts/experiments/019_fineweb_edu_shards/20260329_002155_868623/loss_curve.svg) |
 | 020 | `experiments/020_fineweb_edu_multi_shard.py` | 2000 | 8.500550 | 8.454494 | - | 79.841 | 25.050 | 81.189 | [csv](../artifacts/experiments/020_fineweb_edu_multi_shard/20260329_105807_886930/loss_history.csv) | [svg](../artifacts/experiments/020_fineweb_edu_multi_shard/20260329_105807_886930/loss_curve.svg) |
+| 021 | `experiments/021_tpu_fineweb_edu_multi_shard.py` | 2000 | 8.500500 | 8.454404 | - | 31.066 | 64.380 | 37.386 | [csv](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_history.csv) | [svg](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -56,6 +57,34 @@ Runs recorded on 2026-03-29.
 - Sample artifact: [sample.txt](../artifacts/experiments/020_fineweb_edu_multi_shard/20260329_105807_886930/sample.txt)
 
 ![020 fineweb edu multi shard jax loss curve](../artifacts/experiments/020_fineweb_edu_multi_shard/20260329_105807_886930/loss_curve.svg)
+
+```text
+ lymph in for itine, birds. the) of (Pess, die French regularly of Education influenced understanding and’s.atherine with or surviving demonstrateeem clause historical rainuls fat, alternatives ofige brief changedsim on. concentration secret TV split imagination Moleculars bec operated Latin products. Loc newspapers anti-shore with analyst to Thinkeph
+```
+
+## 021 FineWeb-Edu Multi-Shard JAX TPU
+
+- Script: `experiments/021_tpu_fineweb_edu_multi_shard.py`
+- Execution target: Colab TPU `v5e-1`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/content/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/content/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Loaded train tokens: `10000000`
+- Loaded validation tokens: `1000670`
+- Steps: `2000`
+- Final train loss: `8.500500`
+- Final validation subset loss: `8.454404`
+- Final validation loss: `-`
+- Note: this run matched the local multi-shard baseline closely in loss, but moved execution to TPU and increased throughput substantially.
+- Train seconds: `31.066`
+- Steps per second: `64.380`
+- Total seconds: `37.386`
+- Sample artifact: [sample.txt](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/sample.txt)
+
+![021 fineweb edu multi shard jax tpu loss curve](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_curve.svg)
 
 ```text
  lymph in for itine, birds. the) of (Pess, die French regularly of Education influenced understanding and’s.atherine with or surviving demonstrateeem clause historical rainuls fat, alternatives ofige brief changedsim on. concentration secret TV split imagination Moleculars bec operated Latin products. Loc newspapers anti-shore with analyst to Thinkeph

@@ -27,7 +27,8 @@ The emphasis of phase 2 is:
 As of 2026-03-29:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
-- `021` is the next milestone,
+- `021` is complete as the TPU multi-shard baseline,
+- `022` is the next milestone,
 - phase 2 is now active rather than empty.
 
 ## Starting Baseline
@@ -162,6 +163,9 @@ Exit criteria:
 
 Practical note:
 - For Colab, prefer staging token shards into local `/content` storage before training rather than reading them directly from mounted Drive.
+
+Status:
+- Complete via `experiments/021_tpu_fineweb_edu_multi_shard.py`.
 
 ### Milestone 022: First Controlled Scaling Pass
 Track: Scaling
