@@ -162,17 +162,6 @@ def select_train_shards(root_dir: Path, max_train_shards: int | None) -> list[Pa
     return shard_paths[:max_train_shards]
 
 
-def load_train_shard_for_chunk(
-    train_shard_paths: list[Path],
-    chunk_index: int,
-    *,
-    mmap: bool,
-) -> jax.Array:
-    """Rotate through the selected train shards, one shard per logged chunk."""
-    active_train_shard_index = chunk_index % len(train_shard_paths)
-    return load_token_shard(train_shard_paths[active_train_shard_index], mmap=mmap)
-
-
 def loss_fn(
     model: DecoderOnlyTransformer,
     input_ids: jax.Array,
@@ -272,7 +261,7 @@ def main() -> None:
     timer.start("total")
     rngs = nnx.Rngs(config.seed)
     tokenizer = load_tokenizer(config.tokenizer_path)
-    token_metadata = load_token_shard_metadata(config.token_shard_root)
+    load_token_shard_metadata(config.token_shard_root)
     train_shard_paths = select_train_shards(config.token_shard_root, config.max_train_shards)
     validation_tokens = load_experiment_split(
         config.token_shard_root,
@@ -304,9 +293,9 @@ def main() -> None:
     train_tokens = None
 
     for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
-        train_tokens = load_train_shard_for_chunk(
-            train_shard_paths,
-            chunk_index,
+        active_train_shard_index = chunk_index % len(train_shard_paths)
+        train_tokens = load_token_shard(
+            train_shard_paths[active_train_shard_index],
             mmap=config.shard_mmap,
         )
         train_loss, rng = train_chunk(model, optimizer, train_tokens, config, rng)
@@ -343,12 +332,10 @@ def main() -> None:
     sample_path.write_text(sample + "\n", encoding="utf-8")
     total_seconds = timer.stop("total")
 
-    devices = jax.devices()
     print(f"jax_default_backend={jax.default_backend()}")
-    print(f"jax_device_count={len(devices)}")
+    print(f"jax_device_count={jax.device_count()}")
     print(f"token_shard_root={config.token_shard_root}")
     print(f"tokenizer_path={config.tokenizer_path}")
-    print(f"token_dtype={token_metadata['token_dtype']}")
     print(f"train_shards_used={len(train_shard_paths)}")
     print(f"max_train_shards={config.max_train_shards}")
     print(f"validation_shard_index={config.validation_shard_index}")
