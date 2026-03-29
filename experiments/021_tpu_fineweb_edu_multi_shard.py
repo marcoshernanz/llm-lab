@@ -1,4 +1,8 @@
-"""Train a small decoder on rotating FineWeb train shards with fixed validation."""
+"""Train the milestone-021 FineWeb multi-shard baseline on a TPU runtime."""
+
+import argparse
+from dataclasses import dataclass
+from pathlib import Path
 
 import optax  # pyright: ignore
 from flax import nnx
@@ -6,8 +10,6 @@ from flax import nnx
 import jax
 import jax.nn as jnn
 import jax.numpy as jnp
-
-from pathlib import Path
 
 from lib.data import (
     build_examples,
@@ -23,34 +25,181 @@ from models.transformer import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_bpe_16384"
-TOKENIZER_PATH = ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
-
-# Data
-SEED = 0
-MAX_TRAIN_SHARDS = 10
-VALIDATION_SHARD_INDEX = 0
-
-# Training
-EVAL_BATCH_SIZE = 32
-BATCH_SIZE = 8
-LEARNING_RATE = 0.02
-TRAIN_STEPS = 2_000
-TRAIN_CHUNK_LENGTH = 40
-VALIDATION_SUBSET_EXAMPLES = 256
-SAMPLE_TOKENS = 60
-if TRAIN_STEPS % TRAIN_CHUNK_LENGTH != 0:
-    raise ValueError("TRAIN_STEPS must be divisible by TRAIN_CHUNK_LENGTH")
-
-# Model
-EMBEDDING_DIM = 64
-NUM_HEADS = 4
-NUM_DECODER_BLOCKS = 4
-HIDDEN_DIM = 128
-CONTEXT_LENGTH = 64
+DEFAULT_TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_bpe_16384"
+DEFAULT_TOKENIZER_PATH = (
+    ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
+)
 
 
-def load_experiment_split(root_dir: Path, split: str, shard_index: int) -> jax.Array:
+@dataclass(frozen=True)
+class ExperimentConfig:
+    """Keep the milestone-021 settings explicit and easy to inspect."""
+
+    # Data
+    token_shard_root: Path
+    tokenizer_path: Path
+    seed: int
+    max_train_shards: int | None
+    validation_shard_index: int
+    shard_mmap: bool
+
+    # Training
+    eval_batch_size: int
+    batch_size: int
+    learning_rate: float
+    train_steps: int
+    train_chunk_length: int
+    validation_subset_examples: int
+    sample_tokens: int
+
+    # Model
+    embedding_dim: int
+    num_heads: int
+    num_decoder_blocks: int
+    hidden_dim: int
+    context_length: int
+
+
+def parse_args() -> ExperimentConfig:
+    """Parse experiment arguments so Colab can override local defaults."""
+    parser = argparse.ArgumentParser(
+        description="Train the milestone-021 TPU multi-shard FineWeb baseline."
+    )
+    parser.add_argument(
+        "--token-shard-root",
+        type=Path,
+        default=DEFAULT_TOKEN_SHARD_ROOT,
+        help="Directory containing train_*.npy, validation_*.npy, and metadata.json.",
+    )
+    parser.add_argument(
+        "--tokenizer-path",
+        type=Path,
+        default=DEFAULT_TOKENIZER_PATH,
+        help="Tokenizer artifact used for decoding samples.",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="Random seed for the run.")
+    parser.add_argument(
+        "--max-train-shards",
+        type=int,
+        default=10,
+        help="Maximum number of train shards to rotate across.",
+    )
+    parser.add_argument(
+        "--validation-shard-index",
+        type=int,
+        default=0,
+        help="Validation shard index used for the fixed validation subset.",
+    )
+    parser.add_argument(
+        "--eval-batch-size",
+        type=int,
+        default=32,
+        help="Batch size used during validation subset evaluation.",
+    )
+    parser.add_argument("--batch-size", type=int, default=8, help="Training batch size.")
+    parser.add_argument("--learning-rate", type=float, default=0.02, help="SGD learning rate.")
+    parser.add_argument("--train-steps", type=int, default=2_000, help="Total optimizer steps.")
+    parser.add_argument(
+        "--train-chunk-length",
+        type=int,
+        default=40,
+        help="Number of optimizer steps averaged into one logged point.",
+    )
+    parser.add_argument(
+        "--validation-subset-examples",
+        type=int,
+        default=256,
+        help="Number of random validation windows evaluated after each chunk.",
+    )
+    parser.add_argument(
+        "--sample-tokens",
+        type=int,
+        default=60,
+        help="Number of tokens sampled after training.",
+    )
+    parser.add_argument("--embedding-dim", type=int, default=64, help="Token embedding width.")
+    parser.add_argument(
+        "--num-heads",
+        type=int,
+        default=4,
+        help="Attention heads per decoder block.",
+    )
+    parser.add_argument(
+        "--num-decoder-blocks",
+        type=int,
+        default=4,
+        help="Decoder depth.",
+    )
+    parser.add_argument(
+        "--hidden-dim",
+        type=int,
+        default=128,
+        help="Feed-forward hidden width.",
+    )
+    parser.add_argument(
+        "--context-length",
+        type=int,
+        default=64,
+        help="Sequence length used for next-token prediction.",
+    )
+    parser.add_argument(
+        "--no-shard-mmap",
+        action="store_true",
+        help="Disable mmap_mode when loading token shards with jax.numpy.load.",
+    )
+    args = parser.parse_args()
+
+    return ExperimentConfig(
+        token_shard_root=args.token_shard_root,
+        tokenizer_path=args.tokenizer_path,
+        seed=args.seed,
+        max_train_shards=args.max_train_shards,
+        validation_shard_index=args.validation_shard_index,
+        eval_batch_size=args.eval_batch_size,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        train_steps=args.train_steps,
+        train_chunk_length=args.train_chunk_length,
+        validation_subset_examples=args.validation_subset_examples,
+        sample_tokens=args.sample_tokens,
+        embedding_dim=args.embedding_dim,
+        num_heads=args.num_heads,
+        num_decoder_blocks=args.num_decoder_blocks,
+        hidden_dim=args.hidden_dim,
+        context_length=args.context_length,
+        shard_mmap=not args.no_shard_mmap,
+    )
+
+
+def validate_config(config: ExperimentConfig) -> None:
+    """Reject invalid experiment settings early."""
+    if config.train_steps <= 0:
+        raise ValueError("train_steps must be positive")
+    if config.train_chunk_length <= 0:
+        raise ValueError("train_chunk_length must be positive")
+    if config.train_steps % config.train_chunk_length != 0:
+        raise ValueError("train_steps must be divisible by train_chunk_length")
+    if config.batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if config.eval_batch_size <= 0:
+        raise ValueError("eval_batch_size must be positive")
+    if config.context_length <= 0:
+        raise ValueError("context_length must be positive")
+    if config.validation_subset_examples <= 0:
+        raise ValueError("validation_subset_examples must be positive")
+    if config.sample_tokens < 0:
+        raise ValueError("sample_tokens must be non-negative")
+    if config.max_train_shards is not None and config.max_train_shards <= 0:
+        raise ValueError("max_train_shards must be positive when provided")
+
+
+def load_experiment_split(
+    root_dir: Path,
+    split: str,
+    shard_index: int,
+    *,
+    mmap: bool,
+) -> jax.Array:
     """Load one validation shard or a chosen train shard for this experiment."""
     shard_paths = list_token_shards(root_dir, split)
     if shard_index < 0 or shard_index >= len(shard_paths):
@@ -58,7 +207,7 @@ def load_experiment_split(root_dir: Path, split: str, shard_index: int) -> jax.A
             f"{split} shard index {shard_index} is out of range for {root_dir}. "
             f"Available {split} shards: {len(shard_paths)}."
         )
-    return load_token_shard(shard_paths[shard_index])
+    return load_token_shard(shard_paths[shard_index], mmap=mmap)
 
 
 def select_train_shards(root_dir: Path, max_train_shards: int | None) -> list[Path]:
@@ -66,15 +215,21 @@ def select_train_shards(root_dir: Path, max_train_shards: int | None) -> list[Pa
     shard_paths = list_token_shards(root_dir, "train")
     if max_train_shards is None:
         return shard_paths
-    if max_train_shards <= 0:
-        raise ValueError("max_train_shards must be positive when provided")
     return shard_paths[:max_train_shards]
 
 
-def load_train_shard_for_chunk(train_shard_paths: list[Path], chunk_index: int) -> jax.Array:
+def load_train_shard_for_chunk(
+    train_shard_paths: list[Path],
+    chunk_index: int,
+    *,
+    mmap: bool,
+) -> tuple[Path, jax.Array]:
     """Rotate through the selected train shards, one shard per logged chunk."""
     active_train_shard_index = chunk_index % len(train_shard_paths)
-    return load_token_shard(train_shard_paths[active_train_shard_index])
+    active_train_shard_path = train_shard_paths[active_train_shard_index]
+    return active_train_shard_path, load_token_shard(
+        train_shard_paths[active_train_shard_index], mmap=mmap
+    )
 
 
 def loss_fn(
@@ -116,21 +271,22 @@ def train_chunk(
     model: DecoderOnlyTransformer,
     optimizer: nnx.Optimizer[DecoderOnlyTransformer],
     tokens: jax.Array,
+    config: ExperimentConfig,
     rng: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
     """Average several random training batches into one logged chunk."""
     total_loss = jnp.array(0.0, dtype=jnp.float32)
-    for _ in range(TRAIN_CHUNK_LENGTH):
+    for _ in range(config.train_chunk_length):
         rng, batch_rng = jax.random.split(rng)
         start_positions = jax.random.randint(
             batch_rng,
-            shape=(BATCH_SIZE,),
+            shape=(config.batch_size,),
             minval=0,
-            maxval=tokens.shape[0] - CONTEXT_LENGTH,
+            maxval=tokens.shape[0] - config.context_length,
         )
-        input_ids, target_ids = build_examples(tokens, start_positions, CONTEXT_LENGTH)
+        input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
         total_loss = total_loss + train_step(model, optimizer, input_ids, target_ids)
-    return total_loss / TRAIN_CHUNK_LENGTH, rng
+    return total_loss / config.train_chunk_length, rng
 
 
 def generate_text(
@@ -138,6 +294,7 @@ def generate_text(
     tokenizer: BPEModel,
     seed_token_ids: jax.Array,
     sample_tokens: int,
+    context_length: int,
     rng: jax.Array,
 ) -> str:
     """Sample text from the trained model using a random context window."""
@@ -150,10 +307,10 @@ def generate_text(
             seed_rng,
             shape=(),
             minval=0,
-            maxval=seed_token_ids.shape[0] - CONTEXT_LENGTH,
+            maxval=seed_token_ids.shape[0] - context_length,
         )
     )
-    context = seed_token_ids[seed_start : seed_start + CONTEXT_LENGTH]
+    context = seed_token_ids[seed_start : seed_start + context_length]
     generated_token_ids: list[int] = []
 
     for _ in range(sample_tokens):
@@ -167,54 +324,63 @@ def generate_text(
 
 
 def main() -> None:
-    """Run the local multi-shard FineWeb-Edu baseline end to end."""
+    """Run the milestone-021 TPU multi-shard baseline end to end."""
+    config = parse_args()
+    validate_config(config)
+
     timer = Timer()
     timer.start("total")
-    rngs = nnx.Rngs(SEED)
-    tokenizer = load_tokenizer(TOKENIZER_PATH)
-    token_metadata = load_token_shard_metadata(TOKEN_SHARD_ROOT)
-    train_shard_paths = select_train_shards(TOKEN_SHARD_ROOT, MAX_TRAIN_SHARDS)
+    rngs = nnx.Rngs(config.seed)
+    tokenizer = load_tokenizer(config.tokenizer_path)
+    token_metadata = load_token_shard_metadata(config.token_shard_root)
+    train_shard_paths = select_train_shards(config.token_shard_root, config.max_train_shards)
     validation_tokens = load_experiment_split(
-        TOKEN_SHARD_ROOT,
+        config.token_shard_root,
         "validation",
-        VALIDATION_SHARD_INDEX,
+        config.validation_shard_index,
+        mmap=config.shard_mmap,
     )
 
     model = DecoderOnlyTransformer(
         vocab_size=tokenizer.vocab_size,
-        context_length=CONTEXT_LENGTH,
-        embedding_dim=EMBEDDING_DIM,
-        hidden_dim=HIDDEN_DIM,
-        num_heads=NUM_HEADS,
-        num_decoder_blocks=NUM_DECODER_BLOCKS,
+        context_length=config.context_length,
+        embedding_dim=config.embedding_dim,
+        hidden_dim=config.hidden_dim,
+        num_heads=config.num_heads,
+        num_decoder_blocks=config.num_decoder_blocks,
         rngs=rngs,
     )
-    optimizer = nnx.Optimizer(model, optax.sgd(LEARNING_RATE), wrt=nnx.Param)
+    optimizer = nnx.Optimizer(model, optax.sgd(config.learning_rate), wrt=nnx.Param)
     timer.start("train")
 
-    rng, validation_rng = jax.random.split(jax.random.key(SEED))
+    rng, validation_rng = jax.random.split(jax.random.key(config.seed))
     validation_start_positions = sample_evaluation_positions(
         validation_tokens,
-        context_length=CONTEXT_LENGTH,
-        subset_size=VALIDATION_SUBSET_EXAMPLES,
+        context_length=config.context_length,
+        subset_size=config.validation_subset_examples,
         rng=validation_rng,
     )
     loss_tracker = LossTracker()
     train_tokens = None
+    active_train_shard_path = None
 
-    for chunk_index, _ in enumerate(range(0, TRAIN_STEPS, TRAIN_CHUNK_LENGTH)):
-        train_tokens = load_train_shard_for_chunk(train_shard_paths, chunk_index)
-        train_loss, rng = train_chunk(model, optimizer, train_tokens, rng)
+    for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
+        active_train_shard_path, train_tokens = load_train_shard_for_chunk(
+            train_shard_paths,
+            chunk_index,
+            mmap=config.shard_mmap,
+        )
+        train_loss, rng = train_chunk(model, optimizer, train_tokens, config, rng)
         validation_subset_loss = evaluate_positions(
             validation_tokens,
             validation_start_positions,
             model,
             evaluate_batch_loss,
-            CONTEXT_LENGTH,
-            EVAL_BATCH_SIZE,
+            config.context_length,
+            config.eval_batch_size,
         )
 
-        current_step = (chunk_index + 1) * TRAIN_CHUNK_LENGTH
+        current_step = (chunk_index + 1) * config.train_chunk_length
         loss_tracker.log(
             step=current_step,
             train_loss=float(train_loss),
@@ -222,39 +388,44 @@ def main() -> None:
         )
 
     train_seconds = timer.stop("train")
-    # Skip for this experiment since it takes too long
-    # validation_loss = evaluate_split(
-    #     validation_tokens,
-    #     model,
-    #     evaluate_batch_loss,
-    #     CONTEXT_LENGTH,
-    #     EVAL_BATCH_SIZE,
-    # )
     rng, sample_rng = jax.random.split(rng)
-    if train_tokens is None:
+    if train_tokens is None or active_train_shard_path is None:
         raise ValueError("No train shard was loaded during training.")
-    sample = generate_text(model, tokenizer, train_tokens, SAMPLE_TOKENS, sample_rng)
+    sample = generate_text(
+        model,
+        tokenizer,
+        train_tokens,
+        config.sample_tokens,
+        config.context_length,
+        sample_rng,
+    )
     loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
     sample_path = loss_history_csv.parent / "sample.txt"
     sample_path.write_text(sample + "\n", encoding="utf-8")
     total_seconds = timer.stop("total")
 
-    print(f"token_shard_root={TOKEN_SHARD_ROOT}")
-    print(f"tokenizer_path={TOKENIZER_PATH}")
+    devices = jax.devices()
+    print(f"jax_default_backend={jax.default_backend()}")
+    print(f"jax_device_count={len(devices)}")
+    print(f"jax_devices={[str(device) for device in devices]}")
+    print(f"token_shard_root={config.token_shard_root}")
+    print(f"tokenizer_path={config.tokenizer_path}")
     print(f"token_dtype={token_metadata['token_dtype']}")
     print(f"metadata_shard_tokens={token_metadata['shard_tokens']}")
     print(f"train_shards_used={len(train_shard_paths)}")
-    print(f"max_train_shards={MAX_TRAIN_SHARDS}")
-    print(f"validation_shard_index={VALIDATION_SHARD_INDEX}")
+    print(f"max_train_shards={config.max_train_shards}")
+    print(f"validation_shard_index={config.validation_shard_index}")
+    print(f"shard_mmap={config.shard_mmap}")
+    print(f"last_train_shard={active_train_shard_path}")
     print(f"loaded_train_tokens={train_tokens.shape[0]}")
     print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
-    # print(f"validation_loss={validation_loss:.6f}")
+    print(f"final_validation_subset_loss={loss_tracker.validation_subset_losses[-1]:.6f}")
     print(f"loss_history_csv={loss_history_csv}")
     print(f"loss_curve_svg={loss_curve_svg}")
     print(f"sample_path={sample_path}")
     print(f"train_seconds={train_seconds:.3f}")
-    print(f"steps_per_second={TRAIN_STEPS / train_seconds:.3f}")
+    print(f"steps_per_second={config.train_steps / train_seconds:.3f}")
     print(f"total_seconds={total_seconds:.3f}")
     print(f'sample="""\n{sample}\n"""')
 
