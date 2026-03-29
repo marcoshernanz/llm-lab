@@ -223,13 +223,10 @@ def load_train_shard_for_chunk(
     chunk_index: int,
     *,
     mmap: bool,
-) -> tuple[Path, jax.Array]:
+) -> jax.Array:
     """Rotate through the selected train shards, one shard per logged chunk."""
     active_train_shard_index = chunk_index % len(train_shard_paths)
-    active_train_shard_path = train_shard_paths[active_train_shard_index]
-    return active_train_shard_path, load_token_shard(
-        train_shard_paths[active_train_shard_index], mmap=mmap
-    )
+    return load_token_shard(train_shard_paths[active_train_shard_index], mmap=mmap)
 
 
 def loss_fn(
@@ -362,10 +359,9 @@ def main() -> None:
     )
     loss_tracker = LossTracker()
     train_tokens = None
-    active_train_shard_path = None
 
     for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
-        active_train_shard_path, train_tokens = load_train_shard_for_chunk(
+        train_tokens = load_train_shard_for_chunk(
             train_shard_paths,
             chunk_index,
             mmap=config.shard_mmap,
@@ -389,7 +385,7 @@ def main() -> None:
 
     train_seconds = timer.stop("train")
     rng, sample_rng = jax.random.split(rng)
-    if train_tokens is None or active_train_shard_path is None:
+    if train_tokens is None:
         raise ValueError("No train shard was loaded during training.")
     sample = generate_text(
         model,
@@ -416,7 +412,6 @@ def main() -> None:
     print(f"max_train_shards={config.max_train_shards}")
     print(f"validation_shard_index={config.validation_shard_index}")
     print(f"shard_mmap={config.shard_mmap}")
-    print(f"last_train_shard={active_train_shard_path}")
     print(f"loaded_train_tokens={train_tokens.shape[0]}")
     print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
