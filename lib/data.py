@@ -1,3 +1,5 @@
+"""Load text, tokenizers, and token shards for small language-model experiments."""
+
 import json
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from tokenizer.bpe import BPEModel
 
 
 def load_text(path: Path) -> str:
+    """Read a UTF-8 text corpus and validate that it is non-empty."""
     if not path.exists():
         raise FileNotFoundError(f"Dataset not found at {path}.")
 
@@ -20,6 +23,7 @@ def load_text(path: Path) -> str:
 
 
 def load_tokenizer(path: Path) -> BPEModel:
+    """Load a saved tokenizer artifact used by the experiments."""
     if not path.exists():
         raise FileNotFoundError(f"Tokenizer artifact not found at {path}.")
 
@@ -31,6 +35,7 @@ def build_token_splits(
     tokenizer: BPEModel,
     train_split: float,
 ) -> tuple[jax.Array, jax.Array]:
+    """Tokenize text and split it into train and validation sequences."""
     if not 0.0 < train_split < 1.0:
         raise ValueError("train_split must be between 0 and 1")
 
@@ -47,6 +52,7 @@ def build_examples(
     start_positions: jax.Array,
     context_length: int,
 ) -> tuple[jax.Array, jax.Array]:
+    """Build input and target windows for next-token prediction."""
     offsets = jnp.arange(context_length, dtype=start_positions.dtype)
     input_ids = token_ids[start_positions[:, None] + offsets]
     target_ids = token_ids[start_positions[:, None] + offsets + 1]
@@ -54,6 +60,7 @@ def build_examples(
 
 
 def list_token_shards(root_dir: Path, split: str) -> list[Path]:
+    """List token shard files for one dataset split."""
     shard_paths = sorted(root_dir.glob(f"{split}_*.npy"))
     if not shard_paths:
         raise FileNotFoundError(f"No {split!r} token shards found under {root_dir}.")
@@ -61,11 +68,13 @@ def list_token_shards(root_dir: Path, split: str) -> list[Path]:
 
 
 def load_token_shard(path: Path) -> jax.Array:
+    """Load one token shard into a JAX int32 array."""
     token_ids = load_token_shard_numpy(path)
     return jnp.asarray(token_ids.astype(np.int32, copy=False))
 
 
 def load_token_shard_numpy(path: Path, *, mmap: bool = False) -> np.ndarray:
+    """Load one token shard as a NumPy array, optionally memory-mapped."""
     if not path.exists():
         raise FileNotFoundError(f"Token shard not found at {path}.")
 
@@ -76,6 +85,7 @@ def load_token_shard_numpy(path: Path, *, mmap: bool = False) -> np.ndarray:
 
 
 def load_token_shard_metadata(root_dir: Path) -> dict[str, object]:
+    """Read the metadata that describes a token shard dataset."""
     metadata_path = root_dir / "metadata.json"
     if not metadata_path.exists():
         raise FileNotFoundError(f"Token shard metadata not found at {metadata_path}.")
@@ -89,6 +99,7 @@ def load_token_split_from_shards(
     max_shards: int | None = None,
     mmap: bool = False,
 ) -> jax.Array:
+    """Concatenate one split from multiple shard files into one array."""
     if max_shards is not None and max_shards <= 0:
         raise ValueError("max_shards must be positive when provided")
 
