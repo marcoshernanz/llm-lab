@@ -1,3 +1,5 @@
+"""Evaluation helpers for measuring decoder loss on token sequences."""
+
 from typing import Callable
 
 import jax
@@ -14,6 +16,7 @@ def sample_evaluation_positions(
     subset_size: int,
     rng: jax.Array,
 ) -> jax.Array:
+    """Sample unique start positions for a small validation subset."""
     if context_length <= 0:
         raise ValueError("context_length must be positive")
     if subset_size <= 0:
@@ -40,6 +43,7 @@ def evaluate_positions(
     context_length: int,
     batch_size: int,
 ) -> float:
+    """Average loss over a chosen set of evaluation positions."""
     if context_length <= 0:
         raise ValueError("context_length must be positive")
     if batch_size <= 0:
@@ -69,6 +73,7 @@ def evaluate_split(
     context_length: int,
     batch_size: int,
 ) -> float:
+    """Evaluate loss across every valid context window in a split."""
     if context_length <= 0:
         raise ValueError("context_length must be positive")
     if batch_size <= 0:
