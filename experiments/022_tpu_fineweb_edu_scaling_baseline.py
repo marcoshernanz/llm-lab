@@ -39,6 +39,7 @@ class ExperimentConfig:
     seed: int = 0
     max_train_shards: int | None = 10
     validation_shard_index: int = 0
+    train_subset_shard_index: int = 0
     shard_mmap: bool = True
     eval_batch_size: int = 64
     batch_size: int = 128
@@ -73,6 +74,8 @@ class ExperimentConfig:
             raise ValueError("sample_tokens must be non-negative")
         if self.max_train_shards is not None and self.max_train_shards <= 0:
             raise ValueError("max_train_shards must be positive when provided")
+        if self.train_subset_shard_index < 0:
+            raise ValueError("train_subset_shard_index must be non-negative")
 
 
 def parse_args() -> ExperimentConfig:
@@ -272,6 +275,12 @@ def main() -> None:
         config.validation_shard_index,
         mmap=config.shard_mmap,
     )
+    train_subset_tokens = load_experiment_split(
+        config.token_shard_root,
+        "train",
+        config.train_subset_shard_index,
+        mmap=config.shard_mmap,
+    )
 
     model = DecoderOnlyTransformer(
         vocab_size=tokenizer.vocab_size,
@@ -285,12 +294,18 @@ def main() -> None:
     optimizer = nnx.Optimizer(model, optax.sgd(config.learning_rate), wrt=nnx.Param)
     timer.start("train")
 
-    rng, validation_rng = jax.random.split(jax.random.key(config.seed))
+    rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
     validation_start_positions = sample_evaluation_positions(
         validation_tokens,
         context_length=config.context_length,
         subset_size=config.validation_subset_examples,
         rng=validation_rng,
+    )
+    train_subset_start_positions = sample_evaluation_positions(
+        train_subset_tokens,
+        context_length=config.context_length,
+        subset_size=config.validation_subset_examples,
+        rng=train_subset_rng,
     )
     loss_tracker = LossTracker()
     train_tokens = None
@@ -302,6 +317,14 @@ def main() -> None:
             mmap=config.shard_mmap,
         )
         train_loss, rng = train_chunk(model, optimizer, train_tokens, config, rng)
+        train_subset_loss = evaluate_positions(
+            train_subset_tokens,
+            train_subset_start_positions,
+            model,
+            evaluate_batch_loss,
+            config.context_length,
+            config.eval_batch_size,
+        )
         validation_subset_loss = evaluate_positions(
             validation_tokens,
             validation_start_positions,
@@ -315,6 +338,7 @@ def main() -> None:
         loss_tracker.log(
             step=current_step,
             train_loss=float(train_loss),
+            train_subset_loss=train_subset_loss,
             validation_subset_loss=validation_subset_loss,
         )
 
@@ -342,14 +366,17 @@ def main() -> None:
     print(f"train_shards_used={len(train_shard_paths)}")
     print(f"max_train_shards={config.max_train_shards}")
     print(f"validation_shard_index={config.validation_shard_index}")
+    print(f"train_subset_shard_index={config.train_subset_shard_index}")
     print(f"shard_mmap={config.shard_mmap}")
     print(f"batch_size={config.batch_size}")
     print(f"train_steps={config.train_steps}")
     print(f"embedding_dim={config.embedding_dim}")
     print(f"num_decoder_blocks={config.num_decoder_blocks}")
     print(f"loaded_train_tokens={train_tokens.shape[0]}")
+    print(f"loaded_train_subset_tokens={train_subset_tokens.shape[0]}")
     print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
     print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
+    print(f"final_train_subset_loss={loss_tracker.train_subset_losses[-1]:.6f}")
     print(f"final_validation_subset_loss={loss_tracker.validation_subset_losses[-1]:.6f}")
     print(f"loss_history_csv={loss_history_csv}")
     print(f"loss_curve_svg={loss_curve_svg}")
