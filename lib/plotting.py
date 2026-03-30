@@ -16,15 +16,24 @@ SVG_WIDTH = 900
 
 @dataclass
 class LossTracker:
-    """Collect train and validation-subset losses during an experiment."""
+    """Collect train, optional train-subset, and validation-subset losses."""
 
     train_steps: list[int] = field(default_factory=list)
+    train_subset_steps: list[int] = field(default_factory=list)
     validation_subset_steps: list[int] = field(default_factory=list)
     train_losses: list[float] = field(default_factory=list)
+    train_subset_losses: list[float] = field(default_factory=list)
     validation_subset_losses: list[float] = field(default_factory=list)
 
-    def log(self, *, step: int, train_loss: float, validation_subset_loss: float) -> None:
-        """Record one training step and its matching validation estimate."""
+    def log(
+        self,
+        *,
+        step: int,
+        train_loss: float,
+        validation_subset_loss: float,
+        train_subset_loss: float | None = None,
+    ) -> None:
+        """Record one training step and its matching evaluation estimates."""
         if step <= 0:
             raise ValueError("step must be positive")
 
@@ -32,8 +41,14 @@ class LossTracker:
         self.validation_subset_steps.append(step)
         self.train_losses.append(train_loss)
         self.validation_subset_losses.append(validation_subset_loss)
+        train_subset_text = ""
+        if train_subset_loss is not None:
+            self.train_subset_steps.append(step)
+            self.train_subset_losses.append(train_subset_loss)
+            train_subset_text = f" train_subset_loss={train_subset_loss:.6f}"
         print(
             f"step={step} train_loss={train_loss:.6f} "
+            f"{train_subset_text} "
             f"validation_subset_loss={validation_subset_loss:.6f}"
         )
 
@@ -42,8 +57,10 @@ class LossTracker:
         return save_loss_artifacts(
             script_path=script_path,
             train_steps=self.train_steps,
+            train_subset_steps=self.train_subset_steps if self.train_subset_steps else None,
             validation_subset_steps=self.validation_subset_steps,
             train_losses=self.train_losses,
+            train_subset_losses=self.train_subset_losses if self.train_subset_losses else None,
             validation_subset_losses=self.validation_subset_losses,
         )
 
@@ -52,12 +69,16 @@ def save_loss_artifacts(
     *,
     script_path: Path,
     train_steps: Sequence[int],
+    train_subset_steps: Sequence[int] | None,
     validation_subset_steps: Sequence[int],
     train_losses: Sequence[float],
+    train_subset_losses: Sequence[float] | None,
     validation_subset_losses: Sequence[float],
 ) -> tuple[Path, Path]:
     """Persist loss history in a timestamped artifact directory."""
     _validate_series("train", train_steps, train_losses)
+    if train_subset_steps is not None and train_subset_losses is not None:
+        _validate_series("train_subset", train_subset_steps, train_subset_losses)
     _validate_series("validation_subset", validation_subset_steps, validation_subset_losses)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -69,6 +90,11 @@ def save_loss_artifacts(
         writer = csv.writer(handle)
         writer.writerow(["split", "step", "loss"])
         writer.writerows(("train", step, loss) for step, loss in zip(train_steps, train_losses))
+        if train_subset_steps is not None and train_subset_losses is not None:
+            writer.writerows(
+                ("train_subset", step, loss)
+                for step, loss in zip(train_subset_steps, train_subset_losses)
+            )
         writer.writerows(
             ("validation_subset", step, loss)
             for step, loss in zip(validation_subset_steps, validation_subset_losses)
@@ -79,6 +105,8 @@ def save_loss_artifacts(
         _build_loss_curve_svg(
             train_steps=train_steps,
             train_losses=train_losses,
+            train_subset_steps=train_subset_steps,
+            train_subset_losses=train_subset_losses,
             validation_subset_steps=validation_subset_steps,
             validation_subset_losses=validation_subset_losses,
         ),
@@ -100,6 +128,8 @@ def _build_loss_curve_svg(
     *,
     train_steps: Sequence[int],
     train_losses: Sequence[float],
+    train_subset_steps: Sequence[int] | None,
+    train_subset_losses: Sequence[float] | None,
     validation_subset_steps: Sequence[int],
     validation_subset_losses: Sequence[float],
 ) -> str:
@@ -113,6 +143,9 @@ def _build_loss_curve_svg(
 
     all_steps = [*train_steps, *validation_subset_steps]
     all_losses = [*train_losses, *validation_subset_losses]
+    if train_subset_steps is not None and train_subset_losses is not None:
+        all_steps.extend(train_subset_steps)
+        all_losses.extend(train_subset_losses)
     min_loss = min(all_losses)
     max_loss = max(all_losses)
     if math.isclose(min_loss, max_loss):
@@ -138,6 +171,9 @@ def _build_loss_curve_svg(
         )
 
     raw_train_points = polyline(train_steps, train_losses)
+    train_subset_points = ""
+    if train_subset_steps is not None and train_subset_losses is not None:
+        train_subset_points = polyline(train_subset_steps, train_subset_losses)
     validation_subset_points = polyline(validation_subset_steps, validation_subset_losses)
 
     last_validation_subset_x, last_validation_subset_y = point(
@@ -145,22 +181,51 @@ def _build_loss_curve_svg(
         validation_subset_losses[-1],
     )
     last_train_x, last_train_y = point(train_steps[-1], train_losses[-1])
+    train_subset_legend = ""
+    train_subset_polyline = ""
+    train_subset_circle = ""
+    if train_subset_steps is not None and train_subset_losses is not None:
+        last_train_subset_x, last_train_subset_y = point(
+            train_subset_steps[-1],
+            train_subset_losses[-1],
+        )
+        train_subset_polyline = (
+            f'  <polyline points="{train_subset_points}" stroke="#059669" '
+            f'stroke-width="2" fill="none"/>\n'
+        )
+        train_subset_circle = (
+            f'  <circle cx="{last_train_subset_x:.2f}" cy="{last_train_subset_y:.2f}" '
+            f'r="3" fill="#059669"/>\n'
+        )
+        train_subset_legend = (
+            f'  <text x="{SVG_WIDTH - 220}" y="38" fill="#57606a" '
+            f'font-family="monospace" font-size="12">train subset</text>\n'
+            f'  <line x1="{SVG_WIDTH - 300}" y1="34" x2="{SVG_WIDTH - 228}" y2="34" '
+            f'stroke="#059669" stroke-width="2"/>\n'
+        )
+        validation_legend_y = 58
+        validation_line_y = 54
+        title = "Train, train subset, and validation subset loss vs. step"
+    else:
+        validation_legend_y = 38
+        validation_line_y = 34
+        title = "Train and validation subset loss vs. step"
 
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{SVG_WIDTH}" height="{SVG_HEIGHT}" viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}" fill="none">
   <rect width="{SVG_WIDTH}" height="{SVG_HEIGHT}" fill="white"/>
   <line x1="{left_pad}" y1="{top_pad}" x2="{left_pad}" y2="{SVG_HEIGHT - bottom_pad}" stroke="#d0d7de" stroke-width="1"/>
   <line x1="{left_pad}" y1="{SVG_HEIGHT - bottom_pad}" x2="{SVG_WIDTH - right_pad}" y2="{SVG_HEIGHT - bottom_pad}" stroke="#d0d7de" stroke-width="1"/>
-  <text x="{left_pad}" y="16" fill="#24292f" font-family="monospace" font-size="14">Train and validation subset loss vs. step</text>
+  <text x="{left_pad}" y="16" fill="#24292f" font-family="monospace" font-size="14">{title}</text>
   <text x="{left_pad}" y="{SVG_HEIGHT - 12}" fill="#57606a" font-family="monospace" font-size="12">step {step_min} to {step_max}</text>
   <text x="12" y="{top_pad + 4}" fill="#57606a" font-family="monospace" font-size="12">{max_loss:.4f}</text>
   <text x="12" y="{SVG_HEIGHT - bottom_pad + 4}" fill="#57606a" font-family="monospace" font-size="12">{min_loss:.4f}</text>
   <polyline points="{raw_train_points}" stroke="#2563eb" stroke-width="2" fill="none"/>
-  <polyline points="{validation_subset_points}" stroke="#dc2626" stroke-width="2" fill="none"/>
+{train_subset_polyline}  <polyline points="{validation_subset_points}" stroke="#dc2626" stroke-width="2" fill="none"/>
   <circle cx="{last_train_x:.2f}" cy="{last_train_y:.2f}" r="3" fill="#2563eb"/>
-  <circle cx="{last_validation_subset_x:.2f}" cy="{last_validation_subset_y:.2f}" r="3" fill="#dc2626"/>
+{train_subset_circle}  <circle cx="{last_validation_subset_x:.2f}" cy="{last_validation_subset_y:.2f}" r="3" fill="#dc2626"/>
   <text x="{SVG_WIDTH - 220}" y="18" fill="#57606a" font-family="monospace" font-size="12">train</text>
   <line x1="{SVG_WIDTH - 300}" y1="14" x2="{SVG_WIDTH - 228}" y2="14" stroke="#2563eb" stroke-width="2"/>
-  <text x="{SVG_WIDTH - 220}" y="38" fill="#57606a" font-family="monospace" font-size="12">validation subset</text>
-  <line x1="{SVG_WIDTH - 300}" y1="34" x2="{SVG_WIDTH - 228}" y2="34" stroke="#dc2626" stroke-width="2"/>
+{train_subset_legend}  <text x="{SVG_WIDTH - 220}" y="{validation_legend_y}" fill="#57606a" font-family="monospace" font-size="12">validation subset</text>
+  <line x1="{SVG_WIDTH - 300}" y1="{validation_line_y}" x2="{SVG_WIDTH - 228}" y2="{validation_line_y}" stroke="#dc2626" stroke-width="2"/>
 </svg>
 """

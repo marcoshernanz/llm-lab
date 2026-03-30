@@ -78,7 +78,7 @@ class FeedForward(nnx.Module):
 
     def __call__(self, x: jax.Array) -> jax.Array:
         """Project up, apply a nonlinearity, and project back down."""
-        hidden = jnn.tanh(self.in_proj(x))
+        hidden = jnn.gelu(self.in_proj(x))
         return self.out_proj(hidden)
 
 
