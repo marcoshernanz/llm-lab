@@ -24,11 +24,12 @@ The emphasis of phase 2 is:
 - and only after that deeper training-recipe work.
 
 ## Status
-As of 2026-03-29:
+As of 2026-03-30:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
 - `021` is complete as the TPU multi-shard baseline,
-- `022` is the next milestone,
+- `022` is complete as the first aggressive scaled TPU baseline,
+- `023` is the next milestone,
 - phase 2 is now active rather than empty.
 
 ## Starting Baseline
@@ -188,54 +189,92 @@ Exit criteria:
 - At least one scaled SGD baseline is clearly more informative than the local bring-up runs.
 - You can say which scaling dimension matters most so far.
 
-### Milestone 023: Observability And Run Artifacts
+Status:
+- Complete via `experiments/022_tpu_fineweb_edu_scaling_baseline.py`.
+
+Note:
+- In practice, the current `022` result scaled batch size, runtime, width, and depth together more aggressively than the original milestone wording intended. That was useful for learning what the TPU can do, but it means the next milestone should restore experimental discipline rather than continue compounding changes.
+
+### Milestone 023: Observability And Run Hygiene
 Track: Observability
 
 Goal:
-- Make phase-2 runs easier to compare and easier to learn from.
+- Make scaled runs self-describing enough that the artifact directory, not notebook stdout, becomes the source of truth.
 
-What to improve:
-- loss curves,
-- run metadata,
-- artifact naming,
-- and notes that connect experiment changes to outcomes.
+Why this is next:
+- `022` produced the strongest result so far, but too much of the important context still lived in notebook logs and manual notes.
+- Before more hardware or optimizer work, the repo needs clearer run bookkeeping.
+
+Concrete work:
+- Save `train_loss`, `train_subset_loss`, and `validation_subset_loss` in one canonical CSV for scaled runs.
+- Save a small run metadata file next to the CSV/SVG/sample with at least:
+  - script name
+  - execution target
+  - JAX device count
+  - batch size
+  - learning rate
+  - train steps
+  - context length
+  - embedding dim
+  - decoder depth
+  - train shard count
+  - train subset shard index
+- Make notebook export steps consistent across Colab and Kaggle.
+- Make the learning log easy to update from local artifacts without re-reading notebook output.
 
 Exit criteria:
-- The learning log can compare phase-2 runs cleanly.
-- An experiment’s outputs are enough to understand what changed and how it behaved.
+- A finished run can be understood from its artifact directory alone.
+- Milestone logs no longer depend on notebook stdout for essential metrics.
+- Artifact export from Colab and Kaggle is routine rather than ad hoc.
 
-### Milestone 024: Profiling First Pass
-Track: Profiling
+### Milestone 024: Batch-Size Recovery Pass
+Track: Scaling
 
 Goal:
-- Use profiling only after there is a real performance question to answer.
+- Recover a clean single-axis scaling result after the intentionally aggressive `022` run.
 
-What to study:
-- compile time vs step time,
-- train vs eval cost,
-- steps per second,
-- tokens per second,
-- obvious host or device bottlenecks.
+Why batch size:
+- Batch size was the most important knob in the recent TPU runs.
+- `022` strongly suggests the TPU likes bigger batches, but it does not tell you whether `128` is actually the best tradeoff.
+
+What stays fixed:
+- Same dataset and shard set.
+- Same model shape as the current `022` baseline.
+- Same optimizer family.
+- Same learning-rate choice for the sweep.
+- Same logging and artifact format from `023`.
+
+What changes:
+- Batch size only.
+
+Planned sweep:
+- `batch_size=32`
+- `batch_size=64`
+- `batch_size=128`
+
+What to compare:
+- `train_subset_loss`
+- `validation_subset_loss`
+- steps per second
+- tokens per second
+- stability of the curve
 
 Exit criteria:
-- Profiling answers at least one real bottleneck question.
-- The output changes a concrete next decision.
+- You can justify one batch size as the default scaled SGD baseline.
+- You can say whether the largest batch is actually helping optimization, or only helping throughput.
 
 ### Milestone 025: SGD Baseline Lock-In
 Track: Optimizers
 
 Goal:
-- Freeze a clear SGD baseline before comparing optimizers.
+- Freeze one clear scaled SGD reference before comparing optimizers.
 
-What changes:
-- Nothing major architecturally.
-- The emphasis is on documenting the stable SGD reference point clearly.
-
-Why this milestone exists:
-- Optimizer comparisons are only meaningful if the SGD reference is explicit in the log.
+Why this comes after profiling:
+- The baseline should be both stable and performance-understood before optimizer comparisons start.
 
 Exit criteria:
-- You have a stable scaled SGD baseline with enough logging to compare against later optimizers.
+ - One scaled SGD run is the agreed reference point for later optimizer work.
+ - The artifact format and hardware target are stable enough that optimizer differences are interpretable.
 
 ### Milestone 026: SGD With Momentum
 Track: Optimizers
@@ -244,22 +283,25 @@ Goal:
 - Learn what momentum changes relative to plain SGD.
 
 What stays fixed:
-- Dataset subset,
-- model shape,
-- hardware target,
-- and run bookkeeping.
+- Same scaled model shape.
+- Same dataset and shard set.
+- Same hardware target.
+- Same artifact and subset-loss logging.
 
 Exit criteria:
-- You can explain the behavioral difference relative to milestone `026`.
+- You can explain the difference between plain SGD and momentum-SGD in this training regime.
 
 ### Milestone 027: Adam
 Track: Optimizers
 
 Goal:
-- Compare Adam against the now-established SGD family baselines.
+- Compare Adam against the locked SGD family baselines.
 
 What stays fixed:
-- Same baseline conditions used in the earlier optimizer milestones as much as possible.
+- Same scaled model shape.
+- Same dataset and shard set.
+- Same hardware target.
+- Same artifact and subset-loss logging.
 
 Exit criteria:
 - You can explain where Adam helps, where it changes training behavior, and whether the difference is worth it in this regime.
@@ -270,24 +312,77 @@ Track: Optimizers
 Goal:
 - Separate adaptive optimization from decoupled weight decay.
 
-Why this milestone is optional but likely worth doing:
-- AdamW is the standard modern reference point, so it is useful to know whether it matters here.
+What stays fixed:
+- Same scaled model shape.
+- Same dataset and shard set.
+- Same hardware target.
+- Same artifact and subset-loss logging.
 
 Exit criteria:
 - You can compare Adam vs AdamW cleanly and say whether the distinction matters yet.
 
-### Milestone 029: Training Recipe Improvements
+### Milestone 029: Multi-Core JAX TPU Baseline
+Track: Hardware
+
+Goal:
+- Move from single-device TPU execution to explicit multi-core JAX execution on `v5e-8`.
+
+Why this comes after optimizer work:
+- First learn training behavior under one-device execution.
+- Then change the execution model once the optimizer story is clearer.
+
+What stays fixed:
+- Same dataset.
+- Same scaled model shape.
+- Same chosen optimizer baseline.
+- Same artifact format and subset-loss logging.
+
+What changes:
+- Execution model only.
+- Per-device batch handling.
+- Global batch semantics.
+- JAX parallelism strategy.
+
+Questions to answer:
+- What speedup do you actually get from `1` device to `8` devices?
+- Does the loss behavior stay comparable at the same global batch size?
+- What new host/device friction appears?
+
+Exit criteria:
+- One multi-core run completes end to end.
+- Throughput improvement is measured clearly.
+- You can explain the main conceptual changes required to go multi-core.
+
+### Milestone 030: Profiling First Pass
+Track: Profiling
+
+Goal:
+- Profile only after there is a real performance question to answer.
+
+What to profile:
+- single-device vs multi-core compile time
+- single-device vs multi-core step time
+- host overhead
+- eval cost
+- tokens per second
+- obvious input-pipeline bottlenecks
+
+Exit criteria:
+- Profiling answers at least one concrete bottleneck question.
+- The results change a real next decision.
+
+### Milestone 031: Training Recipe Improvements
 Track: Training recipe
 
 Goal:
-- Study recipe choices only after the optimizer sequence starts paying off.
+- Study recipe choices only after scaling, observability, hardware execution, and optimizer baselines are stable enough to support it.
 
 What to explore:
 - gradient clipping,
 - warmup,
 - learning-rate decay,
 - checkpointing,
-- and repeatable run logging.
+- and restartable long-run logging.
 
 Rule:
 - One recipe variable at a time.
@@ -299,11 +394,12 @@ Exit criteria:
 Tracks still exist, but they are secondary to milestones:
 - Data bring-up: `019`, `020`
 - Hardware: `021`
-- Scaling: `022`
+- Scaling: `022`, `024`
 - Observability: `023`
-- Profiling: `024`
 - Optimizers: `025`, `026`, `027`, `028`
-- Training recipe: `029`
+- Hardware: `029`
+- Profiling: `030`
+- Training recipe: `031`
 
 ## Later
 Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.
