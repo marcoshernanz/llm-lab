@@ -112,6 +112,12 @@ def parse_args() -> ExperimentConfig:
         help="Training batch size.",
     )
     parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=ExperimentConfig.learning_rate,
+        help="SGD learning rate.",
+    )
+    parser.add_argument(
         "--train-steps",
         type=int,
         default=ExperimentConfig.train_steps,
@@ -136,6 +142,7 @@ def parse_args() -> ExperimentConfig:
         max_train_shards=args.max_train_shards,
         validation_shard_index=args.validation_shard_index,
         batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
         shard_mmap=not args.no_shard_mmap,
@@ -369,6 +376,7 @@ def main() -> None:
     print(f"train_subset_shard_index={config.train_subset_shard_index}")
     print(f"shard_mmap={config.shard_mmap}")
     print(f"batch_size={config.batch_size}")
+    print(f"learning_rate={config.learning_rate}")
     print(f"train_steps={config.train_steps}")
     print(f"embedding_dim={config.embedding_dim}")
     print(f"num_decoder_blocks={config.num_decoder_blocks}")
