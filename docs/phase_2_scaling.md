@@ -263,20 +263,78 @@ Exit criteria:
 - You can justify one batch size as the default scaled SGD baseline.
 - You can say whether the largest batch is actually helping optimization, or only helping throughput.
 
-### Milestone 025: Multi-Core JAX TPU Baseline
+### Milestone 025: SGD Baseline Lock-In
+Track: Optimizers
+
+Goal:
+- Freeze one clear scaled SGD reference before comparing optimizers.
+
+Why this comes after profiling:
+- The baseline should be both stable and performance-understood before optimizer comparisons start.
+
+Exit criteria:
+ - One scaled SGD run is the agreed reference point for later optimizer work.
+ - The artifact format and hardware target are stable enough that optimizer differences are interpretable.
+
+### Milestone 026: SGD With Momentum
+Track: Optimizers
+
+Goal:
+- Learn what momentum changes relative to plain SGD.
+
+What stays fixed:
+- Same scaled model shape.
+- Same dataset and shard set.
+- Same hardware target.
+- Same artifact and subset-loss logging.
+
+Exit criteria:
+- You can explain the difference between plain SGD and momentum-SGD in this training regime.
+
+### Milestone 027: Adam
+Track: Optimizers
+
+Goal:
+- Compare Adam against the locked SGD family baselines.
+
+What stays fixed:
+- Same scaled model shape.
+- Same dataset and shard set.
+- Same hardware target.
+- Same artifact and subset-loss logging.
+
+Exit criteria:
+- You can explain where Adam helps, where it changes training behavior, and whether the difference is worth it in this regime.
+
+### Milestone 028: AdamW
+Track: Optimizers
+
+Goal:
+- Separate adaptive optimization from decoupled weight decay.
+
+What stays fixed:
+- Same scaled model shape.
+- Same dataset and shard set.
+- Same hardware target.
+- Same artifact and subset-loss logging.
+
+Exit criteria:
+- You can compare Adam vs AdamW cleanly and say whether the distinction matters yet.
+
+### Milestone 029: Multi-Core JAX TPU Baseline
 Track: Hardware
 
 Goal:
 - Move from single-device TPU execution to explicit multi-core JAX execution on `v5e-8`.
 
-Why this is a separate milestone:
-- Using all TPU cores is not a small optimization toggle.
-- It changes batching, parameter replication/sharding, RNG handling, and the debugging story.
+Why this comes after optimizer work:
+- First learn training behavior under one-device execution.
+- Then change the execution model once the optimizer story is clearer.
 
 What stays fixed:
 - Same dataset.
-- Same model shape.
-- Same optimizer family.
+- Same scaled model shape.
+- Same chosen optimizer baseline.
 - Same artifact format and subset-loss logging.
 
 What changes:
@@ -295,7 +353,7 @@ Exit criteria:
 - Throughput improvement is measured clearly.
 - You can explain the main conceptual changes required to go multi-core.
 
-### Milestone 026: Profiling First Pass
+### Milestone 030: Profiling First Pass
 Track: Profiling
 
 Goal:
@@ -313,33 +371,7 @@ Exit criteria:
 - Profiling answers at least one concrete bottleneck question.
 - The results change a real next decision.
 
-### Milestone 027: SGD Baseline Lock-In
-Track: Optimizers
-
-Goal:
-- Freeze one clear scaled SGD reference before comparing optimizers.
-
-Why this comes after profiling:
-- The baseline should be both stable and performance-understood before optimizer comparisons start.
-
-Exit criteria:
- - One scaled SGD run is the agreed reference point for later optimizer work.
- - The artifact format and hardware target are stable enough that optimizer differences are interpretable.
-
-### Milestone 028: Optimizer Comparisons
-Track: Optimizers
-
-Goal:
-- Compare a small optimizer set against the locked SGD baseline.
-
-Planned comparisons:
-- SGD with momentum
-- AdamW
-
-Exit criteria:
-- You can explain where SGD still holds up and where adaptive optimization clearly helps.
-
-### Milestone 029: Training Recipe Improvements
+### Milestone 031: Training Recipe Improvements
 Track: Training recipe
 
 Goal:
@@ -364,10 +396,10 @@ Tracks still exist, but they are secondary to milestones:
 - Hardware: `021`
 - Scaling: `022`, `024`
 - Observability: `023`
-- Hardware: `025`
-- Profiling: `026`
-- Optimizers: `027`, `028`
-- Training recipe: `029`
+- Optimizers: `025`, `026`, `027`, `028`
+- Hardware: `029`
+- Profiling: `030`
+- Training recipe: `031`
 
 ## Later
 Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.
