@@ -24,12 +24,13 @@ The emphasis of phase 2 is:
 - and only after that deeper training-recipe work.
 
 ## Status
-As of 2026-03-30:
+As of 2026-04-01:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
 - `021` is complete as the TPU multi-shard baseline,
 - `022` is complete as the first aggressive scaled TPU baseline,
-- `023` is the next milestone,
+- `023` is now implemented as the next experiment script,
+- the first logged `023` milestone run is still pending,
 - phase 2 is now active rather than empty.
 
 ## Starting Baseline
@@ -226,6 +227,10 @@ Exit criteria:
 - A finished run can be understood from its artifact directory alone.
 - Milestone logs no longer depend on notebook stdout for essential metrics.
 - Artifact export from Colab and Kaggle is routine rather than ad hoc.
+
+Implementation:
+- `experiments/023_tpu_fineweb_edu_observability.py` keeps the scaled baseline behavior but saves `run_metadata.json` next to the CSV, SVG, and sample.
+- `lib/run_artifacts.py` holds the reusable metadata, summary, and artifact-writing helpers so the experiment stays thin.
 
 ### Milestone 024: Batch-Size Recovery Pass
 Track: Scaling
