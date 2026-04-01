@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 import jax
@@ -26,22 +26,18 @@ def resolve_execution_target(execution_target: str | None) -> str:
 def build_run_metadata(
     *,
     script_path: Path,
-    config: object,
+    config: Mapping[str, object],
     execution_target: str | None,
     run_details: dict[str, object] | None = None,
     run_metrics: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Assemble metadata so one artifact directory can explain one run."""
-    config_values = serialize_for_json(config)
-    if not isinstance(config_values, dict):
-        raise TypeError("config must serialize to a dictionary of values")
-
     metadata: dict[str, object] = {
         "script_name": script_path.name,
         "execution_target": resolve_execution_target(execution_target),
         "jax_backend": jax.default_backend(),
         "jax_device_count": jax.device_count(),
-        **config_values,
+        **serialize_mapping(dict(config)),
     }
 
     if run_details is not None:
@@ -163,8 +159,6 @@ def serialize_for_json(value: object) -> Any:
     """Convert paths, dataclasses, and containers into JSON-safe values."""
     if isinstance(value, Path):
         return str(value)
-    if is_dataclass(value) and not isinstance(value, type):
-        return serialize_for_json(asdict(value))
     if isinstance(value, dict):
         return {str(key): serialize_for_json(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):

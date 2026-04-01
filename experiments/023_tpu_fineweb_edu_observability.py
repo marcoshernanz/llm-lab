@@ -1,7 +1,7 @@
 """Train the milestone-023 scaled baseline with self-describing artifacts."""
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import optax  # pyright: ignore
@@ -384,7 +384,7 @@ def main() -> None:
 
     metadata = build_run_metadata(
         script_path=Path(__file__),
-        config=config,
+        config=asdict(config),
         execution_target=config.execution_target,
         run_details={
             "train_shards_used": len(train_shard_paths),
