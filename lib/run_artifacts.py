@@ -49,12 +49,21 @@ def build_run_metadata(
     train_steps = metadata.get("train_steps")
     batch_size = metadata.get("batch_size")
     context_length = metadata.get("context_length")
+    tokens_per_step = None
+    if isinstance(batch_size, (int, float)) and isinstance(context_length, (int, float)):
+        tokens_per_step = batch_size * context_length
+        metadata["tokens_per_step"] = tokens_per_step
+
+    if isinstance(train_steps, (int, float)):
+        if tokens_per_step is not None:
+            metadata["train_tokens_seen"] = train_steps * tokens_per_step
+
     if isinstance(train_seconds, (int, float)) and train_seconds > 0:
         if isinstance(train_steps, (int, float)):
             steps_per_second = train_steps / train_seconds
             metadata["steps_per_second"] = steps_per_second
-            if isinstance(batch_size, (int, float)) and isinstance(context_length, (int, float)):
-                metadata["tokens_per_second"] = steps_per_second * batch_size * context_length
+            if tokens_per_step is not None:
+                metadata["tokens_per_second"] = steps_per_second * tokens_per_step
 
     return metadata
 
@@ -125,6 +134,8 @@ def print_run_summary(
         "loaded_train_tokens",
         "loaded_train_subset_tokens",
         "loaded_validation_tokens",
+        "tokens_per_step",
+        "train_tokens_seen",
         "final_train_loss",
         "final_train_subset_loss",
         "final_validation_subset_loss",
