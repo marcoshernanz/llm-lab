@@ -1,6 +1,7 @@
 - Datasets in kaggle/colab
 
 - Tokenizer abstract class
+- Config abstract class
 - Model abstract class
 - Optimizers
 - Scale model up
