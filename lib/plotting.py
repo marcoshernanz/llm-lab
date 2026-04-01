@@ -6,10 +6,11 @@ import csv
 from dataclasses import dataclass, field
 from datetime import datetime
 import math
+import os
 from pathlib import Path
 from typing import Sequence
 
-ARTIFACTS_ROOT = Path(__file__).resolve().parent.parent / "artifacts" / "experiments"
+DEFAULT_ARTIFACTS_ROOT = Path(__file__).resolve().parent.parent / "artifacts" / "experiments"
 SVG_HEIGHT = 400
 SVG_WIDTH = 900
 
@@ -52,10 +53,16 @@ class LossTracker:
             f"validation_subset_loss={validation_subset_loss:.6f}"
         )
 
-    def save(self, *, script_path: Path) -> tuple[Path, Path]:
+    def save(
+        self,
+        *,
+        script_path: Path,
+        artifacts_root: Path | None = None,
+    ) -> tuple[Path, Path]:
         """Write the tracked losses to CSV and SVG artifacts."""
         return save_loss_artifacts(
             script_path=script_path,
+            artifacts_root=artifacts_root,
             train_steps=self.train_steps,
             train_subset_steps=self.train_subset_steps if self.train_subset_steps else None,
             validation_subset_steps=self.validation_subset_steps,
@@ -68,6 +75,7 @@ class LossTracker:
 def save_loss_artifacts(
     *,
     script_path: Path,
+    artifacts_root: Path | None = None,
     train_steps: Sequence[int],
     train_subset_steps: Sequence[int] | None,
     validation_subset_steps: Sequence[int],
@@ -82,7 +90,7 @@ def save_loss_artifacts(
     _validate_series("validation_subset", validation_subset_steps, validation_subset_losses)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    run_dir = ARTIFACTS_ROOT / script_path.stem / timestamp
+    run_dir = resolve_artifacts_root(artifacts_root) / script_path.stem / timestamp
     run_dir.mkdir(parents=True, exist_ok=False)
 
     csv_path = run_dir / "loss_history.csv"
@@ -114,6 +122,18 @@ def save_loss_artifacts(
     )
 
     return csv_path, svg_path
+
+
+def resolve_artifacts_root(artifacts_root: Path | None = None) -> Path:
+    """Choose the artifact root from an override, env var, or repo default."""
+    if artifacts_root is not None:
+        return artifacts_root
+
+    env_artifacts_root = os.environ.get("LLM_LAB_ARTIFACTS_ROOT")
+    if env_artifacts_root:
+        return Path(env_artifacts_root)
+
+    return DEFAULT_ARTIFACTS_ROOT
 
 
 def _validate_series(name: str, steps: Sequence[int], losses: Sequence[float]) -> None:
