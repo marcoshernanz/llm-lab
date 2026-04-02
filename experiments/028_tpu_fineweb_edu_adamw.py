@@ -1,4 +1,4 @@
-"""Train the milestone-027 Adam baseline with self-describing artifacts."""
+"""Train the milestone-028 AdamW scaffold with self-describing artifacts."""
 
 import argparse
 from dataclasses import asdict, dataclass
@@ -34,7 +34,7 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-027 Adam settings explicit and easy to inspect."""
+    """Keep the milestone-028 AdamW scaffold settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
@@ -96,7 +96,7 @@ class ExperimentConfig:
 def parse_args() -> ExperimentConfig:
     """Parse the small set of runtime overrides useful on TPU notebooks."""
     parser = argparse.ArgumentParser(
-        description="Train one milestone-027 TPU Adam point with run metadata."
+        description="Train one milestone-028 TPU AdamW point with run metadata."
     )
     parser.add_argument(
         "--token-shard-root",
@@ -342,7 +342,7 @@ def generate_text(
 
 
 def main() -> None:
-    """Run one milestone-027 TPU Adam point end to end."""
+    """Run one milestone-028 TPU AdamW point end to end."""
     config = parse_args()
 
     timer = Timer()
