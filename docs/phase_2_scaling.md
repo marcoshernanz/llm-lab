@@ -19,19 +19,21 @@ The emphasis of phase 2 is:
 - cleaner experiment visibility,
 - TPU-first execution for real runs,
 - controlled scaling,
-- then profiling,
-- then optimizer comparisons,
+- then optimizer implementation and comparisons,
+- then explicit multi-core execution and profiling,
 - and only after that deeper training-recipe work.
 
 ## Status
-As of 2026-04-01:
+As of 2026-04-02:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
 - `021` is complete as the TPU multi-shard baseline,
 - `022` is complete as the first aggressive scaled TPU baseline,
-- `023` is now implemented as the next experiment script,
-- the first logged `023` milestone run is still pending,
-- phase 2 is now active rather than empty.
+- `023` is complete as the first self-describing scaled-run baseline,
+- `024` is complete as the batch-size recovery pass,
+- `024` selected `batch_size=128` as the default scaled SGD baseline,
+- `025` is the next milestone and now has an experiment scaffold copied from `024`,
+- phase 2 now has a stable enough baseline to start learning optimizers from first principles.
 
 ## Starting Baseline
 The baseline inherited from phase 1 is:
@@ -272,18 +274,38 @@ Status:
 - Complete via `experiments/024_tpu_fineweb_edu_batch_size_sweep.py`.
 - The current default scaled SGD baseline is `batch_size=128`.
 
-### Milestone 025: SGD Baseline Lock-In
+### Milestone 025: From-Scratch SGD Baseline Lock-In
 Track: Optimizers
 
 Goal:
 - Freeze one clear scaled SGD reference before comparing optimizers.
+- Replace the current Optax-backed SGD path with a repo-owned SGD implementation so the optimizer becomes part of the learning surface.
 
-Why this comes after profiling:
-- The baseline should be both stable and performance-understood before optimizer comparisons start.
+Why this comes now:
+- `024` already selected the default scaled SGD setup, so the next useful learning step is to make SGD explicit rather than treating it as a library black box.
+- Optimizer comparisons will be easier to interpret if plain SGD is both behaviorally stable and implemented by hand in the repo.
+
+What stays fixed:
+- Same dataset and shard set.
+- Same model shape as the `024` default baseline.
+- Same hardware target.
+- Same artifact and subset-loss logging.
+- Same default `batch_size=128` reference point from `024`.
+
+What changes:
+- Optimizer implementation only.
+- The run should move from `optax.sgd(...)` to a small repo-owned SGD implementation.
+
+Concrete work:
+- Add a minimal optimizer module that implements plain SGD from first principles.
+- Wire the scaled baseline experiment to use that implementation.
+- Run at least one smoke test and one real baseline run with the new SGD path.
+- Record the resulting run as the canonical reference for `026`, `027`, and `028`.
 
 Exit criteria:
- - One scaled SGD run is the agreed reference point for later optimizer work.
- - The artifact format and hardware target are stable enough that optimizer differences are interpretable.
+- One scaled SGD run is the agreed reference point for later optimizer work.
+- The repo no longer depends on Optax for the plain SGD baseline.
+- The artifact format and hardware target are stable enough that optimizer differences are interpretable.
 
 ### Milestone 026: SGD With Momentum
 Track: Optimizers
