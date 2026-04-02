@@ -37,6 +37,15 @@ What worked reliably:
 /kaggle/working/artifacts/experiments
 ```
 
+For `023_tpu_fineweb_edu_observability.py`, prefer passing:
+
+```bash
+--artifacts-root /kaggle/working/artifacts/experiments \
+--execution-target "Kaggle TPU v5e-8"
+```
+
+The same artifact root can also be provided through `LLM_LAB_ARTIFACTS_ROOT`.
+
 ## Working Slugs Used
 
 Useful slugs:

@@ -1,7 +1,7 @@
-"""Train a larger TPU baseline for the first controlled phase-2 scaling pass."""
+"""Train the milestone-023 scaled baseline with self-describing artifacts."""
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import optax  # pyright: ignore
@@ -18,6 +18,7 @@ from lib.data import (
     load_tokenizer,
 )
 from lib.eval import evaluate_positions, sample_evaluation_positions
+from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.plotting import LossTracker
 from lib.timer import Timer
 from models.transformer import DecoderOnlyTransformer
@@ -32,10 +33,12 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-022 settings explicit and easy to inspect."""
+    """Keep the milestone-023 settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
+    artifacts_root: Path | None = None
+    execution_target: str | None = None
     seed: int = 0
     max_train_shards: int | None = 10
     validation_shard_index: int = 0
@@ -79,8 +82,10 @@ class ExperimentConfig:
 
 
 def parse_args() -> ExperimentConfig:
-    """Parse the small set of TPU runtime overrides useful in Colab."""
-    parser = argparse.ArgumentParser(description="Train the milestone-022 TPU scaling baseline.")
+    """Parse the small set of runtime overrides useful on TPU notebooks."""
+    parser = argparse.ArgumentParser(
+        description="Train the milestone-023 TPU scaling baseline with run metadata."
+    )
     parser.add_argument(
         "--token-shard-root",
         type=Path,
@@ -92,6 +97,18 @@ def parse_args() -> ExperimentConfig:
         type=Path,
         default=DEFAULT_TOKENIZER_PATH,
         help="Tokenizer artifact used for decoding samples.",
+    )
+    parser.add_argument(
+        "--artifacts-root",
+        type=Path,
+        default=None,
+        help="Optional output root for experiment artifacts.",
+    )
+    parser.add_argument(
+        "--execution-target",
+        type=str,
+        default=None,
+        help="Optional human-readable runtime label such as 'Kaggle TPU v5e-8'.",
     )
     parser.add_argument(
         "--max-train-shards",
@@ -139,6 +156,8 @@ def parse_args() -> ExperimentConfig:
     config = ExperimentConfig(
         token_shard_root=args.token_shard_root,
         tokenizer_path=args.tokenizer_path,
+        artifacts_root=args.artifacts_root,
+        execution_target=args.execution_target,
         max_train_shards=args.max_train_shards,
         validation_shard_index=args.validation_shard_index,
         batch_size=args.batch_size,
@@ -268,7 +287,7 @@ def generate_text(
 
 
 def main() -> None:
-    """Run the milestone-022 TPU scaling baseline end to end."""
+    """Run the milestone-023 TPU scaling baseline end to end."""
     config = parse_args()
 
     timer = Timer()
@@ -361,38 +380,38 @@ def main() -> None:
         config.context_length,
         sample_rng,
     )
-    loss_history_csv, loss_curve_svg = loss_tracker.save(script_path=Path(__file__))
-    sample_path = loss_history_csv.parent / "sample.txt"
-    sample_path.write_text(sample + "\n", encoding="utf-8")
     total_seconds = timer.stop("total")
 
-    print(f"jax_default_backend={jax.default_backend()}")
-    print(f"jax_device_count={jax.device_count()}")
-    print(f"token_shard_root={config.token_shard_root}")
-    print(f"tokenizer_path={config.tokenizer_path}")
-    print(f"train_shards_used={len(train_shard_paths)}")
-    print(f"max_train_shards={config.max_train_shards}")
-    print(f"validation_shard_index={config.validation_shard_index}")
-    print(f"train_subset_shard_index={config.train_subset_shard_index}")
-    print(f"shard_mmap={config.shard_mmap}")
-    print(f"batch_size={config.batch_size}")
-    print(f"learning_rate={config.learning_rate}")
-    print(f"train_steps={config.train_steps}")
-    print(f"embedding_dim={config.embedding_dim}")
-    print(f"num_decoder_blocks={config.num_decoder_blocks}")
-    print(f"loaded_train_tokens={train_tokens.shape[0]}")
-    print(f"loaded_train_subset_tokens={train_subset_tokens.shape[0]}")
-    print(f"loaded_validation_tokens={validation_tokens.shape[0]}")
-    print(f"final_train_loss={loss_tracker.train_losses[-1]:.6f}")
-    print(f"final_train_subset_loss={loss_tracker.train_subset_losses[-1]:.6f}")
-    print(f"final_validation_subset_loss={loss_tracker.validation_subset_losses[-1]:.6f}")
-    print(f"loss_history_csv={loss_history_csv}")
-    print(f"loss_curve_svg={loss_curve_svg}")
-    print(f"sample_path={sample_path}")
-    print(f"train_seconds={train_seconds:.3f}")
-    print(f"steps_per_second={config.train_steps / train_seconds:.3f}")
-    print(f"total_seconds={total_seconds:.3f}")
-    print(f'sample="""\n{sample}\n"""')
+    metadata = build_run_metadata(
+        script_path=Path(__file__),
+        config=asdict(config),
+        execution_target=config.execution_target,
+        run_details={
+            "train_shards_used": len(train_shard_paths),
+            "loaded_train_tokens": train_tokens.shape[0],
+            "loaded_train_subset_tokens": train_subset_tokens.shape[0],
+            "loaded_validation_tokens": validation_tokens.shape[0],
+        },
+        run_metrics={
+            "final_train_loss": loss_tracker.train_losses[-1],
+            "final_train_subset_loss": loss_tracker.train_subset_losses[-1],
+            "final_validation_subset_loss": loss_tracker.validation_subset_losses[-1],
+            "train_seconds": train_seconds,
+            "total_seconds": total_seconds,
+        },
+    )
+    artifacts = save_run_artifacts(
+        script_path=Path(__file__),
+        loss_tracker=loss_tracker,
+        sample_text=sample,
+        metadata=metadata,
+        artifacts_root=config.artifacts_root,
+    )
+    print_run_summary(
+        metadata=metadata,
+        artifacts=artifacts,
+        sample_text=sample,
+    )
 
 
 if __name__ == "__main__":
