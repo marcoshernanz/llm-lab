@@ -1,6 +1,6 @@
 # Phase 2 Learning Log
 
-Runs recorded on 2026-03-29 and 2026-03-30.
+Runs recorded on 2026-03-29, 2026-03-30, and 2026-04-02.
 
 ## Summary
 
@@ -10,6 +10,7 @@ Runs recorded on 2026-03-29 and 2026-03-30.
 | 020 | `experiments/020_fineweb_edu_multi_shard.py` | 2000 | 8.500550 | 8.454494 | - | 79.841 | 25.050 | 81.189 | [csv](../artifacts/experiments/020_fineweb_edu_multi_shard/20260329_105807_886930/loss_history.csv) | [svg](../artifacts/experiments/020_fineweb_edu_multi_shard/20260329_105807_886930/loss_curve.svg) |
 | 021 | `experiments/021_tpu_fineweb_edu_multi_shard.py` | 2000 | 8.500500 | 8.454404 | - | 31.066 | 64.380 | 37.386 | [csv](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_history.csv) | [svg](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_curve.svg) |
 | 022 | `experiments/022_tpu_fineweb_edu_scaling_baseline.py` | 100000 | 5.623495 | 5.661370 | - | 1036.165 | 96.510 | 1052.031 | [csv](../artifacts/experiments/022_tpu_fineweb_edu_scaling_baseline/20260330_094720_375254/loss_history.csv) | [svg](../artifacts/experiments/022_tpu_fineweb_edu_scaling_baseline/20260330_094720_375254/loss_curve.svg) |
+| 023 | `experiments/023_tpu_fineweb_edu_observability.py` | 50000 | 6.695227 | 6.676567 | - | 527.652 | 94.760 | 546.003 | [csv](../artifacts/experiments/023_tpu_fineweb_edu_observability/20260402_073232_728428/loss_history.csv) | [svg](../artifacts/experiments/023_tpu_fineweb_edu_observability/20260402_073232_728428/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -126,4 +127,46 @@ Runs recorded on 2026-03-29 and 2026-03-30.
 ```text
  assical – easy
 Ender-The third that's silent. You want Poking to one’s ridw by one violin game. Today it is first art waiting to and label for everyone on a healthy planet. “We start with red product pain: it can become steep in the one who fear, but
+```
+
+## 023 FineWeb-Edu TPU Observability
+
+- Script: `experiments/023_tpu_fineweb_edu_observability.py`
+- Execution target: Kaggle TPU `v5e-8`
+- JAX device count: `8`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/kaggle/working/artifacts/experiments`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Train subset shard index: `0`
+- Batch size: `64`
+- Learning rate: `0.05`
+- Embedding dim: `128`
+- Decoder blocks: `8`
+- Loaded train tokens: `10000000`
+- Loaded train subset tokens: `10000000`
+- Loaded validation tokens: `1000670`
+- Steps: `50000`
+- Tokens per step: `4096`
+- Train tokens seen: `204800000`
+- Final train loss: `6.695227`
+- Final train subset loss: `6.807827`
+- Final validation subset loss: `6.676567`
+- Final validation loss: `-`
+- Note: this was the first real `023` run and validated the self-describing artifact flow by saving the CSV, SVG, sample, and `run_metadata.json` together in one run directory.
+- Run metadata: [run_metadata.json](../artifacts/experiments/023_tpu_fineweb_edu_observability/20260402_073232_728428/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/023_tpu_fineweb_edu_observability/20260402_073232_728428/sample.txt)
+- Train seconds: `527.652`
+- Steps per second: `94.760`
+- Tokens per second: `388134.919`
+- Total seconds: `546.003`
+
+![023 fineweb edu tpu observability loss curve](../artifacts/experiments/023_tpu_fineweb_edu_observability/20260402_073232_728428/loss_curve.svg)
+
+```text
+ got turns a company has even spined, terrorend together, who give understand how housify western innovges along with Sun should you use an guidance or mean forward all other tolerance their impacts. It is Diseaseing fleer, specified –.
+A book55 Russia country is should be considered treating books Native best that
 ```
