@@ -33,8 +33,9 @@ As of 2026-04-02:
 - `024` is complete as the batch-size recovery pass,
 - `024` selected `batch_size=128` as the default scaled SGD baseline,
 - `025` is complete as the locked from-scratch SGD baseline,
-- `026` is the next milestone and now has an experiment scaffold copied from `025`,
-- phase 2 now has a stable enough SGD reference to study optimizer state directly.
+- `026` is complete as the handwritten momentum-SGD baseline,
+- `027` is the next milestone and now has an experiment scaffold copied from `026`,
+- phase 2 now has stable first-order baselines and is ready to study adaptive optimization.
 
 ## Starting Baseline
 The baseline inherited from phase 1 is:
@@ -345,20 +346,48 @@ Exit criteria:
 - You can explain the difference between plain SGD and momentum-SGD in this training regime.
 - One logged `026` run can be compared directly against the locked `025` baseline.
 
+Status:
+- Complete via `experiments/026_tpu_fineweb_edu_sgd_momentum.py`.
+- The locked momentum reference is `batch_size=128`, `learning_rate=0.1`, `momentum=0.9`, `train_steps=100000`.
+
 ### Milestone 027: Adam
 Track: Optimizers
 
 Goal:
 - Compare Adam against the locked SGD family baselines.
 
+Why this is next:
+- `026` added optimizer state in the simplest possible way through velocity.
+- Adam is the next useful step because it keeps the first-moment idea while adding adaptive per-parameter scaling through a second moment.
+
 What stays fixed:
 - Same scaled model shape.
 - Same dataset and shard set.
 - Same hardware target.
 - Same artifact and subset-loss logging.
+- Same default baseline run from `026`: `batch_size=128`, `train_steps=100000`.
+
+What changes:
+- Optimizer only.
+- Replace the single momentum velocity tree with two Adam state trees:
+  - first moment
+  - second moment
+- Add the Adam bias-correction step counter.
+
+Concrete work:
+- Copy the `026` experiment into a `027` experiment scaffold.
+- Add minimal Adam-state initializers to the optimizer module.
+- Implement Adam from first principles with:
+  - first-moment updates
+  - second-moment updates
+  - bias correction
+  - epsilon stabilization
+- Start with an Adam-appropriate learning rate rather than reusing the SGD rate blindly.
+- Run one smoke test and one real baseline run against the locked `025` and `026` references.
 
 Exit criteria:
 - You can explain where Adam helps, where it changes training behavior, and whether the difference is worth it in this regime.
+- One logged `027` run can be compared cleanly against the locked `025` and `026` baselines.
 
 ### Milestone 028: AdamW
 Track: Optimizers
