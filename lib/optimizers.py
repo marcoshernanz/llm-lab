@@ -139,7 +139,8 @@ def apply_adamw(
     )
     new_params = jax.tree.map(
         lambda param, first_leaf, second_leaf: (
-            param - learning_rate * first_leaf / (jnp.sqrt(second_leaf) + epsilon)
+            (1 - learning_rate * weight_decay) * param
+            - learning_rate * first_leaf / (jnp.sqrt(second_leaf) + epsilon)
         ),
         params,
         corrected_first_moment,
