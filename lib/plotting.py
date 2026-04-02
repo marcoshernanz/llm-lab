@@ -19,6 +19,7 @@ SVG_WIDTH = 900
 class LossTracker:
     """Collect train, optional train-subset, and validation-subset losses."""
 
+    print_updates: bool = True
     train_steps: list[int] = field(default_factory=list)
     train_subset_steps: list[int] = field(default_factory=list)
     validation_subset_steps: list[int] = field(default_factory=list)
@@ -47,11 +48,12 @@ class LossTracker:
             self.train_subset_steps.append(step)
             self.train_subset_losses.append(train_subset_loss)
             train_subset_text = f" train_subset_loss={train_subset_loss:.6f}"
-        print(
-            f"step={step} train_loss={train_loss:.6f} "
-            f"{train_subset_text} "
-            f"validation_subset_loss={validation_subset_loss:.6f}"
-        )
+        if self.print_updates:
+            print(
+                f"step={step} train_loss={train_loss:.6f} "
+                f"{train_subset_text} "
+                f"validation_subset_loss={validation_subset_loss:.6f}"
+            )
 
     def save(
         self,
