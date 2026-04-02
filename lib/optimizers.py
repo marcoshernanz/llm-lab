@@ -7,15 +7,6 @@ import jax
 import jax.numpy as jnp
 
 
-def sgd_update(
-    param: jax.Array,
-    grad: jax.Array,
-    learning_rate: float,
-) -> jax.Array:
-    """Return the plain SGD parameter update for one array leaf."""
-    return param - learning_rate * grad
-
-
 def apply_sgd(
     model: nnx.Module,
     grads: nnx.State[Any, Any],
@@ -23,7 +14,7 @@ def apply_sgd(
 ) -> None:
     """Apply one plain SGD update to the model parameters."""
     params = nnx.state(model, nnx.Param)
-    new_params = jax.tree.map(lambda param, grad: sgd_update(param, grad, learning_rate), params, grads)
+    new_params = jax.tree.map(lambda param, grad: param - learning_rate * grad, params, grads)
     nnx.update(model, new_params)
 
 
@@ -47,6 +38,8 @@ def apply_sgd_momentum(
         velocity,
         grads,
     )
-    new_params = jax.tree.map(lambda param, velocity_leaf: param + velocity_leaf, params, new_velocity)
+    new_params = jax.tree.map(
+        lambda param, velocity_leaf: param + velocity_leaf, params, new_velocity
+    )
     nnx.update(model, new_params)
     return new_velocity
