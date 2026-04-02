@@ -5,5 +5,5 @@
   "ruff.enable": true,
   "ruff.organizeImports": true,
 
-  "cSpell.words": ["gelu", "maxval", "minval", "softmax"]
+  "cSpell.words": ["adam", "gelu", "maxval", "minval", "softmax"]
 }
