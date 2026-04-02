@@ -1,4 +1,4 @@
-"""Train the milestone-024 batch-size sweep with self-describing artifacts."""
+"""Train the milestone-025 SGD baseline with self-describing artifacts."""
 
 import argparse
 from dataclasses import asdict, dataclass
@@ -33,7 +33,7 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-024 sweep settings explicit and easy to inspect."""
+    """Keep the milestone-025 baseline settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
@@ -84,7 +84,7 @@ class ExperimentConfig:
 def parse_args() -> ExperimentConfig:
     """Parse the small set of runtime overrides useful on TPU notebooks."""
     parser = argparse.ArgumentParser(
-        description="Train one milestone-024 TPU batch-size sweep point with run metadata."
+        description="Train one milestone-025 TPU SGD baseline point with run metadata."
     )
     parser.add_argument(
         "--token-shard-root",
@@ -287,7 +287,7 @@ def generate_text(
 
 
 def main() -> None:
-    """Run one milestone-024 TPU batch-size sweep point end to end."""
+    """Run one milestone-025 TPU SGD baseline point end to end."""
     config = parse_args()
 
     timer = Timer()
