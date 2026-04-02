@@ -1,4 +1,4 @@
-"""Train the milestone-028 AdamW scaffold with self-describing artifacts."""
+"""Train the milestone-028 AdamW baseline with self-describing artifacts."""
 
 import argparse
 from dataclasses import asdict, dataclass
@@ -21,7 +21,7 @@ from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.plotting import LossTracker
 from lib.timer import Timer
-from lib.optimizers import apply_adam, init_adam_state
+from lib.optimizers import apply_adamw, init_adam_state
 from models.transformer import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
@@ -34,7 +34,7 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-028 AdamW scaffold settings explicit and easy to inspect."""
+    """Keep the milestone-028 AdamW settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
@@ -51,6 +51,7 @@ class ExperimentConfig:
     beta1: float = 0.9
     beta2: float = 0.999
     epsilon: float = 1e-8
+    weight_decay: float = 0.01
     train_steps: int = 20_000
     train_chunk_length: int = 100
     validation_subset_examples: int = 256
@@ -79,6 +80,8 @@ class ExperimentConfig:
             raise ValueError("beta2 must be in the half-open interval [0, 1)")
         if self.epsilon <= 0:
             raise ValueError("epsilon must be positive")
+        if self.weight_decay < 0:
+            raise ValueError("weight_decay must be non-negative")
         if self.eval_batch_size <= 0:
             raise ValueError("eval_batch_size must be positive")
         if self.context_length <= 0:
@@ -144,7 +147,7 @@ def parse_args() -> ExperimentConfig:
         "--learning-rate",
         type=float,
         default=ExperimentConfig.learning_rate,
-        help="Adam learning rate.",
+        help="AdamW learning rate.",
     )
     parser.add_argument(
         "--beta1",
@@ -163,6 +166,12 @@ def parse_args() -> ExperimentConfig:
         type=float,
         default=ExperimentConfig.epsilon,
         help="Adam denominator stabilizer.",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=ExperimentConfig.weight_decay,
+        help="Decoupled AdamW weight decay.",
     )
     parser.add_argument(
         "--train-steps",
@@ -195,6 +204,7 @@ def parse_args() -> ExperimentConfig:
         beta1=args.beta1,
         beta2=args.beta2,
         epsilon=args.epsilon,
+        weight_decay=args.weight_decay,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
         shard_mmap=not args.no_shard_mmap,
@@ -252,11 +262,21 @@ def train_step(
     beta1: float,
     beta2: float,
     epsilon: float,
+    weight_decay: float,
 ) -> tuple[jax.Array, nnx.State[Any, Any], nnx.State[Any, Any], jax.Array]:
-    """Run one Adam step on a batch of token examples."""
+    """Run one AdamW step on a batch of token examples."""
     loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
-    first_moment, second_moment, step = apply_adam(
-        model, grads, first_moment, second_moment, step, learning_rate, beta1, beta2, epsilon
+    first_moment, second_moment, step = apply_adamw(
+        model,
+        grads,
+        first_moment,
+        second_moment,
+        step,
+        learning_rate,
+        beta1,
+        beta2,
+        epsilon,
+        weight_decay,
     )
     return loss, first_moment, second_moment, step
 
@@ -302,6 +322,7 @@ def train_chunk(
             config.beta1,
             config.beta2,
             config.epsilon,
+            config.weight_decay,
         )
         total_loss = total_loss + loss
     return total_loss / config.train_chunk_length, first_moment, second_moment, step, rng
