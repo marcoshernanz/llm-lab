@@ -34,6 +34,7 @@ class LossTracker:
         train_loss: float,
         validation_subset_loss: float,
         train_subset_loss: float | None = None,
+        tokens_per_second: float | None = None,
     ) -> None:
         """Record one training step and its matching evaluation estimates."""
         if step <= 0:
@@ -43,17 +44,18 @@ class LossTracker:
         self.validation_subset_steps.append(step)
         self.train_losses.append(train_loss)
         self.validation_subset_losses.append(validation_subset_loss)
-        train_subset_text = ""
         if train_subset_loss is not None:
             self.train_subset_steps.append(step)
             self.train_subset_losses.append(train_subset_loss)
-            train_subset_text = f" train_subset_loss={train_subset_loss:.6f}"
         if self.print_updates:
-            print(
-                f"step={step} train_loss={train_loss:.6f} "
-                f"{train_subset_text} "
-                f"validation_subset_loss={validation_subset_loss:.6f}"
+            line = (
+                f"step={step} "
+                f"train_loss={train_loss:.6f} "
+                f"val_loss={validation_subset_loss:.6f}"
             )
+            if tokens_per_second is not None:
+                line = f"{line} tokens_per_second={tokens_per_second:.3f}"
+            print(line)
 
     def save(
         self,
