@@ -18,6 +18,7 @@ Runs recorded on 2026-03-29, 2026-03-30, and 2026-04-02.
 | 024 (bs=256) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.323929 | 7.266669 | - | 440.003 | 744722.286 | 459.126 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_curve.svg) |
 | 025 | `experiments/025_tpu_fineweb_edu_sgd_baseline.py` | 100000 | 5.623495 | 5.661370 | - | 1000.243 | 819000.865 | 1016.738 | [csv](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/loss_history.csv) | [svg](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/loss_curve.svg) |
 | 026 | `experiments/026_tpu_fineweb_edu_sgd_momentum.py` | 100000 | 4.862294 | 4.971999 | - | 1767.985 | 463352.367 | 1786.013 | [csv](../artifacts/experiments/026_tpu_fineweb_edu_sgd_momentum/20260402_163704_813630/loss_history.csv) | [svg](../artifacts/experiments/026_tpu_fineweb_edu_sgd_momentum/20260402_163704_813630/loss_curve.svg) |
+| 027 | `experiments/027_tpu_fineweb_edu_adam.py` | 100000 | 4.705221 | 4.844537 | - | 2615.693 | 313186.596 | 2634.150 | [csv](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/loss_history.csv) | [svg](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -288,4 +289,48 @@ Ender-The third that's silent. You want Poking to one’s ridw by one violin gam
 assing – the parent should let them know, on the first, b it alone:
 One of the commonest way by one violate him to walk for another son waiting to and sing for that one person lying in one room foot.
 Balister's friend wants to give up one father: “For
+```
+
+## 027 FineWeb-Edu TPU Adam
+
+- Script: `experiments/027_tpu_fineweb_edu_adam.py`
+- Execution target: Kaggle TPU `v5e-8`
+- JAX device count: `8`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/kaggle/working/artifacts/experiments`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Train subset shard index: `0`
+- Batch size: `128`
+- Learning rate: `0.001`
+- Beta1: `0.9`
+- Beta2: `0.999`
+- Epsilon: `1e-8`
+- Embedding dim: `128`
+- Decoder blocks: `8`
+- Loaded train tokens: `10000000`
+- Loaded train subset tokens: `10000000`
+- Loaded validation tokens: `1000670`
+- Steps: `100000`
+- Tokens per step: `8192`
+- Train tokens seen: `819200000`
+- Final train loss: `4.705221`
+- Final train subset loss: `4.855129`
+- Final validation subset loss: `4.844537`
+- Final validation loss: `-`
+- Note: this was the first logged milestone-027 run using handwritten Adam with first moment, second moment, and bias correction.
+- Note: compared with the locked `026` momentum baseline, Adam improved validation subset loss modestly at the same token budget, but reduced throughput again.
+- Run metadata: [run_metadata.json](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/sample.txt)
+- Train seconds: `2615.693`
+- Tokens per second: `313186.596`
+- Total seconds: `2634.150`
+
+![027 fineweb edu tpu adam loss curve](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/loss_curve.svg)
+
+```text
+assing – easy asset bundle if invented entirely or declared by the Pok. For one’s rank, by one violation and a new law-bak, or and by other hardy guests. They are the natural right to master it. Feelings inside this person’s opinion, so our way
 ```
