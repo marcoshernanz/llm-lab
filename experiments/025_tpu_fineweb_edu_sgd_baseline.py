@@ -4,7 +4,6 @@ import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-import optax  # pyright: ignore
 from flax import nnx
 
 import jax
@@ -21,6 +20,7 @@ from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.plotting import LossTracker
 from lib.timer import Timer
+from lib.optimizers import apply_sgd
 from models.transformer import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
@@ -210,13 +210,13 @@ def loss_fn(
 @nnx.jit
 def train_step(
     model: DecoderOnlyTransformer,
-    optimizer: nnx.Optimizer[DecoderOnlyTransformer],
     input_ids: jax.Array,
     target_ids: jax.Array,
+    learning_rate: float,
 ) -> jax.Array:
     """Run one optimizer step on a batch of token examples."""
     loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
-    optimizer.update(model, grads)
+    apply_sgd(model, grads, learning_rate)
     return loss
 
 
@@ -232,7 +232,6 @@ def evaluate_batch_loss(
 
 def train_chunk(
     model: DecoderOnlyTransformer,
-    optimizer: nnx.Optimizer[DecoderOnlyTransformer],
     tokens: jax.Array,
     config: ExperimentConfig,
     rng: jax.Array,
@@ -248,7 +247,7 @@ def train_chunk(
             maxval=tokens.shape[0] - config.context_length,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
-        total_loss = total_loss + train_step(model, optimizer, input_ids, target_ids)
+        total_loss = total_loss + train_step(model, input_ids, target_ids, config.learning_rate)
     return total_loss / config.train_chunk_length, rng
 
 
@@ -317,7 +316,6 @@ def main() -> None:
         num_decoder_blocks=config.num_decoder_blocks,
         rngs=rngs,
     )
-    optimizer = nnx.Optimizer(model, optax.sgd(config.learning_rate), wrt=nnx.Param)
     timer.start("train")
 
     rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
@@ -342,7 +340,7 @@ def main() -> None:
             train_shard_paths[active_train_shard_index],
             mmap=config.shard_mmap,
         )
-        train_loss, rng = train_chunk(model, optimizer, train_tokens, config, rng)
+        train_loss, rng = train_chunk(model, train_tokens, config, rng)
         train_subset_loss = evaluate_positions(
             train_subset_tokens,
             train_subset_start_positions,
