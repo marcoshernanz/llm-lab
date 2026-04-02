@@ -45,7 +45,7 @@ class ExperimentConfig:
     train_subset_shard_index: int = 0
     shard_mmap: bool = True
     eval_batch_size: int = 64
-    batch_size: int = 64
+    batch_size: int = 128
     learning_rate: float = 0.05
     train_steps: int = 20_000
     train_chunk_length: int = 100
