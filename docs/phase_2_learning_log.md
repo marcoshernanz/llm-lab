@@ -11,6 +11,11 @@ Runs recorded on 2026-03-29, 2026-03-30, and 2026-04-02.
 | 021 | `experiments/021_tpu_fineweb_edu_multi_shard.py` | 2000 | 8.500500 | 8.454404 | - | 31.066 | 32962.081 | 37.386 | [csv](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_history.csv) | [svg](../artifacts/experiments/021_tpu_fineweb_edu_multi_shard/20260329_214151_966060/loss_curve.svg) |
 | 022 | `experiments/022_tpu_fineweb_edu_scaling_baseline.py` | 100000 | 5.623495 | 5.661370 | - | 1036.165 | 790607.673 | 1052.031 | [csv](../artifacts/experiments/022_tpu_fineweb_edu_scaling_baseline/20260330_094720_375254/loss_history.csv) | [svg](../artifacts/experiments/022_tpu_fineweb_edu_scaling_baseline/20260330_094720_375254/loss_curve.svg) |
 | 023 | `experiments/023_tpu_fineweb_edu_observability.py` | 50000 | 6.695227 | 6.676567 | - | 527.652 | 388134.919 | 546.003 | [csv](../artifacts/experiments/023_tpu_fineweb_edu_observability/20260402_073232_728428/loss_history.csv) | [svg](../artifacts/experiments/023_tpu_fineweb_edu_observability/20260402_073232_728428/loss_curve.svg) |
+| 024 (bs=32) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.339828 | 7.283637 | - | 232.266 | 176349.891 | 249.171 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092540_256215/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092540_256215/loss_curve.svg) |
+| 024 (bs=64) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.334074 | 7.275748 | - | 229.107 | 357561.819 | 248.753 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092958_281581/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092958_281581/loss_curve.svg) |
+| 024 (bs=128) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.330273 | 7.270663 | - | 241.892 | 677326.910 | 262.003 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/loss_curve.svg) |
+| 024 (bs=192) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.324606 | 7.268756 | - | 318.190 | 772369.864 | 340.076 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/loss_curve.svg) |
+| 024 (bs=256) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.323929 | 7.266669 | - | 440.003 | 744722.286 | 459.126 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -169,3 +174,29 @@ Ender-The third that's silent. You want Poking to one’s ridw by one violin gam
  got turns a company has even spined, terrorend together, who give understand how housify western innovges along with Sun should you use an guidance or mean forward all other tolerance their impacts. It is Diseaseing fleer, specified –.
 A book55 Russia country is should be considered treating books Native best that
 ```
+
+## 024 FineWeb-Edu TPU Batch-Size Sweep
+
+- Script: `024_tpu_fineweb_edu_batch_size_sweep.py`
+- Execution target: Kaggle TPU `v5e-8`
+- JAX device count: `8`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/kaggle/working/artifacts/experiments`
+- Token dtype: `uint16`
+- Fixed settings: `train_steps=20000`, `learning_rate=0.05`, `context_length=64`, `embedding_dim=128`, `num_decoder_blocks=8`, `train_shards_used=10`
+- Swept setting: batch size only
+
+| Batch Size | Train Subset Loss | Val Subset Loss | Train Seconds | Tokens/Sec | Metadata | CSV | Graph |
+| ---------: | ----------------: | --------------: | ------------: | ---------: | -------- | --- | ----- |
+| 32 | 7.423256 | 7.283637 | 232.266 | 176349.891 | [json](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092540_256215/run_metadata.json) | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092540_256215/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092540_256215/loss_curve.svg) |
+| 64 | 7.414397 | 7.275748 | 229.107 | 357561.819 | [json](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092958_281581/run_metadata.json) | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092958_281581/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_092958_281581/loss_curve.svg) |
+| 128 | 7.408354 | 7.270663 | 241.892 | 677326.910 | [json](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/run_metadata.json) | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/loss_curve.svg) |
+| 192 | 7.405658 | 7.268756 | 318.190 | 772369.864 | [json](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/run_metadata.json) | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/loss_curve.svg) |
+| 256 | 7.404225 | 7.266669 | 440.003 | 744722.286 | [json](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/run_metadata.json) | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_curve.svg) |
+
+- Result: `batch_size=256` achieved the best validation subset loss, but only by a very small margin over `192`.
+- Result: `batch_size=192` achieved the highest token throughput in the sweep.
+- Interpretation: `192` looks like the strongest default scaled SGD baseline because it preserved essentially all of the optimization gain from the largest batch while avoiding the throughput drop seen at `256`.
+- Selected sample artifact: [sample.txt](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/sample.txt)
