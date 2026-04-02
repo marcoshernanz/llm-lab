@@ -67,6 +67,8 @@ class ExperimentConfig:
             raise ValueError("train_steps must be divisible by train_chunk_length")
         if self.batch_size <= 0:
             raise ValueError("batch_size must be positive")
+        if self.learning_rate <= 0:
+            raise ValueError("learning_rate must be positive")
         if self.eval_batch_size <= 0:
             raise ValueError("eval_batch_size must be positive")
         if self.context_length <= 0:
@@ -214,7 +216,7 @@ def train_step(
     target_ids: jax.Array,
     learning_rate: float,
 ) -> jax.Array:
-    """Run one optimizer step on a batch of token examples."""
+    """Run one plain-SGD step on a batch of token examples."""
     loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
     apply_sgd(model, grads, learning_rate)
     return loss
