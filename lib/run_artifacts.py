@@ -107,58 +107,33 @@ def print_run_summary(
     artifacts: RunArtifacts,
     sample_text: str,
 ) -> None:
-    """Print the most useful run fields in a stable, greppable format."""
-    summary_keys = [
-        "execution_target",
-        "jax_backend",
-        "jax_device_count",
-        "token_shard_root",
-        "tokenizer_path",
-        "train_shards_used",
-        "max_train_shards",
-        "validation_shard_index",
-        "train_subset_shard_index",
-        "shard_mmap",
-        "batch_size",
-        "eval_batch_size",
-        "learning_rate",
-        "train_steps",
-        "train_chunk_length",
-        "context_length",
-        "embedding_dim",
-        "hidden_dim",
-        "num_heads",
-        "num_decoder_blocks",
-        "validation_subset_examples",
-        "sample_tokens",
-        "loaded_train_tokens",
-        "loaded_train_subset_tokens",
-        "loaded_validation_tokens",
-        "tokens_per_step",
-        "train_tokens_seen",
-        "final_train_loss",
-        "final_train_subset_loss",
-        "final_validation_subset_loss",
-        "train_seconds",
-        "steps_per_second",
-        "tokens_per_second",
-        "total_seconds",
-    ]
+    """Print the minimal metrics needed to compare training runs quickly."""
+    del artifacts
+    del sample_text
 
-    for key in summary_keys:
-        if key not in metadata or metadata[key] is None:
-            continue
-        value = metadata[key]
-        if key.startswith("final_") or key.endswith("_seconds") or key.endswith("_per_second"):
-            if isinstance(value, float):
-                value = f"{value:.6f}" if key.startswith("final_") else f"{value:.3f}"
-        print(f"{key}={value}")
+    train_loss = metadata.get("final_train_loss")
+    validation_loss = metadata.get("final_validation_loss")
+    if validation_loss is None:
+        validation_loss = metadata.get("final_validation_subset_loss")
+    tokens_per_second = metadata.get("tokens_per_second")
 
-    print(f"loss_history_csv={artifacts['loss_history_csv']}")
-    print(f"loss_curve_svg={artifacts['loss_curve_svg']}")
-    print(f"sample_path={artifacts['sample_path']}")
-    print(f"metadata_path={artifacts['metadata_path']}")
-    print(f'sample="""\n{sample_text}\n"""')
+    if train_loss is not None:
+        if isinstance(train_loss, float):
+            print(f"train_loss={train_loss:.6f}")
+        else:
+            print(f"train_loss={train_loss}")
+
+    if validation_loss is not None:
+        if isinstance(validation_loss, float):
+            print(f"validation_loss={validation_loss:.6f}")
+        else:
+            print(f"validation_loss={validation_loss}")
+
+    if tokens_per_second is not None:
+        if isinstance(tokens_per_second, float):
+            print(f"tokens_per_second={tokens_per_second:.3f}")
+        else:
+            print(f"tokens_per_second={tokens_per_second}")
 
 
 def serialize_mapping(values: dict[str, object]) -> dict[str, object]:
