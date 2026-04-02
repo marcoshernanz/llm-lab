@@ -32,7 +32,7 @@ As of 2026-04-02:
 - `023` is complete as the first self-describing scaled-run baseline,
 - `024` is complete as the batch-size recovery pass,
 - `024` selected `batch_size=128` as the default scaled SGD baseline,
-- `025` is the next milestone and now has an experiment scaffold copied from `024`,
+- `025` now has a from-scratch SGD experiment path wired into the baseline script,
 - phase 2 now has a stable enough baseline to start learning optimizers from first principles.
 
 ## Starting Baseline
