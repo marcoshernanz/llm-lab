@@ -23,12 +23,7 @@ def apply_sgd(
 ) -> None:
     """Apply one plain SGD update to the model parameters."""
     params = nnx.state(model, nnx.Param)
-
-    def update_leaf(param: jax.Array, grad: jax.Array) -> jax.Array:
-        """Apply the SGD rule to one parameter leaf and its gradient."""
-        return sgd_update(param, grad, learning_rate)
-
-    new_params = jax.tree.map(update_leaf, params, grads)
+    new_params = jax.tree.map(lambda param, grad: sgd_update(param, grad, learning_rate), params, grads)
     nnx.update(model, new_params)
 
 
@@ -47,12 +42,11 @@ def apply_sgd_momentum(
 ) -> nnx.State[Any, Any]:
     """Apply one momentum-SGD update and return the new velocity tree."""
     params = nnx.state(model, nnx.Param)
-
-    def update_velocity(velocity_leaf: jax.Array, grad: jax.Array) -> jax.Array:
-        """Update one velocity leaf using the current gradient leaf."""
-        return momentum * velocity_leaf - learning_rate * grad
-
-    new_velocity = jax.tree.map(update_velocity, velocity, grads)
+    new_velocity = jax.tree.map(
+        lambda velocity_leaf, grad: momentum * velocity_leaf - learning_rate * grad,
+        velocity,
+        grads,
+    )
     new_params = jax.tree.map(lambda param, velocity_leaf: param + velocity_leaf, params, new_velocity)
     nnx.update(model, new_params)
     return new_velocity
