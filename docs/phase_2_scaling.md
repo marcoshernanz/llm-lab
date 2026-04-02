@@ -426,7 +426,43 @@ Exit criteria:
 - You can compare Adam vs AdamW cleanly and say whether the distinction matters yet.
 - One logged `028` run can be compared directly against the locked `027` Adam baseline.
 
-### Milestone 029: Multi-Core JAX TPU Baseline
+### Milestone 029: Ecosystem Alignment Refactor
+Track: Engineering
+
+Goal:
+- Refactor the learning-built training stack into a clean, professional baseline that leans on the JAX/Flax/Optax ecosystem wherever doing so improves clarity and maintainability.
+
+Why this comes here:
+- `025` through `028` were about understanding optimizers from first principles by implementing them directly.
+- After that learning arc is complete, the next useful step is to contrast the hand-built path with the ecosystem-native path professionals would usually ship and maintain.
+- This milestone is not about changing the training recipe again. It is about changing implementation style while preserving the learned concepts and keeping the repo minimal.
+
+What stays fixed:
+- Same scaled model shape.
+- Same dataset and shard set.
+- Same hardware target.
+- Same artifact format and subset-loss logging.
+- Same recent optimizer conclusions from `025` through `028`.
+
+What changes:
+- Implementation style only.
+- Prefer `flax.nnx` or other Flax/JAX ecosystem building blocks over hand-rolled infrastructure when the ecosystem version is clearer and production-leaning.
+- Prefer `optax` optimizers over handwritten optimizer implementations in the production-style baseline.
+- Prefer cleaner ecosystem-native module boundaries over custom learning scaffolding where that scaffolding is no longer the thing being studied.
+
+Concrete work:
+- Add one new production-style experiment baseline after the handwritten optimizer arc.
+- Replace handwritten optimizer code in that path with the matching `optax` implementation.
+- Evaluate where model components should remain handwritten for learning value versus where ecosystem-native blocks are now the cleaner choice.
+- Keep the script thin, readable, and pedagogical even while making it more professional.
+- Document explicitly which custom pieces were intentionally retired and which still remain because they carry real learning value.
+
+Exit criteria:
+- One baseline run exists that uses the ecosystem to the greatest practical extent without turning the repo into a framework.
+- The difference between the learning-first implementation style and the production-style implementation style is clear in the code.
+- The resulting code is cleaner and more maintainable without losing the repo’s minimal learning-oriented character.
+
+### Milestone 030: Multi-Core JAX TPU Baseline
 Track: Hardware
 
 Goal:
@@ -458,7 +494,7 @@ Exit criteria:
 - Throughput improvement is measured clearly.
 - You can explain the main conceptual changes required to go multi-core.
 
-### Milestone 030: Profiling First Pass
+### Milestone 031: Profiling First Pass
 Track: Profiling
 
 Goal:
@@ -476,7 +512,7 @@ Exit criteria:
 - Profiling answers at least one concrete bottleneck question.
 - The results change a real next decision.
 
-### Milestone 031: Training Recipe Improvements
+### Milestone 032: Training Recipe Improvements
 Track: Training recipe
 
 Goal:
@@ -502,9 +538,10 @@ Tracks still exist, but they are secondary to milestones:
 - Scaling: `022`, `024`
 - Observability: `023`
 - Optimizers: `025`, `026`, `027`, `028`
-- Hardware: `029`
-- Profiling: `030`
-- Training recipe: `031`
+- Engineering: `029`
+- Hardware: `030`
+- Profiling: `031`
+- Training recipe: `032`
 
 ## Later
 Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.
