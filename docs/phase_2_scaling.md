@@ -268,6 +268,10 @@ Exit criteria:
 - You can justify one batch size as the default scaled SGD baseline.
 - You can say whether the largest batch is actually helping optimization, or only helping throughput.
 
+Status:
+- Complete via `experiments/024_tpu_fineweb_edu_batch_size_sweep.py`.
+- The current default scaled SGD baseline is `batch_size=128`.
+
 ### Milestone 025: SGD Baseline Lock-In
 Track: Optimizers
 
