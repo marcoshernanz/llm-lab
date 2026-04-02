@@ -1,12 +1,14 @@
 """Implement minimal learning-oriented optimizers."""
 
+from typing import Any
+
 from flax import nnx
 import jax
 
 
 def apply_sgd(
     model: nnx.Module,
-    grads: nnx.State,
+    grads: nnx.State[Any, Any],
     learning_rate: float,
 ) -> None:
     """Apply one plain SGD update to the model parameters."""
