@@ -196,7 +196,8 @@ A book55 Russia country is should be considered treating books Native best that
 | 192 | 7.405658 | 7.268756 | 318.190 | 772369.864 | [json](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/run_metadata.json) | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/loss_curve.svg) |
 | 256 | 7.404225 | 7.266669 | 440.003 | 744722.286 | [json](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/run_metadata.json) | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_curve.svg) |
 
-- Result: `batch_size=256` achieved the best validation subset loss, but only by a very small margin over `192`.
+- Result: `batch_size=256` achieved the best final validation subset loss, but only by a very small margin over `192` and `128`.
 - Result: `batch_size=192` achieved the highest token throughput in the sweep.
-- Interpretation: `192` looks like the strongest default scaled SGD baseline because it preserved essentially all of the optimization gain from the largest batch while avoiding the throughput drop seen at `256`.
-- Selected sample artifact: [sample.txt](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/sample.txt)
+- Interpretation: `batch_size=128` is the best default scaled SGD baseline because it stayed very close in validation loss while reaching that quality at a much better wall-clock and token-efficiency point than `192` or `256`.
+- Interpretation: `192` and `256` are still useful larger-batch reference points, but they should be treated as higher-compute alternatives rather than the new default.
+- Selected sample artifact: [sample.txt](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/sample.txt)
