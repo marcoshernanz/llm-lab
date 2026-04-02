@@ -32,8 +32,9 @@ As of 2026-04-02:
 - `023` is complete as the first self-describing scaled-run baseline,
 - `024` is complete as the batch-size recovery pass,
 - `024` selected `batch_size=128` as the default scaled SGD baseline,
-- `025` now has a from-scratch SGD experiment path wired into the baseline script,
-- phase 2 now has a stable enough baseline to start learning optimizers from first principles.
+- `025` is complete as the locked from-scratch SGD baseline,
+- `026` is the next milestone and now has an experiment scaffold copied from `025`,
+- phase 2 now has a stable enough SGD reference to study optimizer state directly.
 
 ## Starting Baseline
 The baseline inherited from phase 1 is:
@@ -307,20 +308,42 @@ Exit criteria:
 - The repo no longer depends on Optax for the plain SGD baseline.
 - The artifact format and hardware target are stable enough that optimizer differences are interpretable.
 
+Status:
+- Complete via `experiments/025_tpu_fineweb_edu_sgd_baseline.py`.
+- The locked SGD reference is `batch_size=128`, `learning_rate=0.1`, `train_steps=100000`.
+
 ### Milestone 026: SGD With Momentum
 Track: Optimizers
 
 Goal:
 - Learn what momentum changes relative to plain SGD.
 
+Why this is next:
+- `025` established a clear plain-SGD reference, so the next learning step is to add exactly one new optimizer idea: velocity.
+- Momentum is the smallest useful optimizer extension because it introduces optimizer state without yet introducing adaptive per-parameter scaling.
+
 What stays fixed:
 - Same scaled model shape.
 - Same dataset and shard set.
 - Same hardware target.
 - Same artifact and subset-loss logging.
+- Same default baseline run from `025`: `batch_size=128`, `learning_rate=0.1`, `train_steps=100000`.
+
+What changes:
+- Optimizer only.
+- Add a velocity tree with the same structure as the parameter tree.
+- Update parameters using momentum SGD instead of plain SGD.
+
+Concrete work:
+- Copy the `025` experiment into a `026` experiment scaffold.
+- Add a minimal momentum-state initializer to the optimizer module.
+- Implement the momentum update rule in repo code from first principles.
+- Add one new momentum hyperparameter, likely `momentum=0.9`, while leaving the rest of the setup fixed.
+- Run at least one smoke test, one shorter parity-style run, and one real long baseline run.
 
 Exit criteria:
 - You can explain the difference between plain SGD and momentum-SGD in this training regime.
+- One logged `026` run can be compared directly against the locked `025` baseline.
 
 ### Milestone 027: Adam
 Track: Optimizers
