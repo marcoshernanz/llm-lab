@@ -16,6 +16,7 @@ Runs recorded on 2026-03-29, 2026-03-30, and 2026-04-02.
 | 024 (bs=128) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.330273 | 7.270663 | - | 241.892 | 677326.910 | 262.003 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/loss_curve.svg) |
 | 024 (bs=192) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.324606 | 7.268756 | - | 318.190 | 772369.864 | 340.076 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094022_875447/loss_curve.svg) |
 | 024 (bs=256) | `024_tpu_fineweb_edu_batch_size_sweep.py` | 20000 | 7.323929 | 7.266669 | - | 440.003 | 744722.286 | 459.126 | [csv](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_history.csv) | [svg](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_094815_008108/loss_curve.svg) |
+| 025 | `experiments/025_tpu_fineweb_edu_sgd_baseline.py` | 100000 | 5.623495 | 5.661370 | - | 1000.243 | 819000.865 | 1016.738 | [csv](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/loss_history.csv) | [svg](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -201,3 +202,45 @@ A book55 Russia country is should be considered treating books Native best that
 - Interpretation: `batch_size=128` is the best default scaled SGD baseline because it stayed very close in validation loss while reaching that quality at a much better wall-clock and token-efficiency point than `192` or `256`.
 - Interpretation: `192` and `256` are still useful larger-batch reference points, but they should be treated as higher-compute alternatives rather than the new default.
 - Selected sample artifact: [sample.txt](../artifacts/experiments/024_tpu_fineweb_edu_batch_size_sweep/20260402_093431_505693/sample.txt)
+
+## 025 FineWeb-Edu TPU From-Scratch SGD Baseline
+
+- Script: `experiments/025_tpu_fineweb_edu_sgd_baseline.py`
+- Execution target: Kaggle TPU `v5e-8`
+- JAX device count: `8`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/kaggle/working/artifacts/experiments`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Train subset shard index: `0`
+- Batch size: `128`
+- Learning rate: `0.1`
+- Embedding dim: `128`
+- Decoder blocks: `8`
+- Loaded train tokens: `10000000`
+- Loaded train subset tokens: `10000000`
+- Loaded validation tokens: `1000670`
+- Steps: `100000`
+- Tokens per step: `8192`
+- Train tokens seen: `819200000`
+- Final train loss: `5.623495`
+- Final train subset loss: `5.741509`
+- Final validation subset loss: `5.661370`
+- Final validation loss: `-`
+- Note: this was the first logged milestone-025 baseline run using the repo-owned plain SGD implementation instead of `optax.sgd(...)`.
+- Note: it matched the earlier `022` long-run SGD baseline to displayed precision, which is a strong sign that the handwritten SGD path is behaviorally correct.
+- Run metadata: [run_metadata.json](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/sample.txt)
+- Train seconds: `1000.243`
+- Tokens per second: `819000.865`
+- Total seconds: `1016.738`
+
+![025 fineweb edu tpu from-scratch sgd baseline loss curve](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/loss_curve.svg)
+
+```text
+assical – easy
+Ender-The third that's silent. You want Poking to one’s ridw by one violin game. Today it is first art waiting to and label for everyone on a healthy planet. “We start with red product pain: it can become steep in the one who fear, but
+```
