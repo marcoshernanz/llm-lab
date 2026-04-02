@@ -1,4 +1,4 @@
-"""Train the milestone-027 Adam scaffold with self-describing artifacts."""
+"""Train the milestone-027 Adam baseline with self-describing artifacts."""
 
 import argparse
 from dataclasses import asdict, dataclass
@@ -21,7 +21,7 @@ from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.plotting import LossTracker
 from lib.timer import Timer
-from lib.optimizers import apply_sgd_momentum, init_velocity
+from lib.optimizers import apply_adam, init_adam_state
 from models.transformer import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
@@ -34,7 +34,7 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-027 Adam scaffold settings explicit and easy to inspect."""
+    """Keep the milestone-027 Adam settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
@@ -47,8 +47,10 @@ class ExperimentConfig:
     shard_mmap: bool = True
     eval_batch_size: int = 64
     batch_size: int = 128
-    learning_rate: float = 0.05
-    momentum: float = 0.9
+    learning_rate: float = 0.001
+    beta1: float = 0.9
+    beta2: float = 0.999
+    epsilon: float = 1e-8
     train_steps: int = 20_000
     train_chunk_length: int = 100
     validation_subset_examples: int = 256
@@ -71,8 +73,12 @@ class ExperimentConfig:
             raise ValueError("batch_size must be positive")
         if self.learning_rate <= 0:
             raise ValueError("learning_rate must be positive")
-        if self.momentum < 0 or self.momentum >= 1:
-            raise ValueError("momentum must be in the half-open interval [0, 1)")
+        if self.beta1 < 0 or self.beta1 >= 1:
+            raise ValueError("beta1 must be in the half-open interval [0, 1)")
+        if self.beta2 < 0 or self.beta2 >= 1:
+            raise ValueError("beta2 must be in the half-open interval [0, 1)")
+        if self.epsilon <= 0:
+            raise ValueError("epsilon must be positive")
         if self.eval_batch_size <= 0:
             raise ValueError("eval_batch_size must be positive")
         if self.context_length <= 0:
@@ -138,13 +144,25 @@ def parse_args() -> ExperimentConfig:
         "--learning-rate",
         type=float,
         default=ExperimentConfig.learning_rate,
-        help="Momentum-SGD learning rate.",
+        help="Adam learning rate.",
     )
     parser.add_argument(
-        "--momentum",
+        "--beta1",
         type=float,
-        default=ExperimentConfig.momentum,
-        help="Momentum coefficient.",
+        default=ExperimentConfig.beta1,
+        help="Adam first-moment decay.",
+    )
+    parser.add_argument(
+        "--beta2",
+        type=float,
+        default=ExperimentConfig.beta2,
+        help="Adam second-moment decay.",
+    )
+    parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=ExperimentConfig.epsilon,
+        help="Adam denominator stabilizer.",
     )
     parser.add_argument(
         "--train-steps",
@@ -174,7 +192,9 @@ def parse_args() -> ExperimentConfig:
         validation_shard_index=args.validation_shard_index,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
-        momentum=args.momentum,
+        beta1=args.beta1,
+        beta2=args.beta2,
+        epsilon=args.epsilon,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
         shard_mmap=not args.no_shard_mmap,
@@ -223,16 +243,22 @@ def loss_fn(
 @nnx.jit
 def train_step(
     model: DecoderOnlyTransformer,
-    velocity: nnx.State[Any, Any],
+    first_moment: nnx.State[Any, Any],
+    second_moment: nnx.State[Any, Any],
+    step: jax.Array,
     input_ids: jax.Array,
     target_ids: jax.Array,
     learning_rate: float,
-    momentum: float,
-) -> tuple[jax.Array, nnx.State[Any, Any]]:
-    """Run one momentum-SGD step on a batch of token examples."""
+    beta1: float,
+    beta2: float,
+    epsilon: float,
+) -> tuple[jax.Array, nnx.State[Any, Any], nnx.State[Any, Any], jax.Array]:
+    """Run one Adam step on a batch of token examples."""
     loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
-    velocity = apply_sgd_momentum(model, grads, velocity, learning_rate, momentum)
-    return loss, velocity
+    first_moment, second_moment, step = apply_adam(
+        model, grads, first_moment, second_moment, step, learning_rate, beta1, beta2, epsilon
+    )
+    return loss, first_moment, second_moment, step
 
 
 @nnx.jit
@@ -247,11 +273,13 @@ def evaluate_batch_loss(
 
 def train_chunk(
     model: DecoderOnlyTransformer,
-    velocity: nnx.State[Any, Any],
+    first_moment: nnx.State[Any, Any],
+    second_moment: nnx.State[Any, Any],
+    step: jax.Array,
     tokens: jax.Array,
     config: ExperimentConfig,
     rng: jax.Array,
-) -> tuple[jax.Array, nnx.State[Any, Any], jax.Array]:
+) -> tuple[jax.Array, nnx.State[Any, Any], nnx.State[Any, Any], jax.Array, jax.Array]:
     """Average several random training batches into one logged chunk."""
     total_loss = jnp.array(0.0, dtype=jnp.float32)
     for _ in range(config.train_chunk_length):
@@ -263,11 +291,20 @@ def train_chunk(
             maxval=tokens.shape[0] - config.context_length,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
-        loss, velocity = train_step(
-            model, velocity, input_ids, target_ids, config.learning_rate, config.momentum
+        loss, first_moment, second_moment, step = train_step(
+            model,
+            first_moment,
+            second_moment,
+            step,
+            input_ids,
+            target_ids,
+            config.learning_rate,
+            config.beta1,
+            config.beta2,
+            config.epsilon,
         )
         total_loss = total_loss + loss
-    return total_loss / config.train_chunk_length, velocity, rng
+    return total_loss / config.train_chunk_length, first_moment, second_moment, step, rng
 
 
 def generate_text(
@@ -335,7 +372,7 @@ def main() -> None:
         num_decoder_blocks=config.num_decoder_blocks,
         rngs=rngs,
     )
-    velocity = init_velocity(model)
+    first_moment, second_moment, optimizer_step = init_adam_state(model)
     timer.start("train")
 
     rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
@@ -360,7 +397,15 @@ def main() -> None:
             train_shard_paths[active_train_shard_index],
             mmap=config.shard_mmap,
         )
-        train_loss, velocity, rng = train_chunk(model, velocity, train_tokens, config, rng)
+        train_loss, first_moment, second_moment, optimizer_step, rng = train_chunk(
+            model,
+            first_moment,
+            second_moment,
+            optimizer_step,
+            train_tokens,
+            config,
+            rng,
+        )
         train_subset_loss = evaluate_positions(
             train_subset_tokens,
             train_subset_start_positions,
