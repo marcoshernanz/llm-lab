@@ -19,7 +19,7 @@ from lib.data import (
     load_token_shard,
     load_tokenizer,
 )
-from lib.eval import sample_evaluation_positions
+from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.plotting import LossTracker
 from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.timer import Timer
@@ -345,42 +345,28 @@ def train_chunk(
     return total_loss / config.train_chunk_length, rng
 
 
-def evaluate_positions_on_mesh(
-    tokens: jax.Array,
-    start_positions: jax.Array,
-    model: DecoderOnlyTransformer,
-    context_length: int,
-    batch_size: int,
+def build_multicore_evaluate_batch_loss(
     evaluate_batch_loss_replicated: EvaluateBatchLoss,
     evaluate_batch_loss_sharded: EvaluateBatchLoss,
     *,
     num_devices: int,
     batch_sharding: NamedSharding,
-) -> float:
-    """Average loss over chosen positions, using sharded eval when the batch divides evenly."""
-    if start_positions.shape[0] == 0:
-        raise ValueError("start_positions must contain at least one position")
+) -> EvaluateBatchLoss:
+    """Build one eval helper that chooses sharded or replicated execution per batch."""
 
-    total_loss = 0.0
-    total_examples = 0
-
-    for batch_start in range(0, start_positions.shape[0], batch_size):
-        batch_end = min(batch_start + batch_size, start_positions.shape[0])
-        batch_positions = start_positions[batch_start:batch_end]
-        input_ids, target_ids = build_examples(tokens, batch_positions, context_length)
-
-        if batch_positions.shape[0] % num_devices == 0 and batch_positions.shape[0] > 0:
+    def evaluate_batch_loss_multicore(
+        model: DecoderOnlyTransformer,
+        input_ids: jax.Array,
+        target_ids: jax.Array,
+    ) -> jax.Array:
+        """Evaluate one batch, sharding only when the batch divides evenly."""
+        if input_ids.shape[0] % num_devices == 0 and input_ids.shape[0] > 0:
             placed_input_ids = jax.device_put(input_ids, batch_sharding)
             placed_target_ids = jax.device_put(target_ids, batch_sharding)
-            batch_loss = evaluate_batch_loss_sharded(model, placed_input_ids, placed_target_ids)
-        else:
-            batch_loss = evaluate_batch_loss_replicated(model, input_ids, target_ids)
+            return evaluate_batch_loss_sharded(model, placed_input_ids, placed_target_ids)
+        return evaluate_batch_loss_replicated(model, input_ids, target_ids)
 
-        current_batch_size = int(batch_positions.shape[0])
-        total_loss += float(batch_loss) * current_batch_size
-        total_examples += current_batch_size
-
-    return total_loss / total_examples
+    return evaluate_batch_loss_multicore
 
 
 def generate_text(
@@ -452,6 +438,12 @@ def main() -> None:
         train_step, evaluate_batch_loss_replicated, evaluate_batch_loss_sharded = (
             build_step_functions(config.mesh_axis_name)
         )
+        evaluate_batch_loss_multicore = build_multicore_evaluate_batch_loss(
+            evaluate_batch_loss_replicated,
+            evaluate_batch_loss_sharded,
+            num_devices=num_devices,
+            batch_sharding=batch_sharding,
+        )
 
         model = DecoderOnlyTransformer(
             vocab_size=tokenizer.vocab_size,
@@ -508,27 +500,21 @@ def main() -> None:
                 num_devices=num_devices,
                 batch_sharding=batch_sharding,
             )
-            train_subset_loss = evaluate_positions_on_mesh(
+            train_subset_loss = evaluate_positions(
                 train_subset_tokens,
                 train_subset_start_positions,
                 model,
+                evaluate_batch_loss_multicore,
                 config.context_length,
                 config.eval_batch_size,
-                evaluate_batch_loss_replicated,
-                evaluate_batch_loss_sharded,
-                num_devices=num_devices,
-                batch_sharding=batch_sharding,
             )
-            validation_subset_loss = evaluate_positions_on_mesh(
+            validation_subset_loss = evaluate_positions(
                 validation_tokens,
                 validation_start_positions,
                 model,
+                evaluate_batch_loss_multicore,
                 config.context_length,
                 config.eval_batch_size,
-                evaluate_batch_loss_replicated,
-                evaluate_batch_loss_sharded,
-                num_devices=num_devices,
-                batch_sharding=batch_sharding,
             )
 
             current_step = (chunk_index + 1) * config.train_chunk_length
