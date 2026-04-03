@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 from flax import nnx
 import jax
 import jax.nn as jnn
@@ -11,74 +9,31 @@ import jax.numpy as jnp
 
 
 class CausalSelfAttention(nnx.Module):
-    """Compute masked self-attention over a token sequence."""
+    """Compute causal self-attention with the built-in NNX attention block."""
 
-    q_proj: nnx.Linear
-    k_proj: nnx.Linear
-    v_proj: nnx.Linear
-    out_proj: nnx.Linear
-    num_heads: int
-    head_dim: int
+    attention: nnx.MultiHeadAttention
 
     def __init__(self, embedding_dim: int, num_heads: int, *, rngs: nnx.Rngs):
-        """Initialize query, key, value, and output projections."""
+        """Initialize one causal multi-head attention module."""
         if num_heads <= 0:
             raise ValueError("num_heads must be positive")
         if embedding_dim % num_heads != 0:
             raise ValueError("embedding_dim must be divisible by num_heads")
 
-        self.q_proj = nnx.Linear(
+        self.attention = nnx.MultiHeadAttention(
+            num_heads=num_heads,
             in_features=embedding_dim,
+            qkv_features=embedding_dim,
             out_features=embedding_dim,
             use_bias=False,
+            decode=False,
             rngs=rngs,
         )
-        self.k_proj = nnx.Linear(
-            in_features=embedding_dim,
-            out_features=embedding_dim,
-            use_bias=False,
-            rngs=rngs,
-        )
-        self.v_proj = nnx.Linear(
-            in_features=embedding_dim,
-            out_features=embedding_dim,
-            use_bias=False,
-            rngs=rngs,
-        )
-        self.out_proj = nnx.Linear(
-            in_features=embedding_dim,
-            out_features=embedding_dim,
-            use_bias=False,
-            rngs=rngs,
-        )
-        self.num_heads = num_heads
-        self.head_dim = embedding_dim // num_heads
-
-    def split_heads(self, x: jax.Array) -> jax.Array:
-        """Reshape embeddings into separate attention heads."""
-        batch_size, sequence_length, _ = x.shape
-        return x.reshape(batch_size, sequence_length, self.num_heads, self.head_dim).swapaxes(1, 2)
-
-    def combine_heads(self, x: jax.Array) -> jax.Array:
-        """Merge per-head outputs back into the embedding dimension."""
-        batch_size, _, sequence_length, _ = x.shape
-        return x.swapaxes(1, 2).reshape(batch_size, sequence_length, self.num_heads * self.head_dim)
 
     def __call__(self, x: jax.Array) -> jax.Array:
         """Apply causal multi-head self-attention to the input sequence."""
-        sequence_length = x.shape[1]
-
-        queries = self.split_heads(self.q_proj(x))
-        keys = self.split_heads(self.k_proj(x))
-        values = self.split_heads(self.v_proj(x))
-
-        attention_scores = (queries @ keys.mT) / math.sqrt(self.head_dim)
-        causal_mask = jnp.triu(jnp.ones((sequence_length, sequence_length), dtype=bool), k=1)
-        attention_scores = jnp.where(causal_mask, -jnp.inf, attention_scores)
-
-        attention_weights = jnn.softmax(attention_scores, axis=-1)
-        attended_values = attention_weights @ values
-        return self.out_proj(self.combine_heads(attended_values))
+        causal_mask = nnx.make_causal_mask(jnp.ones(x.shape[:2], dtype=jnp.bool))
+        return self.attention(x, mask=causal_mask)
 
 
 class FeedForward(nnx.Module):
