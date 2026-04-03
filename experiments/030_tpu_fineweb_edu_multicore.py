@@ -345,14 +345,6 @@ def place_batch_on_mesh(
     return jax.device_put(batch, replicated_sharding)
 
 
-def describe_sharding(value: object) -> str:
-    """Render one array sharding as a short stable string for metadata."""
-    sharding = getattr(value, "sharding", None)
-    if sharding is None:
-        return "unsharded"
-    return str(sharding)
-
-
 def loss_fn(
     model: DecoderOnlyTransformer,
     input_ids: jax.Array,
@@ -586,23 +578,6 @@ def main() -> None:
             rng=train_subset_rng,
         )
 
-        demo_start_positions = jnp.arange(config.global_batch_size, dtype=jnp.int32)
-        demo_start_positions = demo_start_positions % (
-            train_subset_tokens.shape[0] - config.context_length
-        )
-        demo_input_ids, _ = build_examples(
-            train_subset_tokens,
-            demo_start_positions,
-            config.context_length,
-        )
-        demo_sharded_input_ids = place_batch_on_mesh(
-            demo_input_ids,
-            num_devices=num_devices,
-            batch_sharding=batch_sharding,
-            replicated_sharding=replicated_sharding,
-            require_even_sharding=True,
-        )
-
         timer.start("train")
         loss_tracker = LossTracker()
         train_tokens = None
@@ -677,20 +652,6 @@ def main() -> None:
             "batch_size": config.global_batch_size,
             "global_batch_size": config.global_batch_size,
             "per_device_batch_size": per_device_batch_size,
-            "mesh_axis_name": config.mesh_axis_name,
-            "sharding_mode": "explicit",
-            "parameter_sharding": describe_sharding(model.token_embedding.embedding[...]),
-            "optimizer_state_sharding": describe_sharding(jax.tree.leaves(nnx.state(optimizer))[0]),
-            "train_batch_sharding": describe_sharding(demo_sharded_input_ids),
-            "eval_batch_sharding": describe_sharding(
-                place_batch_on_mesh(
-                    demo_input_ids[: config.eval_batch_size],
-                    num_devices=num_devices,
-                    batch_sharding=batch_sharding,
-                    replicated_sharding=replicated_sharding,
-                    require_even_sharding=False,
-                )
-            ),
             "train_shards_used": len(train_shard_paths),
             "loaded_train_tokens": int(train_tokens.shape[0]),
             "loaded_train_subset_tokens": int(train_subset_tokens.shape[0]),
