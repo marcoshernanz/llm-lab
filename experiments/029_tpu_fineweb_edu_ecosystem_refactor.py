@@ -1,10 +1,10 @@
-"""Train the milestone-029 ecosystem-alignment scaffold with self-describing artifacts."""
+"""Train the milestone-029 ecosystem-alignment baseline with self-describing artifacts."""
 
 import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
 
+import optax  # pyright: ignore
 from flax import nnx
 
 import jax
@@ -21,7 +21,6 @@ from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.plotting import LossTracker
 from lib.timer import Timer
-from lib.optimizers import apply_adamw, init_adam_state
 from models.transformer import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
@@ -34,7 +33,7 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-029 scaffold settings explicit and easy to inspect."""
+    """Keep the milestone-029 ecosystem settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
@@ -147,7 +146,7 @@ def parse_args() -> ExperimentConfig:
         "--learning-rate",
         type=float,
         default=ExperimentConfig.learning_rate,
-        help="AdamW learning rate.",
+        help="Optax AdamW learning rate.",
     )
     parser.add_argument(
         "--beta1",
@@ -171,7 +170,7 @@ def parse_args() -> ExperimentConfig:
         "--weight-decay",
         type=float,
         default=ExperimentConfig.weight_decay,
-        help="Decoupled AdamW weight decay.",
+        help="Optax AdamW weight decay.",
     )
     parser.add_argument(
         "--train-steps",
@@ -253,32 +252,14 @@ def loss_fn(
 @nnx.jit
 def train_step(
     model: DecoderOnlyTransformer,
-    first_moment: nnx.State[Any, Any],
-    second_moment: nnx.State[Any, Any],
-    step: jax.Array,
+    optimizer: nnx.Optimizer[DecoderOnlyTransformer],
     input_ids: jax.Array,
     target_ids: jax.Array,
-    learning_rate: float,
-    beta1: float,
-    beta2: float,
-    epsilon: float,
-    weight_decay: float,
-) -> tuple[jax.Array, nnx.State[Any, Any], nnx.State[Any, Any], jax.Array]:
-    """Run one AdamW step on a batch of token examples."""
+) -> jax.Array:
+    """Run one Optax AdamW step on a batch of token examples."""
     loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
-    first_moment, second_moment, step = apply_adamw(
-        model,
-        grads,
-        first_moment,
-        second_moment,
-        step,
-        learning_rate,
-        beta1,
-        beta2,
-        epsilon,
-        weight_decay,
-    )
-    return loss, first_moment, second_moment, step
+    optimizer.update(model, grads)
+    return loss
 
 
 @nnx.jit
@@ -293,13 +274,11 @@ def evaluate_batch_loss(
 
 def train_chunk(
     model: DecoderOnlyTransformer,
-    first_moment: nnx.State[Any, Any],
-    second_moment: nnx.State[Any, Any],
-    step: jax.Array,
+    optimizer: nnx.Optimizer[DecoderOnlyTransformer],
     tokens: jax.Array,
     config: ExperimentConfig,
     rng: jax.Array,
-) -> tuple[jax.Array, nnx.State[Any, Any], nnx.State[Any, Any], jax.Array, jax.Array]:
+) -> tuple[jax.Array, jax.Array]:
     """Average several random training batches into one logged chunk."""
     total_loss = jnp.array(0.0, dtype=jnp.float32)
     for _ in range(config.train_chunk_length):
@@ -311,21 +290,8 @@ def train_chunk(
             maxval=tokens.shape[0] - config.context_length,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
-        loss, first_moment, second_moment, step = train_step(
-            model,
-            first_moment,
-            second_moment,
-            step,
-            input_ids,
-            target_ids,
-            config.learning_rate,
-            config.beta1,
-            config.beta2,
-            config.epsilon,
-            config.weight_decay,
-        )
-        total_loss = total_loss + loss
-    return total_loss / config.train_chunk_length, first_moment, second_moment, step, rng
+        total_loss = total_loss + train_step(model, optimizer, input_ids, target_ids)
+    return total_loss / config.train_chunk_length, rng
 
 
 def generate_text(
@@ -393,7 +359,17 @@ def main() -> None:
         num_decoder_blocks=config.num_decoder_blocks,
         rngs=rngs,
     )
-    first_moment, second_moment, optimizer_step = init_adam_state(model)
+    optimizer = nnx.Optimizer(
+        model,
+        optax.adamw(
+            learning_rate=config.learning_rate,
+            b1=config.beta1,
+            b2=config.beta2,
+            eps=config.epsilon,
+            weight_decay=config.weight_decay,
+        ),
+        wrt=nnx.Param,
+    )
     timer.start("train")
 
     rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
@@ -418,15 +394,7 @@ def main() -> None:
             train_shard_paths[active_train_shard_index],
             mmap=config.shard_mmap,
         )
-        train_loss, first_moment, second_moment, optimizer_step, rng = train_chunk(
-            model,
-            first_moment,
-            second_moment,
-            optimizer_step,
-            train_tokens,
-            config,
-            rng,
-        )
+        train_loss, rng = train_chunk(model, optimizer, train_tokens, config, rng)
         train_subset_loss = evaluate_positions(
             train_subset_tokens,
             train_subset_start_positions,
