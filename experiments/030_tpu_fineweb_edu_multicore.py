@@ -61,7 +61,6 @@ class ExperimentConfig:
     hidden_dim: int = 256
     context_length: int = 64
     mesh_axis_name: str = "data"
-    visualize_sharding: bool = False
 
     def validate(self) -> None:
         """Reject invalid experiment settings early."""
@@ -243,11 +242,6 @@ def parse_args() -> ExperimentConfig:
         help="Training context length.",
     )
     parser.add_argument(
-        "--visualize-sharding",
-        action="store_true",
-        help="Print one batch and one parameter sharding visualization during bring-up.",
-    )
-    parser.add_argument(
         "--no-shard-mmap",
         action="store_true",
         help="Disable mmap_mode when loading token shards with jax.numpy.load.",
@@ -278,7 +272,6 @@ def parse_args() -> ExperimentConfig:
         num_decoder_blocks=args.num_decoder_blocks,
         context_length=args.context_length,
         mesh_axis_name=args.mesh_axis_name,
-        visualize_sharding=args.visualize_sharding,
         shard_mmap=not args.no_shard_mmap,
     )
     config.validate()
@@ -358,14 +351,6 @@ def describe_sharding(value: object) -> str:
     if sharding is None:
         return "unsharded"
     return str(sharding)
-
-
-def maybe_visualize_sharding(label: str, value: jax.Array, *, enabled: bool) -> None:
-    """Print a sharding diagram only when the user explicitly asks for it."""
-    if not enabled:
-        return
-    print(f"{label}_sharding={value.sharding}")
-    jax.debug.visualize_array_sharding(value)
 
 
 def loss_fn(
@@ -616,16 +601,6 @@ def main() -> None:
             batch_sharding=batch_sharding,
             replicated_sharding=replicated_sharding,
             require_even_sharding=True,
-        )
-        maybe_visualize_sharding(
-            "train_batch",
-            demo_sharded_input_ids,
-            enabled=config.visualize_sharding,
-        )
-        maybe_visualize_sharding(
-            "token_embedding",
-            model.token_embedding.embedding[...],
-            enabled=config.visualize_sharding,
         )
 
         timer.start("train")
