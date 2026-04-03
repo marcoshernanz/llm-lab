@@ -99,7 +99,7 @@ class ExperimentConfig:
 
 
 def parse_args() -> ExperimentConfig:
-    """Parse the small set of runtime overrides useful on TPU notebooks."""
+    """Parse only the few runtime overrides that are likely to matter in practice."""
     parser = argparse.ArgumentParser(
         description="Train one milestone-030 automatic-sharding TPU multicore point."
     )
@@ -132,18 +132,6 @@ def parse_args() -> ExperimentConfig:
         type=int,
         default=ExperimentConfig.max_train_shards,
         help="Maximum number of train shards to rotate across.",
-    )
-    parser.add_argument(
-        "--validation-shard-index",
-        type=int,
-        default=ExperimentConfig.validation_shard_index,
-        help="Validation shard index used for the fixed validation subset.",
-    )
-    parser.add_argument(
-        "--eval-batch-size",
-        type=int,
-        default=ExperimentConfig.eval_batch_size,
-        help="Evaluation batch size before optional sharding on the batch axis.",
     )
     parser.add_argument(
         "--global-batch-size",
@@ -193,59 +181,6 @@ def parse_args() -> ExperimentConfig:
         default=ExperimentConfig.train_chunk_length,
         help="Number of optimizer steps averaged into one logged point.",
     )
-    parser.add_argument(
-        "--mesh-axis-name",
-        type=str,
-        default=ExperimentConfig.mesh_axis_name,
-        help="Name of the one-dimensional automatic data mesh axis.",
-    )
-    parser.add_argument(
-        "--validation-subset-examples",
-        type=int,
-        default=ExperimentConfig.validation_subset_examples,
-        help="Number of validation positions sampled for the fixed subset estimate.",
-    )
-    parser.add_argument(
-        "--sample-tokens",
-        type=int,
-        default=ExperimentConfig.sample_tokens,
-        help="Number of tokens to sample after training.",
-    )
-    parser.add_argument(
-        "--embedding-dim",
-        type=int,
-        default=ExperimentConfig.embedding_dim,
-        help="Decoder embedding dimension.",
-    )
-    parser.add_argument(
-        "--hidden-dim",
-        type=int,
-        default=ExperimentConfig.hidden_dim,
-        help="Feed-forward hidden dimension.",
-    )
-    parser.add_argument(
-        "--num-heads",
-        type=int,
-        default=ExperimentConfig.num_heads,
-        help="Number of attention heads.",
-    )
-    parser.add_argument(
-        "--num-decoder-blocks",
-        type=int,
-        default=ExperimentConfig.num_decoder_blocks,
-        help="Number of decoder blocks.",
-    )
-    parser.add_argument(
-        "--context-length",
-        type=int,
-        default=ExperimentConfig.context_length,
-        help="Training context length.",
-    )
-    parser.add_argument(
-        "--no-shard-mmap",
-        action="store_true",
-        help="Disable mmap_mode when loading token shards with jax.numpy.load.",
-    )
     args = parser.parse_args()
 
     config = ExperimentConfig(
@@ -254,8 +189,6 @@ def parse_args() -> ExperimentConfig:
         artifacts_root=args.artifacts_root,
         execution_target=args.execution_target,
         max_train_shards=args.max_train_shards,
-        validation_shard_index=args.validation_shard_index,
-        eval_batch_size=args.eval_batch_size,
         global_batch_size=args.global_batch_size,
         learning_rate=args.learning_rate,
         beta1=args.beta1,
@@ -264,15 +197,6 @@ def parse_args() -> ExperimentConfig:
         weight_decay=args.weight_decay,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
-        validation_subset_examples=args.validation_subset_examples,
-        sample_tokens=args.sample_tokens,
-        embedding_dim=args.embedding_dim,
-        hidden_dim=args.hidden_dim,
-        num_heads=args.num_heads,
-        num_decoder_blocks=args.num_decoder_blocks,
-        context_length=args.context_length,
-        mesh_axis_name=args.mesh_axis_name,
-        shard_mmap=not args.no_shard_mmap,
     )
     config.validate()
     return config
