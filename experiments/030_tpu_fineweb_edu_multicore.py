@@ -197,7 +197,7 @@ def parse_args() -> ExperimentConfig:
         "--mesh-axis-name",
         type=str,
         default=ExperimentConfig.mesh_axis_name,
-        help="Name of the one-dimensional explicit data mesh axis.",
+        help="Name of the one-dimensional automatic data mesh axis.",
     )
     parser.add_argument(
         "--validation-subset-examples",
@@ -471,7 +471,6 @@ def main() -> None:
         timer.start("train")
         loss_tracker = LossTracker()
         train_tokens = None
-        last_train_loss = None
 
         for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
             active_train_shard_index = chunk_index % len(train_shard_paths)
@@ -480,7 +479,6 @@ def main() -> None:
                 mmap=config.shard_mmap,
             )
             train_loss, rng = train_chunk(model, optimizer, train_tokens, config, rng)
-            last_train_loss = train_loss
             train_subset_loss = evaluate_positions(
                 train_subset_tokens,
                 train_subset_start_positions,
@@ -509,8 +507,6 @@ def main() -> None:
         train_seconds = timer.stop("train")
         if train_tokens is None:
             raise ValueError("No train shard was loaded during training.")
-        if last_train_loss is None:
-            raise ValueError("No training loss was recorded during training.")
 
         sample_text = generate_text(
             model,
