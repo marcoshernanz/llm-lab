@@ -19,6 +19,7 @@ Runs recorded on 2026-03-29, 2026-03-30, and 2026-04-02.
 | 025 | `experiments/025_tpu_fineweb_edu_sgd_baseline.py` | 100000 | 5.623495 | 5.661370 | - | 1000.243 | 819000.865 | 1016.738 | [csv](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/loss_history.csv) | [svg](../artifacts/experiments/025_tpu_fineweb_edu_sgd_baseline/20260402_154249_160899/loss_curve.svg) |
 | 026 | `experiments/026_tpu_fineweb_edu_sgd_momentum.py` | 100000 | 4.862294 | 4.971999 | - | 1767.985 | 463352.367 | 1786.013 | [csv](../artifacts/experiments/026_tpu_fineweb_edu_sgd_momentum/20260402_163704_813630/loss_history.csv) | [svg](../artifacts/experiments/026_tpu_fineweb_edu_sgd_momentum/20260402_163704_813630/loss_curve.svg) |
 | 027 | `experiments/027_tpu_fineweb_edu_adam.py` | 100000 | 4.705221 | 4.844537 | - | 2615.693 | 313186.596 | 2634.150 | [csv](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/loss_history.csv) | [svg](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/loss_curve.svg) |
+| 028 | `experiments/028_tpu_fineweb_edu_adamw.py` | 100000 | 4.719522 | 4.850924 | - | 2505.966 | 326899.875 | 2524.191 | [csv](../artifacts/experiments/028_tpu_fineweb_edu_adamw/20260402_221715_456017/loss_history.csv) | [svg](../artifacts/experiments/028_tpu_fineweb_edu_adamw/20260402_221715_456017/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -333,4 +334,50 @@ Balister's friend wants to give up one father: “For
 
 ```text
 assing – easy asset bundle if invented entirely or declared by the Pok. For one’s rank, by one violation and a new law-bak, or and by other hardy guests. They are the natural right to master it. Feelings inside this person’s opinion, so our way
+```
+
+## 028 FineWeb-Edu TPU AdamW
+
+- Script: `experiments/028_tpu_fineweb_edu_adamw.py`
+- Execution target: Kaggle TPU `v5e-8`
+- JAX device count: `8`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/kaggle/working/artifacts/experiments`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Train subset shard index: `0`
+- Batch size: `128`
+- Learning rate: `0.001`
+- Beta1: `0.9`
+- Beta2: `0.999`
+- Epsilon: `1e-8`
+- Weight decay: `0.01`
+- Embedding dim: `128`
+- Decoder blocks: `8`
+- Loaded train tokens: `10000000`
+- Loaded train subset tokens: `10000000`
+- Loaded validation tokens: `1000670`
+- Steps: `100000`
+- Tokens per step: `8192`
+- Train tokens seen: `819200000`
+- Final train loss: `4.719522`
+- Final train subset loss: `4.865421`
+- Final validation subset loss: `4.850924`
+- Final validation loss: `-`
+- Note: this was the first logged milestone-028 run using handwritten AdamW with decoupled weight decay.
+- Note: compared with the locked `027` Adam baseline, AdamW was very close in validation loss here, but slightly worse on validation subset loss while recovering a bit of throughput.
+- Run metadata: [run_metadata.json](../artifacts/experiments/028_tpu_fineweb_edu_adamw/20260402_221715_456017/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/028_tpu_fineweb_edu_adamw/20260402_221715_456017/sample.txt)
+- Train seconds: `2505.966`
+- Tokens per second: `326899.875`
+- Total seconds: `2524.191`
+
+![028 fineweb edu tpu adamw loss curve](../artifacts/experiments/028_tpu_fineweb_edu_adamw/20260402_221715_456017/loss_curve.svg)
+
+```text
+assing – easy time but simply check if all that's silent. You want Poker to deal with the same one!
+It-going for Dorstone, an and sing - it doesn't are a lot of reason, natural ways to master it. Feet 2000. Educational attitude (GAMBACE)
 ```
