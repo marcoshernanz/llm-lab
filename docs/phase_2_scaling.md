@@ -20,10 +20,10 @@ The emphasis of phase 2 is:
 - TPU-first execution for real runs,
 - controlled scaling,
 - then optimizer implementation and comparisons,
-- then explicit multi-core execution,
+- then multi-core execution,
 - then a time-budgeted scaling pass on the multi-core baseline,
 - then profiling,
-- and only after that deeper training-recipe work.
+- and then hand off to the later systems rebuild.
 
 ## Status
 As of 2026-04-03:
@@ -480,7 +480,7 @@ Status:
 Track: Hardware
 
 Goal:
-- Move from single-device TPU execution to explicit multi-core JAX execution on `v5e-8`.
+- Move from single-device TPU execution to real multi-core JAX execution on `v5e-8`.
 
 Why this comes after optimizer work:
 - First learn training behavior under one-device execution.
@@ -506,9 +506,7 @@ What changes:
 
 Implementation rule:
 - Treat milestone `030` as data parallelism first, not model sharding.
-- Replicate parameters and optimizer state across devices.
-- Shard `input_ids` and `target_ids` along the batch axis only.
-- Prefer the modern JAX path built around a one-dimensional device mesh, explicit sharding, and `jax.jit`.
+- Prefer the automatic JAX mesh path first, while still making global and per-device batch semantics explicit in the experiment metadata.
 - Keep `pmap` only as a teaching mental model if it helps explain the collective gradient averaging step.
 
 Core identity:
@@ -535,8 +533,6 @@ Concrete work:
 - Add explicit `global_batch_size` and `per_device_batch_size` semantics to the experiment config.
 - Validate that the global batch is divisible by the JAX device count.
 - Create a one-axis device mesh, for example `"data"`.
-- Replicate model state and optimizer state across that mesh.
-- Place token batches on device with batch-axis sharding.
 - Log device count, global batch size, and per-device batch size in run metadata.
 
 Implementation:
@@ -603,25 +599,6 @@ Exit criteria:
 - Profiling answers at least one concrete bottleneck question.
 - The results change a real next decision.
 
-### Milestone 033: Training Recipe Improvements
-Track: Training recipe
-
-Goal:
-- Study recipe choices only after scaling, observability, hardware execution, and optimizer baselines are stable enough to support it.
-
-What to explore:
-- gradient clipping,
-- warmup,
-- learning-rate decay,
-- checkpointing,
-- and restartable long-run logging.
-
-Rule:
-- One recipe variable at a time.
-
-Exit criteria:
-- You can tie at least one recipe choice to a concrete improvement or failure mode.
-
 ## Track Summary
 Tracks still exist, but they are secondary to milestones:
 - Data bring-up: `019`, `020`
@@ -633,7 +610,12 @@ Tracks still exist, but they are secondary to milestones:
 - Hardware: `030`
 - Scaling: `031`
 - Profiling: `032`
-- Training recipe: `033`
+
+## Next
+After `032`, the planned next phase is the systems rebuild described in [docs/phase_3_systems.md](./phase_3_systems.md).
+The broader project thesis and decision rules live in [docs/project_direction.md](./project_direction.md).
+The personal context behind those choices is summarized in [docs/personal_context.md](./personal_context.md).
+Later worthwhile side projects, such as a Rust tokenizer, are listed in [docs/future_projects.md](./future_projects.md).
 
 ## Later
 Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.
