@@ -263,7 +263,7 @@ def loss_fn(
 def build_step_functions(
     axis_name: str,
 ) -> tuple[TrainStep, EvaluateBatchLoss, EvaluateBatchLoss]:
-    """Build sharded training and evaluation steps for one mesh axis."""
+    """Build the `smap` training and evaluation steps for one mesh axis."""
 
     @smap(axis_name=axis_name, in_axes=(None, 0, 0), out_axes=(None, None))
     def loss_and_grads(
@@ -346,7 +346,7 @@ def train_chunk(
 
 
 def build_multicore_evaluate_batch_loss(
-    evaluate_batch_loss_replicated: EvaluateBatchLoss,
+    evaluate_batch_loss_plain: EvaluateBatchLoss,
     evaluate_batch_loss_sharded: EvaluateBatchLoss,
     *,
     num_devices: int,
@@ -364,7 +364,7 @@ def build_multicore_evaluate_batch_loss(
             placed_input_ids = jax.device_put(input_ids, batch_sharding)
             placed_target_ids = jax.device_put(target_ids, batch_sharding)
             return evaluate_batch_loss_sharded(model, placed_input_ids, placed_target_ids)
-        return evaluate_batch_loss_replicated(model, input_ids, target_ids)
+        return evaluate_batch_loss_plain(model, input_ids, target_ids)
 
     return evaluate_batch_loss_multicore
 
@@ -435,11 +435,11 @@ def main() -> None:
     )
 
     with jax.set_mesh(mesh):
-        train_step, evaluate_batch_loss_replicated, evaluate_batch_loss_sharded = (
+        train_step, evaluate_batch_loss_plain, evaluate_batch_loss_sharded = (
             build_step_functions(config.mesh_axis_name)
         )
         evaluate_batch_loss_multicore = build_multicore_evaluate_batch_loss(
-            evaluate_batch_loss_replicated,
+            evaluate_batch_loss_plain,
             evaluate_batch_loss_sharded,
             num_devices=num_devices,
             batch_sharding=batch_sharding,
