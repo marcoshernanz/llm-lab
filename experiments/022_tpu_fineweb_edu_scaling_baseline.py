@@ -20,7 +20,7 @@ from lib.data import (
 from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.plotting import LossTracker
 from lib.timer import Timer
-from models.transformer import DecoderOnlyTransformer
+from models.transformer_manual import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent

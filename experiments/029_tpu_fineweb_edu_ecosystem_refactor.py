@@ -1,4 +1,4 @@
-"""Train the milestone-024 batch-size sweep with self-describing artifacts."""
+"""Train the milestone-029 ecosystem-alignment baseline with self-describing artifacts."""
 
 import argparse
 from dataclasses import asdict, dataclass
@@ -8,7 +8,6 @@ import optax  # pyright: ignore
 from flax import nnx
 
 import jax
-import jax.nn as jnn
 import jax.numpy as jnp
 
 from lib.data import (
@@ -21,7 +20,7 @@ from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.plotting import LossTracker
 from lib.timer import Timer
-from models.transformer_manual import DecoderOnlyTransformer
+from models.transformer import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -33,7 +32,7 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-024 sweep settings explicit and easy to inspect."""
+    """Keep the milestone-029 ecosystem settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
@@ -46,7 +45,11 @@ class ExperimentConfig:
     shard_mmap: bool = True
     eval_batch_size: int = 64
     batch_size: int = 128
-    learning_rate: float = 0.05
+    learning_rate: float = 0.001
+    beta1: float = 0.9
+    beta2: float = 0.999
+    epsilon: float = 1e-8
+    weight_decay: float = 0.01
     train_steps: int = 20_000
     train_chunk_length: int = 100
     validation_subset_examples: int = 256
@@ -67,6 +70,16 @@ class ExperimentConfig:
             raise ValueError("train_steps must be divisible by train_chunk_length")
         if self.batch_size <= 0:
             raise ValueError("batch_size must be positive")
+        if self.learning_rate <= 0:
+            raise ValueError("learning_rate must be positive")
+        if self.beta1 < 0 or self.beta1 >= 1:
+            raise ValueError("beta1 must be in the half-open interval [0, 1)")
+        if self.beta2 < 0 or self.beta2 >= 1:
+            raise ValueError("beta2 must be in the half-open interval [0, 1)")
+        if self.epsilon <= 0:
+            raise ValueError("epsilon must be positive")
+        if self.weight_decay < 0:
+            raise ValueError("weight_decay must be non-negative")
         if self.eval_batch_size <= 0:
             raise ValueError("eval_batch_size must be positive")
         if self.context_length <= 0:
@@ -84,7 +97,7 @@ class ExperimentConfig:
 def parse_args() -> ExperimentConfig:
     """Parse the small set of runtime overrides useful on TPU notebooks."""
     parser = argparse.ArgumentParser(
-        description="Train one milestone-024 TPU batch-size sweep point with run metadata."
+        description="Train one milestone-029 TPU ecosystem-alignment point with run metadata."
     )
     parser.add_argument(
         "--token-shard-root",
@@ -132,7 +145,31 @@ def parse_args() -> ExperimentConfig:
         "--learning-rate",
         type=float,
         default=ExperimentConfig.learning_rate,
-        help="SGD learning rate.",
+        help="Optax AdamW learning rate.",
+    )
+    parser.add_argument(
+        "--beta1",
+        type=float,
+        default=ExperimentConfig.beta1,
+        help="Adam first-moment decay.",
+    )
+    parser.add_argument(
+        "--beta2",
+        type=float,
+        default=ExperimentConfig.beta2,
+        help="Adam second-moment decay.",
+    )
+    parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=ExperimentConfig.epsilon,
+        help="Adam denominator stabilizer.",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=ExperimentConfig.weight_decay,
+        help="Optax AdamW weight decay.",
     )
     parser.add_argument(
         "--train-steps",
@@ -162,6 +199,10 @@ def parse_args() -> ExperimentConfig:
         validation_shard_index=args.validation_shard_index,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        beta1=args.beta1,
+        beta2=args.beta2,
+        epsilon=args.epsilon,
+        weight_decay=args.weight_decay,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
         shard_mmap=not args.no_shard_mmap,
@@ -202,8 +243,7 @@ def loss_fn(
 ) -> jax.Array:
     """Compute mean next-token cross-entropy for one batch."""
     logits = model(input_ids)
-    log_probs = jnn.log_softmax(logits, axis=-1)
-    loss_per_token = -jnp.take_along_axis(log_probs, target_ids[..., None], axis=-1).squeeze(-1)
+    loss_per_token = optax.softmax_cross_entropy_with_integer_labels(logits, target_ids)
     return loss_per_token.mean()
 
 
@@ -214,7 +254,7 @@ def train_step(
     input_ids: jax.Array,
     target_ids: jax.Array,
 ) -> jax.Array:
-    """Run one optimizer step on a batch of token examples."""
+    """Run one Optax AdamW step on a batch of token examples."""
     loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
     optimizer.update(model, grads)
     return loss
@@ -287,7 +327,7 @@ def generate_text(
 
 
 def main() -> None:
-    """Run one milestone-024 TPU batch-size sweep point end to end."""
+    """Run one milestone-029 TPU ecosystem-alignment point end to end."""
     config = parse_args()
 
     timer = Timer()
@@ -317,7 +357,17 @@ def main() -> None:
         num_decoder_blocks=config.num_decoder_blocks,
         rngs=rngs,
     )
-    optimizer = nnx.Optimizer(model, optax.sgd(config.learning_rate), wrt=nnx.Param)
+    optimizer = nnx.Optimizer(
+        model,
+        optax.adamw(
+            learning_rate=config.learning_rate,
+            b1=config.beta1,
+            b2=config.beta2,
+            eps=config.epsilon,
+            weight_decay=config.weight_decay,
+        ),
+        wrt=nnx.Param,
+    )
     timer.start("train")
 
     rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)

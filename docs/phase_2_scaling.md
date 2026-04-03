@@ -24,7 +24,7 @@ The emphasis of phase 2 is:
 - and only after that deeper training-recipe work.
 
 ## Status
-As of 2026-04-02:
+As of 2026-04-03:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
 - `021` is complete as the TPU multi-shard baseline,
@@ -35,8 +35,10 @@ As of 2026-04-02:
 - `025` is complete as the locked from-scratch SGD baseline,
 - `026` is complete as the handwritten momentum-SGD baseline,
 - `027` is complete as the handwritten Adam baseline,
-- `028` is the next milestone and now has an experiment scaffold copied from `027`,
-- phase 2 now has stable adaptive and non-adaptive baselines and is ready to isolate decoupled weight decay.
+- `028` is complete as the handwritten AdamW baseline,
+- `029` is complete as the ecosystem-aligned baseline,
+- `030` is the next milestone and now follows the clean split between the frozen handwritten path and the standard ecosystem-native path,
+- phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
 The baseline inherited from phase 1 is:
@@ -426,6 +428,10 @@ Exit criteria:
 - You can compare Adam vs AdamW cleanly and say whether the distinction matters yet.
 - One logged `028` run can be compared directly against the locked `027` Adam baseline.
 
+Status:
+- Complete via `experiments/028_tpu_fineweb_edu_adamw.py`.
+- The locked AdamW reference is `batch_size=128`, `learning_rate=0.001`, `beta1=0.9`, `beta2=0.999`, `epsilon=1e-8`, `weight_decay=0.01`, `train_steps=100000`.
+
 ### Milestone 029: Ecosystem Alignment Refactor
 Track: Engineering
 
@@ -456,11 +462,17 @@ Concrete work:
 - Evaluate where model components should remain handwritten for learning value versus where ecosystem-native blocks are now the cleaner choice.
 - Keep the script thin, readable, and pedagogical even while making it more professional.
 - Document explicitly which custom pieces were intentionally retired and which still remain because they carry real learning value.
+- Start from the locked `028` baseline and change implementation style, not the training target.
 
 Exit criteria:
 - One baseline run exists that uses the ecosystem to the greatest practical extent without turning the repo into a framework.
 - The difference between the learning-first implementation style and the production-style implementation style is clear in the code.
 - The resulting code is cleaner and more maintainable without losing the repo’s minimal learning-oriented character.
+
+Status:
+- Complete via `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py`.
+- The standard `models/transformer.py` now uses NNX attention, embeddings, layer norms, linear layers, tied embedding logits, Optax AdamW, and an Optax loss helper.
+- The handwritten transformer path remains available under `models/transformer_manual.py` for earlier milestones.
 
 ### Milestone 030: Multi-Core JAX TPU Baseline
 Track: Hardware
