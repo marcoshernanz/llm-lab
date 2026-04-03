@@ -24,7 +24,7 @@ The emphasis of phase 2 is:
 - and only after that deeper training-recipe work.
 
 ## Status
-As of 2026-04-02:
+As of 2026-04-03:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
 - `021` is complete as the TPU multi-shard baseline,
@@ -36,8 +36,9 @@ As of 2026-04-02:
 - `026` is complete as the handwritten momentum-SGD baseline,
 - `027` is complete as the handwritten Adam baseline,
 - `028` is complete as the handwritten AdamW baseline,
-- `029` is the next milestone and now has an experiment scaffold copied from `028`,
-- phase 2 now has completed the handwritten optimizer arc and is ready to compare that path against a production-style ecosystem-native implementation.
+- `029` is complete as the ecosystem-aligned baseline,
+- `030` is the next milestone and now follows the clean split between the frozen handwritten path and the standard ecosystem-native path,
+- phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
 The baseline inherited from phase 1 is:
@@ -467,6 +468,11 @@ Exit criteria:
 - One baseline run exists that uses the ecosystem to the greatest practical extent without turning the repo into a framework.
 - The difference between the learning-first implementation style and the production-style implementation style is clear in the code.
 - The resulting code is cleaner and more maintainable without losing the repo’s minimal learning-oriented character.
+
+Status:
+- Complete via `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py`.
+- The standard `models/transformer.py` now uses NNX attention, embeddings, layer norms, linear layers, tied embedding logits, Optax AdamW, and an Optax loss helper.
+- The handwritten transformer path remains available under `models/transformer_manual.py` for earlier milestones.
 
 ### Milestone 030: Multi-Core JAX TPU Baseline
 Track: Hardware
