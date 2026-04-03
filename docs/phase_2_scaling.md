@@ -20,7 +20,9 @@ The emphasis of phase 2 is:
 - TPU-first execution for real runs,
 - controlled scaling,
 - then optimizer implementation and comparisons,
-- then explicit multi-core execution and profiling,
+- then explicit multi-core execution,
+- then a time-budgeted scaling pass on the multi-core baseline,
+- then profiling,
 - and only after that deeper training-recipe work.
 
 ## Status
@@ -546,7 +548,44 @@ Exit criteria:
 - Throughput improvement is measured clearly.
 - You can explain the main conceptual changes required to go multi-core.
 
-### Milestone 031: Profiling First Pass
+### Milestone 031: Time-Budgeted Scaling Pass
+Track: Scaling
+
+Goal:
+- Push the largest useful model and data budget that still fits inside a reasonable real-run window, roughly `30m` to `1h`.
+
+Why this comes here:
+- `030` should establish the multi-core execution baseline first.
+- Once multi-core is working, the next useful question is not profiling yet; it is how much more model and data the current hardware budget can actually support.
+- Recent curves suggest the current model may be small for the available runtime budget, while the widening train/validation gap suggests the current data budget is also too small.
+
+What stays fixed:
+- Same hardware target.
+- Same multi-core execution path from `030`.
+- Same optimizer family.
+- Same artifact format and subset-loss logging.
+
+What changes:
+- Model size and train-data budget, within a fixed wall-clock budget.
+- Prefer increasing available train shards before or alongside model growth, rather than scaling model size against a too-small repeated dataset.
+
+Questions to answer:
+- With a fixed `30m` to `1h` budget, what is the largest useful model you can train?
+- How much does using more FineWeb-Edu train shards reduce the train/validation gap?
+- Is the current bottleneck more about model capacity, data budget, or both?
+
+Concrete work:
+- Increase the available FineWeb-Edu train shard count beyond the current `10`-shard subset.
+- Run one fixed-time baseline with the current `030` model on the larger data budget.
+- Then scale model size within the same time budget, ideally changing one major model axis at a time.
+- Compare train loss, validation subset loss, train/validation gap, tokens per second, and total tokens seen.
+
+Exit criteria:
+- One time-budgeted multi-core run shows how much larger the current setup can go without turning into an open-ended long run.
+- You can say whether more data, more model, or both are the right next scaling direction.
+- The run budget is concrete enough that later profiling work has a meaningful target to optimize.
+
+### Milestone 032: Profiling First Pass
 Track: Profiling
 
 Goal:
@@ -564,7 +603,7 @@ Exit criteria:
 - Profiling answers at least one concrete bottleneck question.
 - The results change a real next decision.
 
-### Milestone 032: Training Recipe Improvements
+### Milestone 033: Training Recipe Improvements
 Track: Training recipe
 
 Goal:
@@ -592,8 +631,9 @@ Tracks still exist, but they are secondary to milestones:
 - Optimizers: `025`, `026`, `027`, `028`
 - Engineering: `029`
 - Hardware: `030`
-- Profiling: `031`
-- Training recipe: `032`
+- Scaling: `031`
+- Profiling: `032`
+- Training recipe: `033`
 
 ## Later
 Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.
