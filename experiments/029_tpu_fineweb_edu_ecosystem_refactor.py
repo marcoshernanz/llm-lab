@@ -8,7 +8,6 @@ import optax  # pyright: ignore
 from flax import nnx
 
 import jax
-import jax.nn as jnn
 import jax.numpy as jnp
 
 from lib.data import (
@@ -244,8 +243,7 @@ def loss_fn(
 ) -> jax.Array:
     """Compute mean next-token cross-entropy for one batch."""
     logits = model(input_ids)
-    log_probs = jnn.log_softmax(logits, axis=-1)
-    loss_per_token = -jnp.take_along_axis(log_probs, target_ids[..., None], axis=-1).squeeze(-1)
+    loss_per_token = optax.softmax_cross_entropy_with_integer_labels(logits, target_ids)
     return loss_per_token.mean()
 
 
