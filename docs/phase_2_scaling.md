@@ -37,7 +37,7 @@ As of 2026-04-03:
 - `027` is complete as the handwritten Adam baseline,
 - `028` is complete as the handwritten AdamW baseline,
 - `029` is complete as the ecosystem-aligned baseline,
-- `030` is the next milestone and now follows the clean split between the frozen handwritten path and the standard ecosystem-native path,
+- `030` is the active milestone and now has an automatic-sharding experiment scaffold under `experiments/030_tpu_fineweb_edu_multicore.py`,
 - phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
@@ -484,6 +484,11 @@ Why this comes after optimizer work:
 - First learn training behavior under one-device execution.
 - Then change the execution model once the optimizer story is clearer.
 
+Why multi-core is needed:
+- `jax.device_count()` telling you there are `8` devices is not enough by itself; the batch and computation still need to be laid out across those devices.
+- The current baseline is good enough to study optimizer behavior, but it still leaves most of a `v5e-8` idle unless execution becomes explicitly multi-device.
+- For the current model size, the simplest useful strategy is data parallelism: replicate parameters, shard the batch, average gradients, and keep the optimizer update synchronized.
+
 What stays fixed:
 - Same dataset.
 - Same scaled model shape.
@@ -495,11 +500,46 @@ What changes:
 - Per-device batch handling.
 - Global batch semantics.
 - JAX parallelism strategy.
+- Device mesh and array sharding.
+
+Implementation rule:
+- Treat milestone `030` as data parallelism first, not model sharding.
+- Replicate parameters and optimizer state across devices.
+- Shard `input_ids` and `target_ids` along the batch axis only.
+- Prefer the modern JAX path built around a one-dimensional device mesh, explicit sharding, and `jax.jit`.
+- Keep `pmap` only as a teaching mental model if it helps explain the collective gradient averaging step.
+
+Core identity:
+
+$$
+\nabla_\theta \left(\frac{1}{B}\sum_{i=1}^{B}\ell(x_i; \theta)\right)
+= \frac{1}{N}\sum_{k=1}^{N} \nabla_\theta \left(\frac{1}{b}\sum_{i \in S_k}\ell(x_i; \theta)\right)
+$$
+
+where `B = N * b`.
+
+That identity is the whole reason data-parallel multi-core training works at all.
 
 Questions to answer:
 - What speedup do you actually get from `1` device to `8` devices?
 - Does the loss behavior stay comparable at the same global batch size?
 - What new host/device friction appears?
+
+Comparison rule:
+- The primary `030` comparison should hold global batch size fixed so the optimization problem stays as close as possible to the single-device baseline.
+- A secondary fixed-per-device-batch comparison is allowed later for throughput study, but it should not be treated as a direct loss-parity result.
+
+Concrete work:
+- Add explicit `global_batch_size` and `per_device_batch_size` semantics to the experiment config.
+- Validate that the global batch is divisible by the JAX device count.
+- Create a one-axis device mesh, for example `"data"`.
+- Replicate model state and optimizer state across that mesh.
+- Place token batches on device with batch-axis sharding.
+- Log device count, global batch size, and per-device batch size in run metadata.
+
+Implementation:
+- `experiments/030_tpu_fineweb_edu_multicore.py` now provides the first automatic-sharding multi-core baseline for this milestone.
+- It keeps the `029` model and optimizer setup, runs under a one-axis automatic JAX mesh, and records the multi-core batch semantics in run metadata.
 
 Exit criteria:
 - One multi-core run completes end to end.
