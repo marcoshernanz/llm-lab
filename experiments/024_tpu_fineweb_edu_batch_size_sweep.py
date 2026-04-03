@@ -21,7 +21,7 @@ from lib.eval import evaluate_positions, sample_evaluation_positions
 from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.plotting import LossTracker
 from lib.timer import Timer
-from models.transformer import DecoderOnlyTransformer
+from models.transformer_manual import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent

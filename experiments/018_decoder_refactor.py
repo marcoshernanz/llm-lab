@@ -12,7 +12,7 @@ from lib.eval import evaluate_positions, evaluate_split, sample_evaluation_posit
 from lib.plotting import LossTracker
 from lib.timer import Timer
 from tokenizer.bpe import BPEModel
-from models.transformer import DecoderOnlyTransformer
+from models.transformer_manual import DecoderOnlyTransformer
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_PATH = ROOT_DIR / "datasets" / "tinyshakespeare.txt"
