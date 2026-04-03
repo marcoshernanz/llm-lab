@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from flax import nnx
 import jax
-import jax.nn as jnn
 import jax.numpy as jnp
 
 
@@ -57,7 +56,7 @@ class FeedForward(nnx.Module):
 
     def __call__(self, x: jax.Array) -> jax.Array:
         """Project up, apply a nonlinearity, and project back down."""
-        hidden = jnn.gelu(self.in_proj(x))
+        hidden = nnx.gelu(self.in_proj(x))
         return self.out_proj(hidden)
 
 
