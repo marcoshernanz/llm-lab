@@ -1,6 +1,7 @@
 """Train the milestone-030 `smap` multi-core baseline with run metadata."""
 
 import argparse
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -30,6 +31,12 @@ DEFAULT_TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_b
 DEFAULT_TOKENIZER_PATH = (
     ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
 )
+
+type TrainStep = Callable[
+    [DecoderOnlyTransformer, nnx.Optimizer[DecoderOnlyTransformer], jax.Array, jax.Array],
+    jax.Array,
+]
+type EvaluateBatchLoss = Callable[[DecoderOnlyTransformer, jax.Array, jax.Array], jax.Array]
 
 
 @dataclass(frozen=True)
@@ -277,7 +284,7 @@ def loss_fn(
 
 def build_step_functions(
     axis_name: str,
-) -> tuple[callable, callable, callable]:
+) -> tuple[TrainStep, EvaluateBatchLoss, EvaluateBatchLoss]:
     """Build sharded training and evaluation steps for one mesh axis."""
 
     @smap(axis_name=axis_name, in_axes=(None, 0, 0), out_axes=(None, None))
@@ -336,7 +343,7 @@ def train_chunk(
     tokens: jax.Array,
     config: ExperimentConfig,
     rng: jax.Array,
-    train_step: callable,
+    train_step: TrainStep,
     *,
     num_devices: int,
     batch_sharding: NamedSharding,
@@ -376,8 +383,8 @@ def evaluate_positions_on_mesh(
     model: DecoderOnlyTransformer,
     context_length: int,
     batch_size: int,
-    evaluate_batch_loss_replicated: callable,
-    evaluate_batch_loss_sharded: callable,
+    evaluate_batch_loss_replicated: EvaluateBatchLoss,
+    evaluate_batch_loss_sharded: EvaluateBatchLoss,
     *,
     num_devices: int,
     batch_sharding: NamedSharding,
