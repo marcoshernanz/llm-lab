@@ -1,12 +1,14 @@
 """Evaluation helpers for measuring decoder loss on token sequences."""
 
-from typing import Callable
+from typing import Callable, TypeVar
 
 from flax import nnx
 import jax
 import jax.numpy as jnp
 
 from lib.data import build_examples
+
+ModelT = TypeVar("ModelT", bound=nnx.Module)
 
 
 def sample_evaluation_positions(
@@ -38,8 +40,8 @@ def sample_evaluation_positions(
 def evaluate_positions(
     tokens: jax.Array,
     start_positions: jax.Array,
-    model: nnx.Module,
-    loss_fn: Callable[[nnx.Module, jax.Array, jax.Array], jax.Array],
+    model: ModelT,
+    loss_fn: Callable[[ModelT, jax.Array, jax.Array], jax.Array],
     context_length: int,
     batch_size: int,
 ) -> float:
@@ -68,8 +70,8 @@ def evaluate_positions(
 
 def evaluate_split(
     tokens: jax.Array,
-    model: nnx.Module,
-    loss_fn: Callable[[nnx.Module, jax.Array, jax.Array], jax.Array],
+    model: ModelT,
+    loss_fn: Callable[[ModelT, jax.Array, jax.Array], jax.Array],
     context_length: int,
     batch_size: int,
 ) -> float:
