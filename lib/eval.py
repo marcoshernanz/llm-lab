@@ -2,11 +2,11 @@
 
 from typing import Callable
 
+from flax import nnx
 import jax
 import jax.numpy as jnp
 
 from lib.data import build_examples
-from models.transformer import DecoderOnlyTransformer
 
 
 def sample_evaluation_positions(
@@ -38,8 +38,8 @@ def sample_evaluation_positions(
 def evaluate_positions(
     tokens: jax.Array,
     start_positions: jax.Array,
-    model: DecoderOnlyTransformer,
-    loss_fn: Callable[[DecoderOnlyTransformer, jax.Array, jax.Array], jax.Array],
+    model: nnx.Module,
+    loss_fn: Callable[[nnx.Module, jax.Array, jax.Array], jax.Array],
     context_length: int,
     batch_size: int,
 ) -> float:
@@ -68,8 +68,8 @@ def evaluate_positions(
 
 def evaluate_split(
     tokens: jax.Array,
-    model: DecoderOnlyTransformer,
-    loss_fn: Callable[[DecoderOnlyTransformer, jax.Array, jax.Array], jax.Array],
+    model: nnx.Module,
+    loss_fn: Callable[[nnx.Module, jax.Array, jax.Array], jax.Array],
     context_length: int,
     batch_size: int,
 ) -> float:
