@@ -39,7 +39,7 @@ As of 2026-04-03:
 - `027` is complete as the handwritten Adam baseline,
 - `028` is complete as the handwritten AdamW baseline,
 - `029` is complete as the ecosystem-aligned baseline,
-- `030` is the active milestone and now has an automatic-sharding experiment scaffold under `experiments/030_tpu_fineweb_edu_multicore.py`,
+- `030` is the active milestone and now has an `smap`-based experiment scaffold under `experiments/030_tpu_fineweb_edu_multicore.py`,
 - phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
@@ -506,7 +506,7 @@ What changes:
 
 Implementation rule:
 - Treat milestone `030` as data parallelism first, not model sharding.
-- Prefer the automatic JAX mesh path first, while still making global and per-device batch semantics explicit in the experiment metadata.
+- Prefer a single-axis `smap`/`shard_map` data-parallel path that makes the batch split and gradient averaging explicit enough to inspect.
 - Keep `pmap` only as a teaching mental model if it helps explain the collective gradient averaging step.
 
 Core identity:
@@ -536,8 +536,8 @@ Concrete work:
 - Log device count, global batch size, and per-device batch size in run metadata.
 
 Implementation:
-- `experiments/030_tpu_fineweb_edu_multicore.py` now provides the first automatic-sharding multi-core baseline for this milestone.
-- It keeps the `029` model and optimizer setup, runs under a one-axis automatic JAX mesh, and records the multi-core batch semantics in run metadata.
+- `experiments/030_tpu_fineweb_edu_multicore.py` now provides the first `smap`-based multi-core baseline for this milestone.
+- It keeps the `029` model and optimizer setup, shards token batches across a one-axis explicit mesh, averages loss and gradients across devices, and records the multi-core batch semantics in run metadata.
 
 Exit criteria:
 - One multi-core run completes end to end.
