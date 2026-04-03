@@ -159,4 +159,4 @@ class DecoderOnlyTransformer(nnx.Module):
         positions = jnp.arange(input_ids.shape[-1], dtype=jnp.int32)
         x = self.token_embedding(input_ids) + self.position_embedding(positions)
         x = self.decoder_stack(x)
-        return x @ self.token_embedding.embedding.T
+        return self.token_embedding.attend(x)
