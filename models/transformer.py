@@ -32,7 +32,7 @@ class CausalSelfAttention(nnx.Module):
 
     def __call__(self, x: jax.Array) -> jax.Array:
         """Apply causal multi-head self-attention to the input sequence."""
-        causal_mask = nnx.make_causal_mask(jnp.ones(x.shape[:2], dtype=jnp.bool))
+        causal_mask = nnx.make_causal_mask(jnp.ones(x.shape[:2], dtype=jnp.bool_))
         return self.attention(x, mask=causal_mask)
 
 
