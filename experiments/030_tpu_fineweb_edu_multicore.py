@@ -249,28 +249,6 @@ def make_batch_sharding(mesh: jax.sharding.Mesh) -> NamedSharding:
     return NamedSharding(mesh, P(mesh.axis_names[0], None))
 
 
-def place_batch_on_mesh(
-    batch: jax.Array,
-    *,
-    num_devices: int,
-    batch_sharding: NamedSharding,
-    require_even_sharding: bool,
-) -> jax.Array:
-    """Place one batch on the mesh, sharding axis `0` when it divides cleanly."""
-    if batch.ndim < 1:
-        return batch
-
-    if batch.shape[0] % num_devices == 0 and batch.shape[0] > 0:
-        return jax.device_put(batch, batch_sharding)
-
-    if require_even_sharding:
-        raise ValueError(
-            "Batch size must be divisible by the number of devices for sharded execution. "
-            f"Got batch_size={batch.shape[0]} and num_devices={num_devices}."
-        )
-    return batch
-
-
 def loss_fn(
     model: DecoderOnlyTransformer,
     input_ids: jax.Array,
@@ -359,18 +337,8 @@ def train_chunk(
             maxval=tokens.shape[0] - config.context_length,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
-        sharded_input_ids = place_batch_on_mesh(
-            input_ids,
-            num_devices=num_devices,
-            batch_sharding=batch_sharding,
-            require_even_sharding=True,
-        )
-        sharded_target_ids = place_batch_on_mesh(
-            target_ids,
-            num_devices=num_devices,
-            batch_sharding=batch_sharding,
-            require_even_sharding=True,
-        )
+        sharded_input_ids = jax.device_put(input_ids, batch_sharding)
+        sharded_target_ids = jax.device_put(target_ids, batch_sharding)
         total_loss = total_loss + train_step(
             model, optimizer, sharded_input_ids, sharded_target_ids
         )
@@ -402,18 +370,8 @@ def evaluate_positions_on_mesh(
         input_ids, target_ids = build_examples(tokens, batch_positions, context_length)
 
         if batch_positions.shape[0] % num_devices == 0 and batch_positions.shape[0] > 0:
-            placed_input_ids = place_batch_on_mesh(
-                input_ids,
-                num_devices=num_devices,
-                batch_sharding=batch_sharding,
-                require_even_sharding=True,
-            )
-            placed_target_ids = place_batch_on_mesh(
-                target_ids,
-                num_devices=num_devices,
-                batch_sharding=batch_sharding,
-                require_even_sharding=True,
-            )
+            placed_input_ids = jax.device_put(input_ids, batch_sharding)
+            placed_target_ids = jax.device_put(target_ids, batch_sharding)
             batch_loss = evaluate_batch_loss_sharded(model, placed_input_ids, placed_target_ids)
         else:
             batch_loss = evaluate_batch_loss_replicated(model, input_ids, target_ids)
