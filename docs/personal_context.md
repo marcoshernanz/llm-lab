@@ -5,6 +5,11 @@ This document records the project-relevant personal context behind the repo.
 It is not meant to be a full biography.
 It exists so roadmap decisions stay aligned with the actual learning goal rather than drifting toward generic ML-project habits.
 
+Related source material:
+
+- Full personal profile: [ME.md](/Users/marcoshernanz/dev/me/ME.md)
+- Earlier low-level ML project: [BareTensor README](/Users/marcoshernanz/dev/baretensor/README.md)
+
 ## Core Profile
 
 The working assumptions behind this repo are:
