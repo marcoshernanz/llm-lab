@@ -267,16 +267,28 @@ def reshape_for_pmap(batch: jax.Array, num_devices: int) -> jax.Array:
     return batch.reshape((num_devices, per_device_batch_size, *batch.shape[1:]))
 
 
-def build_step_functions(graphdef: object) -> tuple[callable, callable, callable]:
+def build_step_functions(
+    graphdef: object,
+    config: ExperimentConfig,
+) -> tuple[callable, callable, callable]:
     """Build the `pmap` train and eval helpers from a static graph definition."""
 
-    @partial(jax.pmap, axis_name="data", in_axes=(None, 0, 0))
-    def loss_and_grads(
+    optimizer_tx = optax.adamw(
+        learning_rate=config.learning_rate,
+        b1=config.beta1,
+        b2=config.beta2,
+        eps=config.epsilon,
+        weight_decay=config.weight_decay,
+    )
+
+    @partial(jax.pmap, axis_name="data", in_axes=(0, 0, 0, 0))
+    def train_step(
         params: object,
+        opt_state: object,
         input_ids: jax.Array,
         target_ids: jax.Array,
-    ) -> tuple[jax.Array, object]:
-        """Compute local loss and average both loss and grads across devices."""
+    ) -> tuple[object, object, jax.Array]:
+        """Run one full data-parallel optimizer step on-device."""
 
         def local_loss_fn(current_params: object) -> jax.Array:
             return loss_from_params(graphdef, current_params, input_ids, target_ids)
@@ -284,9 +296,11 @@ def build_step_functions(graphdef: object) -> tuple[callable, callable, callable
         loss, grads = jax.value_and_grad(local_loss_fn)(params)
         loss = jax.lax.pmean(loss, "data")
         grads = jax.lax.pmean(grads, "data")
-        return loss, grads
+        updates, opt_state = optimizer_tx.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return params, opt_state, loss
 
-    @partial(jax.pmap, axis_name="data", in_axes=(None, 0, 0))
+    @partial(jax.pmap, axis_name="data", in_axes=(0, 0, 0))
     def evaluate_batch_loss_pmapped(
         params: object,
         input_ids: jax.Array,
@@ -305,7 +319,7 @@ def build_step_functions(graphdef: object) -> tuple[callable, callable, callable
         """Evaluate one plain unsharded batch."""
         return loss_from_params(graphdef, params, input_ids, target_ids)
 
-    return loss_and_grads, evaluate_batch_loss_plain, evaluate_batch_loss_pmapped
+    return train_step, evaluate_batch_loss_plain, evaluate_batch_loss_pmapped
 
 
 def build_multicore_evaluate_batch_loss(
@@ -317,7 +331,7 @@ def build_multicore_evaluate_batch_loss(
     """Build one eval helper that chooses pmapped or plain execution per batch."""
 
     def evaluate_batch_loss_multicore(
-        params: object,
+        params_replicated: object,
         input_ids: jax.Array,
         target_ids: jax.Array,
     ) -> jax.Array:
@@ -325,21 +339,22 @@ def build_multicore_evaluate_batch_loss(
         if input_ids.shape[0] % num_devices == 0 and input_ids.shape[0] > 0:
             sharded_input_ids = reshape_for_pmap(input_ids, num_devices)
             sharded_target_ids = reshape_for_pmap(target_ids, num_devices)
-            return evaluate_batch_loss_pmapped(params, sharded_input_ids, sharded_target_ids)[0]
-        return evaluate_batch_loss_plain(params, input_ids, target_ids)
+            return evaluate_batch_loss_pmapped(
+                params_replicated, sharded_input_ids, sharded_target_ids
+            )[0]
+        params_host = jax.tree.map(lambda value: value[0], params_replicated)
+        return evaluate_batch_loss_plain(params_host, input_ids, target_ids)
 
     return evaluate_batch_loss_multicore
 
 
 def train_chunk(
-    graphdef: object,
-    params: object,
-    optimizer_tx: optax.GradientTransformation,
-    opt_state: object,
+    params_replicated: object,
+    opt_state_replicated: object,
     tokens: jax.Array,
     config: ExperimentConfig,
     rng: jax.Array,
-    loss_and_grads: callable,
+    train_step: callable,
     *,
     num_devices: int,
 ) -> tuple[object, object, jax.Array, jax.Array]:
@@ -357,19 +372,21 @@ def train_chunk(
         input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
         sharded_input_ids = reshape_for_pmap(input_ids, num_devices)
         sharded_target_ids = reshape_for_pmap(target_ids, num_devices)
-        loss, grads = loss_and_grads(params, sharded_input_ids, sharded_target_ids)
+        params_replicated, opt_state_replicated, loss = train_step(
+            params_replicated,
+            opt_state_replicated,
+            sharded_input_ids,
+            sharded_target_ids,
+        )
         mean_loss = loss[0]
-        mean_grads = jax.tree.map(lambda value: value[0], grads)
-        updates, opt_state = optimizer_tx.update(mean_grads, opt_state, params)
-        params = optax.apply_updates(params, updates)
         total_loss = total_loss + mean_loss
 
-    return params, opt_state, total_loss / config.train_chunk_length, rng
+    return params_replicated, opt_state_replicated, total_loss / config.train_chunk_length, rng
 
 
 def generate_text(
     graphdef: object,
-    params: object,
+    params_host: object,
     tokenizer: BPEModel,
     seed_token_ids: jax.Array,
     sample_tokens: int,
@@ -391,7 +408,7 @@ def generate_text(
     )
     context = seed_token_ids[seed_start : seed_start + context_length]
     generated_token_ids: list[int] = []
-    model = merge_model(graphdef, params)
+    model = merge_model(graphdef, params_host)
 
     for _ in range(sample_tokens):
         logits = model(context[None, :])
@@ -440,17 +457,20 @@ def main() -> None:
 
     graphdef, params = create_model_graph_and_params(config, tokenizer.vocab_size)
     print("status=created_model_graph_and_params")
-    optimizer_tx = optax.adamw(
+    optimizer_tx_host = optax.adamw(
         learning_rate=config.learning_rate,
         b1=config.beta1,
         b2=config.beta2,
         eps=config.epsilon,
         weight_decay=config.weight_decay,
     )
-    opt_state = optimizer_tx.init(params)
-    print("status=initialized_optimizer_state")
-    loss_and_grads, evaluate_batch_loss_plain, evaluate_batch_loss_pmapped = build_step_functions(
-        graphdef
+    opt_state = optimizer_tx_host.init(params)
+    params_replicated = jax.device_put_replicated(params, jax.local_devices())
+    opt_state_replicated = jax.device_put_replicated(opt_state, jax.local_devices())
+    print("status=initialized_replicated_optimizer_state")
+    train_step, evaluate_batch_loss_plain, evaluate_batch_loss_pmapped = build_step_functions(
+        graphdef,
+        config,
     )
     print("status=built_pmap_step_functions")
     evaluate_batch_loss_multicore = build_multicore_evaluate_batch_loss(
@@ -492,23 +512,22 @@ def main() -> None:
                 f"train_shard_index={active_train_shard_index} "
                 f"loaded_train_tokens={int(train_tokens.shape[0])}"
             )
-        params, opt_state, train_loss, rng = train_chunk(
-            graphdef,
-            params,
-            optimizer_tx,
-            opt_state,
+        params_replicated, opt_state_replicated, train_loss, rng = train_chunk(
+            params_replicated,
+            opt_state_replicated,
             train_tokens,
             config,
             rng,
-            loss_and_grads,
+            train_step,
             num_devices=num_devices,
         )
+        params_host = jax.tree.map(lambda value: value[0], params_replicated)
         if chunk_index == 0:
             print("status=finished_first_train_chunk")
         train_subset_loss = evaluate_positions(
             train_subset_tokens,
             train_subset_start_positions,
-            params,
+            params_replicated,
             evaluate_batch_loss_multicore,
             config.context_length,
             config.eval_batch_size,
@@ -518,7 +537,7 @@ def main() -> None:
         validation_subset_loss = evaluate_positions(
             validation_tokens,
             validation_start_positions,
-            params,
+            params_replicated,
             evaluate_batch_loss_multicore,
             config.context_length,
             config.eval_batch_size,
@@ -540,14 +559,14 @@ def main() -> None:
 
     sample_text = generate_text(
         graphdef,
-        params,
+        params_host,
         tokenizer,
         validation_tokens,
         config.sample_tokens,
         config.context_length,
         rng,
     )
-    sample_model = merge_model(graphdef, params)
+    sample_model = merge_model(graphdef, params_host)
     sample_logits = sample_model(validation_tokens[: config.context_length][None, :])
     total_seconds = timer.stop("total")
 
