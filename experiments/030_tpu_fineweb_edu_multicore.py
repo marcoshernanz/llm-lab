@@ -1,8 +1,8 @@
-"""Train the milestone-030 `smap` multi-core baseline with run metadata."""
+"""Train the milestone-030 `pmap` multi-core baseline with run metadata."""
 
 import argparse
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from functools import partial
 from pathlib import Path
 
 import optax  # pyright: ignore
@@ -10,8 +10,6 @@ from flax import nnx
 
 import jax
 import jax.numpy as jnp
-from jax import smap
-from jax.sharding import AxisType, NamedSharding, PartitionSpec as P
 
 from lib.data import (
     build_examples,
@@ -31,12 +29,6 @@ DEFAULT_TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_b
 DEFAULT_TOKENIZER_PATH = (
     ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
 )
-
-type TrainStep = Callable[
-    [DecoderOnlyTransformer, nnx.Optimizer[DecoderOnlyTransformer], jax.Array, jax.Array],
-    jax.Array,
-]
-type EvaluateBatchLoss = Callable[[DecoderOnlyTransformer, jax.Array, jax.Array], jax.Array]
 
 
 @dataclass(frozen=True)
@@ -68,7 +60,6 @@ class ExperimentConfig:
     num_decoder_blocks: int = 8
     hidden_dim: int = 256
     context_length: int = 64
-    mesh_axis_name: str = "data"
 
     def validate(self) -> None:
         """Reject invalid experiment settings early."""
@@ -102,14 +93,12 @@ class ExperimentConfig:
             raise ValueError("max_train_shards must be positive when provided")
         if self.train_subset_shard_index < 0:
             raise ValueError("train_subset_shard_index must be non-negative")
-        if not self.mesh_axis_name:
-            raise ValueError("mesh_axis_name must be non-empty")
 
 
 def parse_args() -> ExperimentConfig:
     """Parse only the few runtime overrides that are likely to matter in practice."""
     parser = argparse.ArgumentParser(
-        description="Train one milestone-030 smap-based TPU multicore point."
+        description="Train one milestone-030 pmap-based TPU multicore point."
     )
     parser.add_argument(
         "--token-shard-root",
@@ -235,99 +224,128 @@ def select_train_shards(root_dir: Path, max_train_shards: int | None) -> list[Pa
     return shard_paths[:max_train_shards]
 
 
-def create_data_mesh(axis_name: str) -> jax.sharding.Mesh:
-    """Create a one-dimensional explicit mesh over all visible JAX devices."""
-    return jax.make_mesh(
-        (jax.device_count(),),
-        (axis_name,),
-        axis_types=(AxisType.Explicit,),
+def create_model_graph_and_params(config: ExperimentConfig, vocab_size: int) -> tuple[object, object]:
+    """Build one transformer and split it into a static graph and mutable parameter state."""
+    model = DecoderOnlyTransformer(
+        vocab_size=vocab_size,
+        context_length=config.context_length,
+        embedding_dim=config.embedding_dim,
+        hidden_dim=config.hidden_dim,
+        num_heads=config.num_heads,
+        num_decoder_blocks=config.num_decoder_blocks,
+        rngs=nnx.Rngs(config.seed),
     )
+    return nnx.split(model, nnx.Param)
 
 
-def make_batch_sharding(mesh: jax.sharding.Mesh) -> NamedSharding:
-    """Describe a `(batch, time)` token tensor sharded only on the batch axis."""
-    return NamedSharding(mesh, P(mesh.axis_names[0], None))
+def merge_model(graphdef: object, params: object) -> DecoderOnlyTransformer:
+    """Rebuild a callable transformer module from graph and parameter state."""
+    return nnx.merge(graphdef, params)
 
 
-def loss_fn(
-    model: DecoderOnlyTransformer,
+def loss_from_params(
+    graphdef: object,
+    params: object,
     input_ids: jax.Array,
     target_ids: jax.Array,
 ) -> jax.Array:
-    """Compute mean next-token cross-entropy for one batch."""
+    """Compute mean next-token cross-entropy from a pure parameter tree."""
+    model = merge_model(graphdef, params)
     logits = model(input_ids)
     loss_per_token = optax.softmax_cross_entropy_with_integer_labels(logits, target_ids)
     return loss_per_token.mean()
 
 
-def build_step_functions(
-    axis_name: str,
-) -> tuple[TrainStep, EvaluateBatchLoss, EvaluateBatchLoss]:
-    """Build the `smap` training and evaluation steps for one mesh axis."""
+def reshape_for_pmap(batch: jax.Array, num_devices: int) -> jax.Array:
+    """Reshape a global batch into `(num_devices, per_device_batch, ...)` for `pmap`."""
+    if batch.shape[0] % num_devices != 0:
+        raise ValueError(
+            "Batch size must be divisible by the number of devices for pmap execution. "
+            f"Got batch_size={batch.shape[0]} and num_devices={num_devices}."
+        )
+    per_device_batch_size = batch.shape[0] // num_devices
+    return batch.reshape((num_devices, per_device_batch_size, *batch.shape[1:]))
 
-    @smap(axis_name=axis_name, in_axes=(None, 0, 0), out_axes=(None, None))
+
+def build_step_functions(graphdef: object) -> tuple[callable, callable, callable]:
+    """Build the `pmap` train and eval helpers from a static graph definition."""
+
+    @partial(jax.pmap, axis_name="data", in_axes=(None, 0, 0))
     def loss_and_grads(
-        model: DecoderOnlyTransformer,
+        params: object,
         input_ids: jax.Array,
         target_ids: jax.Array,
     ) -> tuple[jax.Array, object]:
         """Compute local loss and average both loss and grads across devices."""
 
-        def local_loss_fn(module: DecoderOnlyTransformer) -> jax.Array:
-            return loss_fn(module, input_ids, target_ids)
+        def local_loss_fn(current_params: object) -> jax.Array:
+            return loss_from_params(graphdef, current_params, input_ids, target_ids)
 
-        loss, grads = nnx.value_and_grad(local_loss_fn)(model)
-        loss = jax.lax.pmean(loss, axis_name)
-        grads = jax.tree.map(lambda grad: jax.lax.pmean(grad, axis_name), grads)
+        loss, grads = jax.value_and_grad(local_loss_fn)(params)
+        loss = jax.lax.pmean(loss, "data")
+        grads = jax.lax.pmean(grads, "data")
         return loss, grads
 
-    def train_step(
-        model: DecoderOnlyTransformer,
-        optimizer: nnx.Optimizer[DecoderOnlyTransformer],
+    @partial(jax.pmap, axis_name="data", in_axes=(None, 0, 0))
+    def evaluate_batch_loss_pmapped(
+        params: object,
         input_ids: jax.Array,
         target_ids: jax.Array,
     ) -> jax.Array:
-        """Run one data-parallel AdamW step on a sharded batch of token examples."""
-        loss, grads = loss_and_grads(model, input_ids, target_ids)
-        optimizer.update(model, grads)
-        return loss
+        """Evaluate one evenly sharded batch and return one replicated scalar loss per device."""
+        loss = loss_from_params(graphdef, params, input_ids, target_ids)
+        return jax.lax.pmean(loss, "data")
 
-    @smap(axis_name=axis_name, in_axes=(None, 0, 0), out_axes=None)
-    def evaluate_batch_loss_sharded(
-        model: DecoderOnlyTransformer,
+    @jax.jit
+    def evaluate_batch_loss_plain(
+        params: object,
         input_ids: jax.Array,
         target_ids: jax.Array,
     ) -> jax.Array:
-        """Evaluate one evenly sharded batch and return a replicated scalar loss."""
-        loss = loss_fn(model, input_ids, target_ids)
-        return jax.lax.pmean(loss, axis_name)
+        """Evaluate one plain unsharded batch."""
+        return loss_from_params(graphdef, params, input_ids, target_ids)
 
-    return train_step, evaluate_batch_loss, evaluate_batch_loss_sharded
+    return loss_and_grads, evaluate_batch_loss_plain, evaluate_batch_loss_pmapped
 
 
-@nnx.jit
-def evaluate_batch_loss(
-    model: DecoderOnlyTransformer,
-    input_ids: jax.Array,
-    target_ids: jax.Array,
-) -> jax.Array:
-    """Evaluate batch loss without updating the model."""
-    return loss_fn(model, input_ids, target_ids)
+def build_multicore_evaluate_batch_loss(
+    evaluate_batch_loss_plain: callable,
+    evaluate_batch_loss_pmapped: callable,
+    *,
+    num_devices: int,
+) -> callable:
+    """Build one eval helper that chooses pmapped or plain execution per batch."""
+
+    def evaluate_batch_loss_multicore(
+        params: object,
+        input_ids: jax.Array,
+        target_ids: jax.Array,
+    ) -> jax.Array:
+        """Evaluate one batch, sharding only when the batch divides evenly."""
+        if input_ids.shape[0] % num_devices == 0 and input_ids.shape[0] > 0:
+            sharded_input_ids = reshape_for_pmap(input_ids, num_devices)
+            sharded_target_ids = reshape_for_pmap(target_ids, num_devices)
+            return evaluate_batch_loss_pmapped(params, sharded_input_ids, sharded_target_ids)[0]
+        return evaluate_batch_loss_plain(params, input_ids, target_ids)
+
+    return evaluate_batch_loss_multicore
 
 
 def train_chunk(
-    model: DecoderOnlyTransformer,
-    optimizer: nnx.Optimizer[DecoderOnlyTransformer],
+    graphdef: object,
+    params: object,
+    optimizer_tx: optax.GradientTransformation,
+    opt_state: object,
     tokens: jax.Array,
     config: ExperimentConfig,
     rng: jax.Array,
-    train_step: TrainStep,
+    loss_and_grads: callable,
     *,
     num_devices: int,
-    batch_sharding: NamedSharding,
-) -> tuple[jax.Array, jax.Array]:
-    """Average several sharded training batches into one logged chunk."""
+) -> tuple[object, object, jax.Array, jax.Array]:
+    """Average several pmapped training batches into one logged chunk."""
     total_loss = jnp.array(0.0, dtype=jnp.float32)
+
     for _ in range(config.train_chunk_length):
         rng, batch_rng = jax.random.split(rng)
         start_positions = jax.random.randint(
@@ -337,40 +355,21 @@ def train_chunk(
             maxval=tokens.shape[0] - config.context_length,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
-        sharded_input_ids = jax.device_put(input_ids, batch_sharding)
-        sharded_target_ids = jax.device_put(target_ids, batch_sharding)
-        total_loss = total_loss + train_step(
-            model, optimizer, sharded_input_ids, sharded_target_ids
-        )
-    return total_loss / config.train_chunk_length, rng
+        sharded_input_ids = reshape_for_pmap(input_ids, num_devices)
+        sharded_target_ids = reshape_for_pmap(target_ids, num_devices)
+        loss, grads = loss_and_grads(params, sharded_input_ids, sharded_target_ids)
+        mean_loss = loss[0]
+        mean_grads = jax.tree.map(lambda value: value[0], grads)
+        updates, opt_state = optimizer_tx.update(mean_grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        total_loss = total_loss + mean_loss
 
-
-def build_multicore_evaluate_batch_loss(
-    evaluate_batch_loss_plain: EvaluateBatchLoss,
-    evaluate_batch_loss_sharded: EvaluateBatchLoss,
-    *,
-    num_devices: int,
-    batch_sharding: NamedSharding,
-) -> EvaluateBatchLoss:
-    """Build one eval helper that chooses sharded or replicated execution per batch."""
-
-    def evaluate_batch_loss_multicore(
-        model: DecoderOnlyTransformer,
-        input_ids: jax.Array,
-        target_ids: jax.Array,
-    ) -> jax.Array:
-        """Evaluate one batch, sharding only when the batch divides evenly."""
-        if input_ids.shape[0] % num_devices == 0 and input_ids.shape[0] > 0:
-            placed_input_ids = jax.device_put(input_ids, batch_sharding)
-            placed_target_ids = jax.device_put(target_ids, batch_sharding)
-            return evaluate_batch_loss_sharded(model, placed_input_ids, placed_target_ids)
-        return evaluate_batch_loss_plain(model, input_ids, target_ids)
-
-    return evaluate_batch_loss_multicore
+    return params, opt_state, total_loss / config.train_chunk_length, rng
 
 
 def generate_text(
-    model: DecoderOnlyTransformer,
+    graphdef: object,
+    params: object,
     tokenizer: BPEModel,
     seed_token_ids: jax.Array,
     sample_tokens: int,
@@ -392,6 +391,7 @@ def generate_text(
     )
     context = seed_token_ids[seed_start : seed_start + context_length]
     generated_token_ids: list[int] = []
+    model = merge_model(graphdef, params)
 
     for _ in range(sample_tokens):
         logits = model(context[None, :])
@@ -404,20 +404,18 @@ def generate_text(
 
 
 def main() -> None:
-    """Run one milestone-030 smap-based TPU multicore point end to end."""
+    """Run one milestone-030 `pmap` TPU multicore point end to end."""
     config = parse_args()
     print("status=parsed_config")
-    mesh = create_data_mesh(config.mesh_axis_name)
-    print(f"status=created_mesh mesh_axis_name={config.mesh_axis_name} jax_device_count={jax.device_count()}")
-    num_devices = jax.device_count()
+    num_devices = jax.local_device_count()
+    print(f"status=resolved_devices jax_local_device_count={num_devices}")
     if config.global_batch_size % num_devices != 0:
         raise ValueError(
-            "global_batch_size must be divisible by the visible JAX device count. "
+            "global_batch_size must be divisible by the visible local JAX device count. "
             f"Got global_batch_size={config.global_batch_size} and num_devices={num_devices}."
         )
 
     per_device_batch_size = config.global_batch_size // num_devices
-    batch_sharding = make_batch_sharding(mesh)
 
     timer = Timer()
     timer.start("total")
@@ -440,130 +438,118 @@ def main() -> None:
     )
     print(f"status=loaded_train_subset_tokens count={int(train_subset_tokens.shape[0])}")
 
-    with jax.set_mesh(mesh):
-        print("status=entered_mesh_context")
-        train_step, evaluate_batch_loss_plain, evaluate_batch_loss_sharded = (
-            build_step_functions(config.mesh_axis_name)
-        )
-        print("status=built_smap_step_functions")
-        evaluate_batch_loss_multicore = build_multicore_evaluate_batch_loss(
-            evaluate_batch_loss_plain,
-            evaluate_batch_loss_sharded,
-            num_devices=num_devices,
-            batch_sharding=batch_sharding,
-        )
-        print("status=built_multicore_eval_helper")
+    graphdef, params = create_model_graph_and_params(config, tokenizer.vocab_size)
+    print("status=created_model_graph_and_params")
+    optimizer_tx = optax.adamw(
+        learning_rate=config.learning_rate,
+        b1=config.beta1,
+        b2=config.beta2,
+        eps=config.epsilon,
+        weight_decay=config.weight_decay,
+    )
+    opt_state = optimizer_tx.init(params)
+    print("status=initialized_optimizer_state")
+    loss_and_grads, evaluate_batch_loss_plain, evaluate_batch_loss_pmapped = build_step_functions(
+        graphdef
+    )
+    print("status=built_pmap_step_functions")
+    evaluate_batch_loss_multicore = build_multicore_evaluate_batch_loss(
+        evaluate_batch_loss_plain,
+        evaluate_batch_loss_pmapped,
+        num_devices=num_devices,
+    )
+    print("status=built_multicore_eval_helper")
 
-        model = DecoderOnlyTransformer(
-            vocab_size=tokenizer.vocab_size,
-            context_length=config.context_length,
-            embedding_dim=config.embedding_dim,
-            hidden_dim=config.hidden_dim,
-            num_heads=config.num_heads,
-            num_decoder_blocks=config.num_decoder_blocks,
-            rngs=nnx.Rngs(config.seed),
-        )
-        print("status=initialized_model")
-        optimizer = nnx.Optimizer(
-            model,
-            optax.adamw(
-                learning_rate=config.learning_rate,
-                b1=config.beta1,
-                b2=config.beta2,
-                eps=config.epsilon,
-                weight_decay=config.weight_decay,
-            ),
-            wrt=nnx.Param,
-        )
-        print("status=initialized_optimizer")
+    rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
+    validation_start_positions = sample_evaluation_positions(
+        validation_tokens,
+        context_length=config.context_length,
+        subset_size=config.validation_subset_examples,
+        rng=validation_rng,
+    )
+    print(f"status=sampled_validation_positions count={int(validation_start_positions.shape[0])}")
+    train_subset_start_positions = sample_evaluation_positions(
+        train_subset_tokens,
+        context_length=config.context_length,
+        subset_size=config.validation_subset_examples,
+        rng=train_subset_rng,
+    )
+    print(f"status=sampled_train_subset_positions count={int(train_subset_start_positions.shape[0])}")
 
-        rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
-        validation_start_positions = sample_evaluation_positions(
-            validation_tokens,
-            context_length=config.context_length,
-            subset_size=config.validation_subset_examples,
-            rng=validation_rng,
-        )
-        print(f"status=sampled_validation_positions count={int(validation_start_positions.shape[0])}")
-        train_subset_start_positions = sample_evaluation_positions(
-            train_subset_tokens,
-            context_length=config.context_length,
-            subset_size=config.validation_subset_examples,
-            rng=train_subset_rng,
-        )
-        print(f"status=sampled_train_subset_positions count={int(train_subset_start_positions.shape[0])}")
+    timer.start("train")
+    loss_tracker = LossTracker()
+    train_tokens = None
 
-        timer.start("train")
-        loss_tracker = LossTracker()
-        train_tokens = None
-
-        for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
-            active_train_shard_index = chunk_index % len(train_shard_paths)
-            train_tokens = load_token_shard(
-                train_shard_paths[active_train_shard_index],
-                mmap=config.shard_mmap,
+    for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
+        active_train_shard_index = chunk_index % len(train_shard_paths)
+        train_tokens = load_token_shard(
+            train_shard_paths[active_train_shard_index],
+            mmap=config.shard_mmap,
+        )
+        if chunk_index == 0:
+            print(
+                "status=starting_first_train_chunk "
+                f"train_shard_index={active_train_shard_index} "
+                f"loaded_train_tokens={int(train_tokens.shape[0])}"
             )
-            if chunk_index == 0:
-                print(
-                    "status=starting_first_train_chunk "
-                    f"train_shard_index={active_train_shard_index} "
-                    f"loaded_train_tokens={int(train_tokens.shape[0])}"
-                )
-            train_loss, rng = train_chunk(
-                model,
-                optimizer,
-                train_tokens,
-                config,
-                rng,
-                train_step,
-                num_devices=num_devices,
-                batch_sharding=batch_sharding,
-            )
-            if chunk_index == 0:
-                print("status=finished_first_train_chunk")
-            train_subset_loss = evaluate_positions(
-                train_subset_tokens,
-                train_subset_start_positions,
-                model,
-                evaluate_batch_loss_multicore,
-                config.context_length,
-                config.eval_batch_size,
-            )
-            if chunk_index == 0:
-                print("status=finished_first_train_subset_eval")
-            validation_subset_loss = evaluate_positions(
-                validation_tokens,
-                validation_start_positions,
-                model,
-                evaluate_batch_loss_multicore,
-                config.context_length,
-                config.eval_batch_size,
-            )
-            if chunk_index == 0:
-                print("status=finished_first_validation_subset_eval")
-
-            current_step = (chunk_index + 1) * config.train_chunk_length
-            loss_tracker.log(
-                step=current_step,
-                train_loss=float(train_loss),
-                train_subset_loss=train_subset_loss,
-                validation_subset_loss=validation_subset_loss,
-            )
-
-        train_seconds = timer.stop("train")
-        if train_tokens is None:
-            raise ValueError("No train shard was loaded during training.")
-
-        sample_text = generate_text(
-            model,
-            tokenizer,
-            validation_tokens,
-            config.sample_tokens,
-            config.context_length,
+        params, opt_state, train_loss, rng = train_chunk(
+            graphdef,
+            params,
+            optimizer_tx,
+            opt_state,
+            train_tokens,
+            config,
             rng,
+            loss_and_grads,
+            num_devices=num_devices,
         )
-        sample_logits = model(validation_tokens[: config.context_length][None, :])
-        total_seconds = timer.stop("total")
+        if chunk_index == 0:
+            print("status=finished_first_train_chunk")
+        train_subset_loss = evaluate_positions(
+            train_subset_tokens,
+            train_subset_start_positions,
+            params,
+            evaluate_batch_loss_multicore,
+            config.context_length,
+            config.eval_batch_size,
+        )
+        if chunk_index == 0:
+            print("status=finished_first_train_subset_eval")
+        validation_subset_loss = evaluate_positions(
+            validation_tokens,
+            validation_start_positions,
+            params,
+            evaluate_batch_loss_multicore,
+            config.context_length,
+            config.eval_batch_size,
+        )
+        if chunk_index == 0:
+            print("status=finished_first_validation_subset_eval")
+
+        current_step = (chunk_index + 1) * config.train_chunk_length
+        loss_tracker.log(
+            step=current_step,
+            train_loss=float(train_loss),
+            train_subset_loss=train_subset_loss,
+            validation_subset_loss=validation_subset_loss,
+        )
+
+    train_seconds = timer.stop("train")
+    if train_tokens is None:
+        raise ValueError("No train shard was loaded during training.")
+
+    sample_text = generate_text(
+        graphdef,
+        params,
+        tokenizer,
+        validation_tokens,
+        config.sample_tokens,
+        config.context_length,
+        rng,
+    )
+    sample_model = merge_model(graphdef, params)
+    sample_logits = sample_model(validation_tokens[: config.context_length][None, :])
+    total_seconds = timer.stop("total")
 
     run_metadata = build_run_metadata(
         script_path=Path(__file__),
@@ -573,10 +559,11 @@ def main() -> None:
             "batch_size": config.global_batch_size,
             "global_batch_size": config.global_batch_size,
             "per_device_batch_size": per_device_batch_size,
-            "mesh_axis_name": config.mesh_axis_name,
-            "sharding_mode": "smap",
-            "parameter_sharding": str(model.token_embedding.embedding[...].sharding),
-            "train_batch_sharding": str(batch_sharding),
+            "sharding_mode": "pmap",
+            "parameter_sharding": "replicated parameter tree broadcast to pmap replicas",
+            "train_batch_sharding": (
+                f"reshaped to ({num_devices}, {per_device_batch_size}, {config.context_length})"
+            ),
             "logits_sharding": str(sample_logits.sharding),
             "train_shards_used": len(train_shard_paths),
             "loaded_train_tokens": int(train_tokens.shape[0]),
