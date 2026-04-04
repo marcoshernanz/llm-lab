@@ -39,7 +39,7 @@ As of 2026-04-03:
 - `027` is complete as the handwritten Adam baseline,
 - `028` is complete as the handwritten AdamW baseline,
 - `029` is complete as the ecosystem-aligned baseline,
-- `030` is the active milestone and now has an `smap`-based experiment scaffold under `experiments/030_tpu_fineweb_edu_multicore.py`,
+- `030` is the next milestone and now focuses on profiling before any explicit multi-core execution work,
 - phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
@@ -476,20 +476,24 @@ Status:
 - The standard `models/transformer.py` now uses NNX attention, embeddings, layer norms, linear layers, tied embedding logits, Optax AdamW, and an Optax loss helper.
 - The handwritten transformer path remains available under `models/transformer_manual.py` for earlier milestones.
 
-### Milestone 030: Multi-Core JAX TPU Baseline
-Track: Hardware
+### Milestone 030: Profiling First Pass
+Track: Profiling
 
 Goal:
-- Move from single-device TPU execution to real multi-core JAX execution on `v5e-8`.
+- Profile only after there is a real performance question to answer.
 
-Why this comes after optimizer work:
-- First learn training behavior under one-device execution.
-- Then change the execution model once the optimizer story is clearer.
+Why this comes here:
+- The attempted multi-core bring-up introduced implementation complexity before there was a clear measurement of where the current single-device ecosystem baseline is spending time.
+- Before changing the execution model again, the next useful step is to measure where time is actually going in the current `029` path.
 
-Why multi-core is needed:
-- `jax.device_count()` telling you there are `8` devices is not enough by itself; the batch and computation still need to be laid out across those devices.
-- The current baseline is good enough to study optimizer behavior, but it still leaves most of a `v5e-8` idle unless execution becomes explicitly multi-device.
-- For the current model size, the simplest useful strategy is data parallelism: replicate parameters, shard the batch, average gradients, and keep the optimizer update synchronized.
+What to profile:
+- compile time
+- train-step time
+- train-subset eval time
+- validation-subset eval time
+- sampling cost
+- tokens per second
+- obvious input-pipeline or host-overhead bottlenecks
 
 What stays fixed:
 - Same dataset.
@@ -498,51 +502,22 @@ What stays fixed:
 - Same artifact format and subset-loss logging.
 
 What changes:
-- Execution model only.
-- Per-device batch handling.
-- Global batch semantics.
-- JAX parallelism strategy.
-- Device mesh and array sharding.
-
-Implementation rule:
-- Treat milestone `030` as data parallelism first, not model sharding.
-- Prefer a single-axis `smap`/`shard_map` data-parallel path that makes the batch split and gradient averaging explicit enough to inspect.
-- Keep `pmap` only as a teaching mental model if it helps explain the collective gradient averaging step.
-
-Core identity:
-
-$$
-\nabla_\theta \left(\frac{1}{B}\sum_{i=1}^{B}\ell(x_i; \theta)\right)
-= \frac{1}{N}\sum_{k=1}^{N} \nabla_\theta \left(\frac{1}{b}\sum_{i \in S_k}\ell(x_i; \theta)\right)
-$$
-
-where `B = N * b`.
-
-That identity is the whole reason data-parallel multi-core training works at all.
+- Measurement only.
+- Add timing and profiling instrumentation around the current baseline.
 
 Questions to answer:
-- What speedup do you actually get from `1` device to `8` devices?
-- Does the loss behavior stay comparable at the same global batch size?
-- What new host/device friction appears?
-
-Comparison rule:
-- The primary `030` comparison should hold global batch size fixed so the optimization problem stays as close as possible to the single-device baseline.
-- A secondary fixed-per-device-batch comparison is allowed later for throughput study, but it should not be treated as a direct loss-parity result.
+- Which part of the current baseline dominates wall-clock time?
+- Is the bottleneck in training, evaluation, sampling, compilation, or input handling?
+- What is the most defensible next systems change after measurement?
 
 Concrete work:
-- Add explicit `global_batch_size` and `per_device_batch_size` semantics to the experiment config.
-- Validate that the global batch is divisible by the JAX device count.
-- Create a one-axis device mesh, for example `"data"`.
-- Log device count, global batch size, and per-device batch size in run metadata.
-
-Implementation:
-- `experiments/030_tpu_fineweb_edu_multicore.py` now provides the first `smap`-based multi-core baseline for this milestone.
-- It keeps the `029` model and optimizer setup, shards token batches across a one-axis explicit mesh, averages loss and gradients across devices, and records the multi-core batch semantics in run metadata.
+- Add targeted timing and profiling instrumentation to the current baseline or notebook workflow.
+- Measure at least one representative run cleanly enough that the time breakdown is trustworthy.
+- Write down the one or two biggest bottlenecks before changing execution strategy again.
 
 Exit criteria:
-- One multi-core run completes end to end.
-- Throughput improvement is measured clearly.
-- You can explain the main conceptual changes required to go multi-core.
+- Profiling answers at least one concrete bottleneck question.
+- The results change a real next decision.
 
 ### Milestone 031: Time-Budgeted Scaling Pass
 Track: Scaling
@@ -551,13 +526,13 @@ Goal:
 - Push the largest useful model and data budget that still fits inside a reasonable real-run window, roughly `30m` to `1h`.
 
 Why this comes here:
-- `030` should establish the multi-core execution baseline first.
-- Once multi-core is working, the next useful question is not profiling yet; it is how much more model and data the current hardware budget can actually support.
+- `030` should establish the main bottlenecks first.
+- Once the current runtime behavior is measured, the next useful question is how much more model and data the current hardware budget can actually support before a multi-core rewrite is justified.
 - Recent curves suggest the current model may be small for the available runtime budget, while the widening train/validation gap suggests the current data budget is also too small.
 
 What stays fixed:
 - Same hardware target.
-- Same multi-core execution path from `030`.
+- Same single-device ecosystem baseline from `029` unless the profiling results justify one narrow change first.
 - Same optimizer family.
 - Same artifact format and subset-loss logging.
 
@@ -577,27 +552,44 @@ Concrete work:
 - Compare train loss, validation subset loss, train/validation gap, tokens per second, and total tokens seen.
 
 Exit criteria:
-- One time-budgeted multi-core run shows how much larger the current setup can go without turning into an open-ended long run.
+- One time-budgeted run shows how much larger the current setup can go without turning into an open-ended long run.
 - You can say whether more data, more model, or both are the right next scaling direction.
 - The run budget is concrete enough that later profiling work has a meaningful target to optimize.
 
-### Milestone 032: Profiling First Pass
-Track: Profiling
+### Milestone 032: Multi-Core JAX TPU Baseline
+Track: Hardware
 
 Goal:
-- Profile only after there is a real performance question to answer.
+- Move from single-device TPU execution to real multi-core JAX execution on `v5e-8`.
 
-What to profile:
-- single-device vs multi-core compile time
-- single-device vs multi-core step time
-- host overhead
-- eval cost
-- tokens per second
-- obvious input-pipeline bottlenecks
+Why this comes here:
+- Profiling should identify whether multi-core execution is actually the most justified next systems change.
+- Only after that should the repo take on the extra complexity of explicit multi-device execution.
+
+What stays fixed:
+- Same dataset.
+- Same scaled model shape, unless `031` shows a very strong reason to change it first.
+- Same chosen optimizer baseline.
+- Same artifact format and subset-loss logging.
+
+What changes:
+- Execution model only.
+- Per-device batch handling.
+- Global batch semantics.
+- JAX parallelism strategy.
+
+Questions to answer:
+- What speedup do you actually get from `1` device to `8` devices?
+- Does the loss behavior stay comparable at the same global batch size?
+- What new host/device friction appears?
+
+Rule:
+- Prefer the simplest data-parallel implementation that the profiling results justify.
 
 Exit criteria:
-- Profiling answers at least one concrete bottleneck question.
-- The results change a real next decision.
+- One multi-core run completes end to end.
+- Throughput improvement is measured clearly.
+- You can explain the main conceptual changes required to go multi-core.
 
 ## Track Summary
 Tracks still exist, but they are secondary to milestones:
@@ -607,9 +599,9 @@ Tracks still exist, but they are secondary to milestones:
 - Observability: `023`
 - Optimizers: `025`, `026`, `027`, `028`
 - Engineering: `029`
-- Hardware: `030`
+- Profiling: `030`
 - Scaling: `031`
-- Profiling: `032`
+- Hardware: `032`
 
 ## Next
 After `032`, the planned next phase is the systems rebuild described in [docs/phase_3_systems.md](./phase_3_systems.md).
