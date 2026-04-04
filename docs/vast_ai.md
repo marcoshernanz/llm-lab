@@ -9,6 +9,7 @@ Default `5090` search:
 ```bash
 vastai search offers \
   'gpu_name=RTX_5090 num_gpus=1 reliability>0.99 dlperf>195 pcie_bw>20 dph<0.45' \
+  --storage 60 \
   --limit 20 \
   -o 'dph,reliability-,pcie_bw-,dlperf-' \
   --raw
@@ -19,6 +20,7 @@ Region-aware variant:
 ```bash
 vastai search offers \
   'gpu_name=RTX_5090 num_gpus=1 reliability>0.995 dlperf>195 pcie_bw>20 dph<0.45 geolocation notin [VN,KR]' \
+  --storage 60 \
   --limit 20 \
   -o 'dph,reliability-,pcie_bw-,dlperf-' \
   --raw
