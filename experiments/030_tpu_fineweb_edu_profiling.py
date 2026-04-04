@@ -95,7 +95,7 @@ class ExperimentConfig:
 
 
 def parse_args() -> ExperimentConfig:
-    """Parse the small set of runtime overrides useful on TPU notebooks."""
+    """Parse only the few profiling overrides worth changing between runs."""
     parser = argparse.ArgumentParser(
         description="Train one milestone-030 TPU profiling point with run metadata."
     )
@@ -130,12 +130,6 @@ def parse_args() -> ExperimentConfig:
         help="Maximum number of train shards to rotate across.",
     )
     parser.add_argument(
-        "--validation-shard-index",
-        type=int,
-        default=ExperimentConfig.validation_shard_index,
-        help="Validation shard index used for the fixed validation subset.",
-    )
-    parser.add_argument(
         "--batch-size",
         type=int,
         default=ExperimentConfig.batch_size,
@@ -143,33 +137,10 @@ def parse_args() -> ExperimentConfig:
     )
     parser.add_argument(
         "--learning-rate",
+        "--lr",
         type=float,
         default=ExperimentConfig.learning_rate,
         help="Optax AdamW learning rate.",
-    )
-    parser.add_argument(
-        "--beta1",
-        type=float,
-        default=ExperimentConfig.beta1,
-        help="Adam first-moment decay.",
-    )
-    parser.add_argument(
-        "--beta2",
-        type=float,
-        default=ExperimentConfig.beta2,
-        help="Adam second-moment decay.",
-    )
-    parser.add_argument(
-        "--epsilon",
-        type=float,
-        default=ExperimentConfig.epsilon,
-        help="Adam denominator stabilizer.",
-    )
-    parser.add_argument(
-        "--weight-decay",
-        type=float,
-        default=ExperimentConfig.weight_decay,
-        help="Optax AdamW weight decay.",
     )
     parser.add_argument(
         "--train-steps",
@@ -183,11 +154,6 @@ def parse_args() -> ExperimentConfig:
         default=ExperimentConfig.train_chunk_length,
         help="Number of optimizer steps averaged into one logged point.",
     )
-    parser.add_argument(
-        "--no-shard-mmap",
-        action="store_true",
-        help="Disable mmap_mode when loading token shards with jax.numpy.load.",
-    )
     args = parser.parse_args()
 
     config = ExperimentConfig(
@@ -196,16 +162,10 @@ def parse_args() -> ExperimentConfig:
         artifacts_root=args.artifacts_root,
         execution_target=args.execution_target,
         max_train_shards=args.max_train_shards,
-        validation_shard_index=args.validation_shard_index,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
-        beta1=args.beta1,
-        beta2=args.beta2,
-        epsilon=args.epsilon,
-        weight_decay=args.weight_decay,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
-        shard_mmap=not args.no_shard_mmap,
     )
     config.validate()
     return config
