@@ -406,7 +406,9 @@ def generate_text(
 def main() -> None:
     """Run one milestone-030 smap-based TPU multicore point end to end."""
     config = parse_args()
+    print("status=parsed_config")
     mesh = create_data_mesh(config.mesh_axis_name)
+    print(f"status=created_mesh mesh_axis_name={config.mesh_axis_name} jax_device_count={jax.device_count()}")
     num_devices = jax.device_count()
     if config.global_batch_size % num_devices != 0:
         raise ValueError(
@@ -420,30 +422,37 @@ def main() -> None:
     timer = Timer()
     timer.start("total")
     tokenizer = load_tokenizer(config.tokenizer_path)
+    print("status=loaded_tokenizer")
     train_shard_paths = select_train_shards(config.token_shard_root, config.max_train_shards)
+    print(f"status=selected_train_shards count={len(train_shard_paths)}")
     validation_tokens = load_experiment_split(
         config.token_shard_root,
         "validation",
         config.validation_shard_index,
         mmap=config.shard_mmap,
     )
+    print(f"status=loaded_validation_tokens count={int(validation_tokens.shape[0])}")
     train_subset_tokens = load_experiment_split(
         config.token_shard_root,
         "train",
         config.train_subset_shard_index,
         mmap=config.shard_mmap,
     )
+    print(f"status=loaded_train_subset_tokens count={int(train_subset_tokens.shape[0])}")
 
     with jax.set_mesh(mesh):
+        print("status=entered_mesh_context")
         train_step, evaluate_batch_loss_plain, evaluate_batch_loss_sharded = (
             build_step_functions(config.mesh_axis_name)
         )
+        print("status=built_smap_step_functions")
         evaluate_batch_loss_multicore = build_multicore_evaluate_batch_loss(
             evaluate_batch_loss_plain,
             evaluate_batch_loss_sharded,
             num_devices=num_devices,
             batch_sharding=batch_sharding,
         )
+        print("status=built_multicore_eval_helper")
 
         model = DecoderOnlyTransformer(
             vocab_size=tokenizer.vocab_size,
@@ -454,6 +463,7 @@ def main() -> None:
             num_decoder_blocks=config.num_decoder_blocks,
             rngs=nnx.Rngs(config.seed),
         )
+        print("status=initialized_model")
         optimizer = nnx.Optimizer(
             model,
             optax.adamw(
@@ -465,6 +475,7 @@ def main() -> None:
             ),
             wrt=nnx.Param,
         )
+        print("status=initialized_optimizer")
 
         rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
         validation_start_positions = sample_evaluation_positions(
@@ -473,12 +484,14 @@ def main() -> None:
             subset_size=config.validation_subset_examples,
             rng=validation_rng,
         )
+        print(f"status=sampled_validation_positions count={int(validation_start_positions.shape[0])}")
         train_subset_start_positions = sample_evaluation_positions(
             train_subset_tokens,
             context_length=config.context_length,
             subset_size=config.validation_subset_examples,
             rng=train_subset_rng,
         )
+        print(f"status=sampled_train_subset_positions count={int(train_subset_start_positions.shape[0])}")
 
         timer.start("train")
         loss_tracker = LossTracker()
@@ -490,6 +503,12 @@ def main() -> None:
                 train_shard_paths[active_train_shard_index],
                 mmap=config.shard_mmap,
             )
+            if chunk_index == 0:
+                print(
+                    "status=starting_first_train_chunk "
+                    f"train_shard_index={active_train_shard_index} "
+                    f"loaded_train_tokens={int(train_tokens.shape[0])}"
+                )
             train_loss, rng = train_chunk(
                 model,
                 optimizer,
@@ -500,6 +519,8 @@ def main() -> None:
                 num_devices=num_devices,
                 batch_sharding=batch_sharding,
             )
+            if chunk_index == 0:
+                print("status=finished_first_train_chunk")
             train_subset_loss = evaluate_positions(
                 train_subset_tokens,
                 train_subset_start_positions,
@@ -508,6 +529,8 @@ def main() -> None:
                 config.context_length,
                 config.eval_batch_size,
             )
+            if chunk_index == 0:
+                print("status=finished_first_train_subset_eval")
             validation_subset_loss = evaluate_positions(
                 validation_tokens,
                 validation_start_positions,
@@ -516,6 +539,8 @@ def main() -> None:
                 config.context_length,
                 config.eval_batch_size,
             )
+            if chunk_index == 0:
+                print("status=finished_first_validation_subset_eval")
 
             current_step = (chunk_index + 1) * config.train_chunk_length
             loss_tracker.log(
