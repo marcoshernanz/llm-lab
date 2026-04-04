@@ -1,4 +1,4 @@
-"""Train the milestone-029 ecosystem-alignment baseline with self-describing artifacts."""
+"""Train the milestone-030 profiling baseline with self-describing artifacts."""
 
 import argparse
 from dataclasses import asdict, dataclass
@@ -32,7 +32,7 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-029 ecosystem settings explicit and easy to inspect."""
+    """Keep the milestone-030 ecosystem settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
@@ -97,7 +97,7 @@ class ExperimentConfig:
 def parse_args() -> ExperimentConfig:
     """Parse the small set of runtime overrides useful on TPU notebooks."""
     parser = argparse.ArgumentParser(
-        description="Train one milestone-029 TPU ecosystem-alignment point with run metadata."
+        description="Train one milestone-030 TPU profiling point with run metadata."
     )
     parser.add_argument(
         "--token-shard-root",
@@ -327,7 +327,7 @@ def generate_text(
 
 
 def main() -> None:
-    """Run one milestone-029 TPU ecosystem-alignment point end to end."""
+    """Run one milestone-030 TPU profiling point end to end."""
     config = parse_args()
 
     timer = Timer()
