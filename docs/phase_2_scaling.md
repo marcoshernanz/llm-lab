@@ -20,13 +20,13 @@ The emphasis of phase 2 is:
 - TPU-first execution for real runs,
 - controlled scaling,
 - then optimizer implementation and comparisons,
-- then multi-core execution,
-- then a time-budgeted scaling pass on the multi-core baseline,
 - then profiling,
+- then a time-budgeted scaling pass on the single-device baseline,
+- then multi-core execution only if the measured bottlenecks justify it,
 - and then hand off to the later systems rebuild.
 
 ## Status
-As of 2026-04-03:
+As of 2026-04-05:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
 - `021` is complete as the TPU multi-shard baseline,
@@ -39,7 +39,9 @@ As of 2026-04-03:
 - `027` is complete as the handwritten Adam baseline,
 - `028` is complete as the handwritten AdamW baseline,
 - `029` is complete as the ecosystem-aligned baseline,
-- `030` is the next milestone and now focuses on profiling before any explicit multi-core execution work,
+- `030` is complete as the first profiling pass on the single-device ecosystem baseline,
+- `030` showed that steady-state training dominates wall-clock, while shard loading and subset evaluation are small enough that they do not justify a systems rewrite yet,
+- `031` is now the next milestone and focuses on a time-budgeted scaling pass before any explicit multi-core execution work,
 - phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
@@ -518,6 +520,11 @@ Concrete work:
 Exit criteria:
 - Profiling answers at least one concrete bottleneck question.
 - The results change a real next decision.
+
+Status:
+- Complete via `experiments/030_tpu_fineweb_edu_profiling.py`.
+- The first profiling pass showed that steady-state training, not shard loading or subset evaluation, dominates wall-clock on the current single-device ecosystem baseline.
+- The measured bottleneck points toward one more scaling pass before taking on explicit multi-core complexity.
 
 ### Milestone 031: Time-Budgeted Scaling Pass
 Track: Scaling
