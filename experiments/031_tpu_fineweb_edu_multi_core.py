@@ -44,8 +44,8 @@ class ExperimentConfig:
     validation_shard_index: int = 0
     train_subset_shard_index: int = 0
     shard_mmap: bool = True
-    eval_batch_size: int = 64
-    global_batch_size: int = 128
+    eval_batch_size: int = 256
+    global_batch_size: int = 1024
     learning_rate: float = 0.001
     beta1: float = 0.9
     beta2: float = 0.999
@@ -459,7 +459,7 @@ def main() -> None:
         )
         logits_input_ids, _ = build_examples(
             train_subset_tokens,
-            train_subset_start_positions[:config.eval_batch_size],
+            train_subset_start_positions[: config.eval_batch_size],
             config.context_length,
         )
         sharded_logits_input_ids = shard_batch_array(logits_input_ids, mesh)
