@@ -1,5 +1,7 @@
+#include <cmath>
 #include <iostream>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -7,15 +9,25 @@
 const std::string corpus = "This is a test string for my first MLP model";
 const int vocab_size = 64;
 const int embedding_dim = 32;
-
-// Is this a good idea? to do this globally?
-std::mt19937 gen(0);
-std::normal_distribution<float> dist(0.0f, 1.0f);
+const int steps = 10;
 
 std::unordered_map<char, int> char_to_id;
 std::vector<char> id_to_char(vocab_size);
 
-float randn() { return dist(gen); }
+std::mt19937 &rng() {
+  static std::mt19937 gen(0);
+  return gen;
+}
+
+float randn() {
+  std::normal_distribution<float> dist(0.0f, 1.0f);
+  return dist(rng());
+}
+
+int randint(int max) {
+  std::uniform_int_distribution<int> dist(0, max - 1);
+  return dist(rng());
+}
 
 std::vector<int> prepare_vocab() {
   std::vector<int> token_ids(corpus.size());
@@ -28,7 +40,7 @@ std::vector<int> prepare_vocab() {
       char_to_id[c] = char_to_id.size();
       token_ids[i] = char_to_id[c];
     } else {
-      std::cout << "Skipped char: " << c << '\n';
+      std::runtime_error("vocab_size too small");
     }
   }
 
@@ -49,17 +61,28 @@ int main() {
 
   std::vector<int> token_ids = prepare_vocab();
 
-  for (int &id : token_ids) {
-    std::vector<float> out(1, vocab_size);
+  for (int step = 0; step < steps; ++step) {
+    int index = randint(token_ids.size() - 1);
+    int id = token_ids[index];
+    int target = token_ids[index + 1];
+
+    std::vector<float> out(vocab_size, 0.0f);
     for (size_t i = 0; i < vocab_size; ++i) {
       for (size_t j = 0; j < embedding_dim; ++j) {
-        out[i] += embeddings[id * vocab_size + j] * weights[i * embedding_dim + i];
+        out[i] += embeddings[id * embedding_dim + j] * weights[i * vocab_size + i];
       }
       out[i] += biases[i];
     }
-    for (auto x : out) {
-      std::cout << x << " ";
+
+    float sum = 0.0f;
+    for (float &x : out) {
+      sum += std::exp(x);
     }
-    std::cout << "\n";
+    for (float &x : out) {
+      x = -log(std::exp(x) / sum);
+    }
+
+    float loss = out[target];
+    std::cout << "step=" << step << " loss=" << loss << "\n";
   }
 }
