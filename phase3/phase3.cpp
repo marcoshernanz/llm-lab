@@ -40,7 +40,7 @@ std::vector<int> prepare_vocab() {
       char_to_id[c] = char_to_id.size();
       token_ids[i] = char_to_id[c];
     } else {
-      std::runtime_error("vocab_size too small");
+      throw std::runtime_error("vocab_size too small");
     }
   }
 
