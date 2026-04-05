@@ -3,6 +3,8 @@
 import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from time import perf_counter
+from typing import Callable, TypeVar
 
 import optax  # pyright: ignore
 from flax import nnx
@@ -28,6 +30,7 @@ DEFAULT_TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_b
 DEFAULT_TOKENIZER_PATH = (
     ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
 )
+ResultT = TypeVar("ResultT")
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,69 @@ class ExperimentConfig:
             raise ValueError("max_train_shards must be positive when provided")
         if self.train_subset_shard_index < 0:
             raise ValueError("train_subset_shard_index must be non-negative")
+
+
+@dataclass(frozen=True)
+class ProfileMetrics:
+    """Store the coarse timing breakdown for the milestone-030 baseline."""
+
+    train_compile_seconds: float
+    eval_compile_seconds: float
+    shard_load_seconds: float
+    train_chunk_seconds: float
+    train_subset_eval_seconds: float
+    validation_subset_eval_seconds: float
+    training_phase_seconds: float
+    sampling_seconds: float
+    train_chunks: int
+    train_steps: int
+    batch_size: int
+    context_length: int
+    sample_tokens: int
+
+    def to_metadata(self) -> dict[str, float | int]:
+        """Flatten the timing breakdown into JSON-safe run-metadata fields."""
+        profile_metrics: dict[str, float | int] = {
+            "profile_train_compile_seconds": self.train_compile_seconds,
+            "profile_eval_compile_seconds": self.eval_compile_seconds,
+            "profile_shard_load_seconds": self.shard_load_seconds,
+            "profile_train_chunk_seconds": self.train_chunk_seconds,
+            "profile_train_subset_eval_seconds": self.train_subset_eval_seconds,
+            "profile_validation_subset_eval_seconds": self.validation_subset_eval_seconds,
+            "profile_training_phase_seconds": self.training_phase_seconds,
+            "profile_sampling_seconds": self.sampling_seconds,
+            "profile_train_chunks": self.train_chunks,
+        }
+        if self.train_chunks > 0:
+            profile_metrics["profile_train_chunk_seconds_mean"] = (
+                self.train_chunk_seconds / self.train_chunks
+            )
+        if self.train_steps > 0:
+            profile_metrics["profile_train_step_seconds"] = (
+                self.train_chunk_seconds / self.train_steps
+            )
+        train_tokens_seen = self.train_steps * self.batch_size * self.context_length
+        if self.train_chunk_seconds > 0:
+            profile_metrics["profile_train_tokens_per_second"] = (
+                train_tokens_seen / self.train_chunk_seconds
+            )
+
+        training_other_seconds = max(
+            0.0,
+            self.training_phase_seconds
+            - self.shard_load_seconds
+            - self.train_chunk_seconds
+            - self.train_subset_eval_seconds
+            - self.validation_subset_eval_seconds,
+        )
+        profile_metrics["profile_training_other_seconds"] = training_other_seconds
+
+        if self.sample_tokens > 0 and self.sampling_seconds > 0:
+            profile_metrics["profile_sample_tokens_per_second"] = (
+                self.sample_tokens / self.sampling_seconds
+            )
+
+        return profile_metrics
 
 
 def parse_args() -> ExperimentConfig:
@@ -196,6 +262,79 @@ def select_train_shards(root_dir: Path, max_train_shards: int | None) -> list[Pa
     return shard_paths[:max_train_shards]
 
 
+def create_model_and_optimizer(
+    config: ExperimentConfig,
+    *,
+    vocab_size: int,
+) -> tuple[DecoderOnlyTransformer, nnx.Optimizer[DecoderOnlyTransformer]]:
+    """Build a fresh model and optimizer pair for one run or warmup pass."""
+    model = DecoderOnlyTransformer(
+        vocab_size=vocab_size,
+        context_length=config.context_length,
+        embedding_dim=config.embedding_dim,
+        hidden_dim=config.hidden_dim,
+        num_heads=config.num_heads,
+        num_decoder_blocks=config.num_decoder_blocks,
+        rngs=nnx.Rngs(config.seed),
+    )
+    optimizer = nnx.Optimizer(
+        model,
+        optax.adamw(
+            learning_rate=config.learning_rate,
+            b1=config.beta1,
+            b2=config.beta2,
+            eps=config.epsilon,
+            weight_decay=config.weight_decay,
+        ),
+        wrt=nnx.Param,
+    )
+    return model, optimizer
+
+
+def measure_call(
+    function: Callable[[], ResultT],
+    *,
+    block: bool = False,
+) -> tuple[ResultT, float]:
+    """Measure one callable and optionally block on pending JAX work."""
+    start = perf_counter()
+    result = function()
+    if block:
+        result = jax.block_until_ready(result)
+    return result, perf_counter() - start
+
+
+def sample_training_batch(
+    tokens: jax.Array,
+    *,
+    batch_size: int,
+    context_length: int,
+    rng: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Sample one representative training batch from a token shard."""
+    rng, batch_rng = jax.random.split(rng)
+    start_positions = jax.random.randint(
+        batch_rng,
+        shape=(batch_size,),
+        minval=0,
+        maxval=tokens.shape[0] - context_length,
+    )
+    input_ids, target_ids = build_examples(tokens, start_positions, context_length)
+    return input_ids, target_ids, rng
+
+
+def build_eval_batch(
+    tokens: jax.Array,
+    start_positions: jax.Array,
+    *,
+    context_length: int,
+    batch_size: int,
+) -> tuple[jax.Array, jax.Array]:
+    """Build one representative evaluation batch from chosen start positions."""
+    batch_positions = start_positions[: min(batch_size, start_positions.shape[0])]
+    return build_examples(tokens, batch_positions, context_length)
+
+
 def loss_fn(
     model: DecoderOnlyTransformer,
     input_ids: jax.Array,
@@ -292,7 +431,6 @@ def main() -> None:
 
     timer = Timer()
     timer.start("total")
-    rngs = nnx.Rngs(config.seed)
     tokenizer = load_tokenizer(config.tokenizer_path)
     train_shard_paths = select_train_shards(config.token_shard_root, config.max_train_shards)
     validation_tokens = load_experiment_split(
@@ -308,28 +446,6 @@ def main() -> None:
         mmap=config.shard_mmap,
     )
 
-    model = DecoderOnlyTransformer(
-        vocab_size=tokenizer.vocab_size,
-        context_length=config.context_length,
-        embedding_dim=config.embedding_dim,
-        hidden_dim=config.hidden_dim,
-        num_heads=config.num_heads,
-        num_decoder_blocks=config.num_decoder_blocks,
-        rngs=rngs,
-    )
-    optimizer = nnx.Optimizer(
-        model,
-        optax.adamw(
-            learning_rate=config.learning_rate,
-            b1=config.beta1,
-            b2=config.beta2,
-            eps=config.epsilon,
-            weight_decay=config.weight_decay,
-        ),
-        wrt=nnx.Param,
-    )
-    timer.start("train")
-
     rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
     validation_start_positions = sample_evaluation_positions(
         validation_tokens,
@@ -343,32 +459,88 @@ def main() -> None:
         subset_size=config.validation_subset_examples,
         rng=train_subset_rng,
     )
+    warmup_input_ids, warmup_target_ids, _ = sample_training_batch(
+        train_subset_tokens,
+        batch_size=config.batch_size,
+        context_length=config.context_length,
+        rng=rng,
+    )
+    warmup_eval_input_ids, warmup_eval_target_ids = build_eval_batch(
+        validation_tokens,
+        validation_start_positions,
+        context_length=config.context_length,
+        batch_size=config.eval_batch_size,
+    )
+    warmup_model, warmup_optimizer = create_model_and_optimizer(
+        config,
+        vocab_size=tokenizer.vocab_size,
+    )
+    _, train_compile_seconds = measure_call(
+        lambda: train_step(
+            warmup_model,
+            warmup_optimizer,
+            warmup_input_ids,
+            warmup_target_ids,
+        ),
+        block=True,
+    )
+    _, eval_compile_seconds = measure_call(
+        lambda: evaluate_batch_loss(
+            warmup_model,
+            warmup_eval_input_ids,
+            warmup_eval_target_ids,
+        ),
+        block=True,
+    )
+    del warmup_model, warmup_optimizer
+    model, optimizer = create_model_and_optimizer(
+        config,
+        vocab_size=tokenizer.vocab_size,
+    )
     loss_tracker = LossTracker()
     train_tokens = None
+    shard_load_seconds = 0.0
+    train_chunk_seconds = 0.0
+    train_subset_eval_seconds = 0.0
+    validation_subset_eval_seconds = 0.0
 
+    timer.start("train")
     for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
         active_train_shard_index = chunk_index % len(train_shard_paths)
-        train_tokens = load_token_shard(
-            train_shard_paths[active_train_shard_index],
-            mmap=config.shard_mmap,
+        train_tokens, current_shard_load_seconds = measure_call(
+            lambda: load_token_shard(
+                train_shard_paths[active_train_shard_index],
+                mmap=config.shard_mmap,
+            )
         )
-        train_loss, rng = train_chunk(model, optimizer, train_tokens, config, rng)
-        train_subset_loss = evaluate_positions(
-            train_subset_tokens,
-            train_subset_start_positions,
-            model,
-            evaluate_batch_loss,
-            config.context_length,
-            config.eval_batch_size,
+        shard_load_seconds += current_shard_load_seconds
+        (train_loss, rng), current_train_chunk_seconds = measure_call(
+            lambda: train_chunk(model, optimizer, train_tokens, config, rng),
+            block=True,
         )
-        validation_subset_loss = evaluate_positions(
-            validation_tokens,
-            validation_start_positions,
-            model,
-            evaluate_batch_loss,
-            config.context_length,
-            config.eval_batch_size,
+        train_chunk_seconds += current_train_chunk_seconds
+        train_subset_loss, current_train_subset_eval_seconds = measure_call(
+            lambda: evaluate_positions(
+                train_subset_tokens,
+                train_subset_start_positions,
+                model,
+                evaluate_batch_loss,
+                config.context_length,
+                config.eval_batch_size,
+            )
         )
+        train_subset_eval_seconds += current_train_subset_eval_seconds
+        validation_subset_loss, current_validation_subset_eval_seconds = measure_call(
+            lambda: evaluate_positions(
+                validation_tokens,
+                validation_start_positions,
+                model,
+                evaluate_batch_loss,
+                config.context_length,
+                config.eval_batch_size,
+            )
+        )
+        validation_subset_eval_seconds += current_validation_subset_eval_seconds
 
         current_step = (chunk_index + 1) * config.train_chunk_length
         loss_tracker.log(
@@ -382,15 +554,32 @@ def main() -> None:
     rng, sample_rng = jax.random.split(rng)
     if train_tokens is None:
         raise ValueError("No train shard was loaded during training.")
-    sample = generate_text(
-        model,
-        tokenizer,
-        train_tokens,
-        config.sample_tokens,
-        config.context_length,
-        sample_rng,
+    sample, sampling_seconds = measure_call(
+        lambda: generate_text(
+            model,
+            tokenizer,
+            train_tokens,
+            config.sample_tokens,
+            config.context_length,
+            sample_rng,
+        )
     )
     total_seconds = timer.stop("total")
+    profile_metrics = ProfileMetrics(
+        train_compile_seconds=train_compile_seconds,
+        eval_compile_seconds=eval_compile_seconds,
+        shard_load_seconds=shard_load_seconds,
+        train_chunk_seconds=train_chunk_seconds,
+        train_subset_eval_seconds=train_subset_eval_seconds,
+        validation_subset_eval_seconds=validation_subset_eval_seconds,
+        training_phase_seconds=train_seconds,
+        sampling_seconds=sampling_seconds,
+        train_chunks=config.train_steps // config.train_chunk_length,
+        train_steps=config.train_steps,
+        batch_size=config.batch_size,
+        context_length=config.context_length,
+        sample_tokens=config.sample_tokens,
+    )
 
     metadata = build_run_metadata(
         script_path=Path(__file__),
@@ -408,6 +597,7 @@ def main() -> None:
             "final_validation_subset_loss": loss_tracker.validation_subset_losses[-1],
             "train_seconds": train_seconds,
             "total_seconds": total_seconds,
+            **profile_metrics.to_metadata(),
         },
     )
     artifacts = save_run_artifacts(
