@@ -9,8 +9,7 @@ const int vocab_size = 64;
 const int embedding_dim = 32;
 
 // Is this a good idea? to do this globally?
-std::random_device rd;
-std::mt19937 gen(rd());
+std::mt19937 gen(0);
 std::normal_distribution<float> dist(0.0f, 1.0f);
 
 std::unordered_map<char, int> char_to_id;
@@ -58,5 +57,9 @@ int main() {
       }
       out[i] += biases[i];
     }
+    for (auto x : out) {
+      std::cout << x << " ";
+    }
+    std::cout << "\n";
   }
 }
