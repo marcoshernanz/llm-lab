@@ -1,7 +1,6 @@
 """Train the milestone-031 multi-core baseline with self-describing artifacts."""
 
 import argparse
-from functools import partial
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from flax import nnx
 
 import jax
 import jax.numpy as jnp
-from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from jax.sharding import AxisType, Mesh, NamedSharding, PartitionSpec as P
 
 from lib.data import (
     build_examples,
@@ -229,8 +228,8 @@ def create_model_and_optimizer(
 
 
 def create_data_mesh() -> Mesh:
-    """Create a simple 1D device mesh for data-parallel training."""
-    return jax.make_mesh((jax.device_count(),), ("data",))
+    """Create a simple 1D auto-mode mesh for data-parallel training."""
+    return jax.make_mesh((jax.device_count(),), ("data",), (AxisType.Auto,))
 
 
 def get_per_device_batch_size(global_batch_size: int, mesh: Mesh) -> int:
@@ -274,8 +273,7 @@ def get_parameter_sharding(model: DecoderOnlyTransformer) -> str:
     return ", ".join(shardings)
 
 
-@nnx.jit
-@partial(jax.sharding.auto_axes, out_sharding=P("data", None, None))
+@jax.jit
 def forward_logits(
     model: DecoderOnlyTransformer,
     input_ids: jax.Array,
@@ -328,22 +326,20 @@ def loss_fn(
     return loss_per_token.mean()
 
 
-@nnx.jit
-@partial(jax.sharding.auto_axes, out_sharding=P())
+@jax.jit
 def train_step(
     model: DecoderOnlyTransformer,
     optimizer: nnx.Optimizer[DecoderOnlyTransformer],
     input_ids: jax.Array,
     target_ids: jax.Array,
-) -> jax.Array:
+) -> tuple[DecoderOnlyTransformer, jax.Array]:
     """Run one Optax AdamW step on a batch of token examples."""
-    loss, grads = nnx.value_and_grad(loss_fn)(model, input_ids, target_ids)
+    loss, grads = jax.value_and_grad(loss_fn)(model, input_ids, target_ids)
     optimizer.update(model, grads)
-    return loss
+    return model, loss
 
 
-@nnx.jit
-@partial(jax.sharding.auto_axes, out_sharding=P())
+@jax.jit
 def evaluate_batch_loss(
     model: DecoderOnlyTransformer,
     input_ids: jax.Array,
@@ -360,7 +356,7 @@ def train_chunk(
     config: ExperimentConfig,
     mesh: Mesh,
     rng: jax.Array,
-) -> tuple[jax.Array, jax.Array]:
+) -> tuple[DecoderOnlyTransformer, jax.Array, jax.Array]:
     """Average several random training batches into one logged chunk."""
     total_loss = jnp.array(0.0, dtype=jnp.float32)
     for _ in range(config.train_chunk_length):
@@ -374,13 +370,14 @@ def train_chunk(
         input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
         sharded_input_ids = shard_batch_array(input_ids, mesh)
         sharded_target_ids = shard_batch_array(target_ids, mesh)
-        total_loss = total_loss + train_step(
+        model, train_loss = train_step(
             model,
             optimizer,
             sharded_input_ids,
             sharded_target_ids,
         )
-    return total_loss / config.train_chunk_length, rng
+        total_loss = total_loss + train_loss
+    return model, total_loss / config.train_chunk_length, rng
 
 
 def generate_text(
@@ -420,6 +417,7 @@ def generate_text(
 def main() -> None:
     """Run one milestone-031 TPU multi-core baseline point end to end."""
     config = parse_args()
+    nnx.use_eager_sharding(True)
 
     timer = Timer()
     timer.start("total")
@@ -476,7 +474,7 @@ def main() -> None:
                 train_shard_paths[active_train_shard_index],
                 mmap=config.shard_mmap,
             )
-            train_loss, rng = train_chunk(model, optimizer, train_tokens, config, mesh, rng)
+            model, train_loss, rng = train_chunk(model, optimizer, train_tokens, config, mesh, rng)
             train_subset_loss = evaluate_sharded_positions(
                 train_subset_tokens,
                 train_subset_start_positions,
@@ -525,7 +523,7 @@ def main() -> None:
                 "loaded_train_tokens": train_tokens.shape[0],
                 "loaded_train_subset_tokens": train_subset_tokens.shape[0],
                 "loaded_validation_tokens": validation_tokens.shape[0],
-                "sharding_mode": "explicit-with-auto-axes",
+                "sharding_mode": "automatic",
                 "mesh_axis_name": "data",
                 "per_device_batch_size": per_device_batch_size,
                 "parameter_sharding": get_parameter_sharding(model),
