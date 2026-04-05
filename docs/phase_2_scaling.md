@@ -20,8 +20,10 @@ The emphasis of phase 2 is:
 - TPU-first execution for real runs,
 - controlled scaling,
 - then optimizer implementation and comparisons,
-- then explicit multi-core execution and profiling,
-- and only after that deeper training-recipe work.
+- then multi-core execution,
+- then a time-budgeted scaling pass on the multi-core baseline,
+- then profiling,
+- and then hand off to the later systems rebuild.
 
 ## Status
 As of 2026-04-03:
@@ -37,7 +39,7 @@ As of 2026-04-03:
 - `027` is complete as the handwritten Adam baseline,
 - `028` is complete as the handwritten AdamW baseline,
 - `029` is complete as the ecosystem-aligned baseline,
-- `030` is the next milestone and now follows the clean split between the frozen handwritten path and the standard ecosystem-native path,
+- `030` is the next milestone and now focuses on profiling before any explicit multi-core execution work,
 - phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
@@ -474,19 +476,99 @@ Status:
 - The standard `models/transformer.py` now uses NNX attention, embeddings, layer norms, linear layers, tied embedding logits, Optax AdamW, and an Optax loss helper.
 - The handwritten transformer path remains available under `models/transformer_manual.py` for earlier milestones.
 
-### Milestone 030: Multi-Core JAX TPU Baseline
-Track: Hardware
+### Milestone 030: Profiling First Pass
+Track: Profiling
 
 Goal:
-- Move from single-device TPU execution to explicit multi-core JAX execution on `v5e-8`.
+- Profile only after there is a real performance question to answer.
 
-Why this comes after optimizer work:
-- First learn training behavior under one-device execution.
-- Then change the execution model once the optimizer story is clearer.
+Why this comes here:
+- The attempted multi-core bring-up introduced implementation complexity before there was a clear measurement of where the current single-device ecosystem baseline is spending time.
+- Before changing the execution model again, the next useful step is to measure where time is actually going in the current `029` path.
+
+What to profile:
+- compile time
+- train-step time
+- train-subset eval time
+- validation-subset eval time
+- sampling cost
+- tokens per second
+- obvious input-pipeline or host-overhead bottlenecks
 
 What stays fixed:
 - Same dataset.
 - Same scaled model shape.
+- Same chosen optimizer baseline.
+- Same artifact format and subset-loss logging.
+
+What changes:
+- Measurement only.
+- Add timing and profiling instrumentation around the current baseline.
+
+Questions to answer:
+- Which part of the current baseline dominates wall-clock time?
+- Is the bottleneck in training, evaluation, sampling, compilation, or input handling?
+- What is the most defensible next systems change after measurement?
+
+Concrete work:
+- Add targeted timing and profiling instrumentation to the current baseline or notebook workflow.
+- Measure at least one representative run cleanly enough that the time breakdown is trustworthy.
+- Write down the one or two biggest bottlenecks before changing execution strategy again.
+
+Exit criteria:
+- Profiling answers at least one concrete bottleneck question.
+- The results change a real next decision.
+
+### Milestone 031: Time-Budgeted Scaling Pass
+Track: Scaling
+
+Goal:
+- Push the largest useful model and data budget that still fits inside a reasonable real-run window, roughly `30m` to `1h`.
+
+Why this comes here:
+- `030` should establish the main bottlenecks first.
+- Once the current runtime behavior is measured, the next useful question is how much more model and data the current hardware budget can actually support before a multi-core rewrite is justified.
+- Recent curves suggest the current model may be small for the available runtime budget, while the widening train/validation gap suggests the current data budget is also too small.
+
+What stays fixed:
+- Same hardware target.
+- Same single-device ecosystem baseline from `029` unless the profiling results justify one narrow change first.
+- Same optimizer family.
+- Same artifact format and subset-loss logging.
+
+What changes:
+- Model size and train-data budget, within a fixed wall-clock budget.
+- Prefer increasing available train shards before or alongside model growth, rather than scaling model size against a too-small repeated dataset.
+
+Questions to answer:
+- With a fixed `30m` to `1h` budget, what is the largest useful model you can train?
+- How much does using more FineWeb-Edu train shards reduce the train/validation gap?
+- Is the current bottleneck more about model capacity, data budget, or both?
+
+Concrete work:
+- Increase the available FineWeb-Edu train shard count beyond the current `10`-shard subset.
+- Run one fixed-time baseline with the current `030` model on the larger data budget.
+- Then scale model size within the same time budget, ideally changing one major model axis at a time.
+- Compare train loss, validation subset loss, train/validation gap, tokens per second, and total tokens seen.
+
+Exit criteria:
+- One time-budgeted run shows how much larger the current setup can go without turning into an open-ended long run.
+- You can say whether more data, more model, or both are the right next scaling direction.
+- The run budget is concrete enough that later profiling work has a meaningful target to optimize.
+
+### Milestone 032: Multi-Core JAX TPU Baseline
+Track: Hardware
+
+Goal:
+- Move from single-device TPU execution to real multi-core JAX execution on `v5e-8`.
+
+Why this comes here:
+- Profiling should identify whether multi-core execution is actually the most justified next systems change.
+- Only after that should the repo take on the extra complexity of explicit multi-device execution.
+
+What stays fixed:
+- Same dataset.
+- Same scaled model shape, unless `031` shows a very strong reason to change it first.
 - Same chosen optimizer baseline.
 - Same artifact format and subset-loss logging.
 
@@ -501,47 +583,13 @@ Questions to answer:
 - Does the loss behavior stay comparable at the same global batch size?
 - What new host/device friction appears?
 
+Rule:
+- Prefer the simplest data-parallel implementation that the profiling results justify.
+
 Exit criteria:
 - One multi-core run completes end to end.
 - Throughput improvement is measured clearly.
 - You can explain the main conceptual changes required to go multi-core.
-
-### Milestone 031: Profiling First Pass
-Track: Profiling
-
-Goal:
-- Profile only after there is a real performance question to answer.
-
-What to profile:
-- single-device vs multi-core compile time
-- single-device vs multi-core step time
-- host overhead
-- eval cost
-- tokens per second
-- obvious input-pipeline bottlenecks
-
-Exit criteria:
-- Profiling answers at least one concrete bottleneck question.
-- The results change a real next decision.
-
-### Milestone 032: Training Recipe Improvements
-Track: Training recipe
-
-Goal:
-- Study recipe choices only after scaling, observability, hardware execution, and optimizer baselines are stable enough to support it.
-
-What to explore:
-- gradient clipping,
-- warmup,
-- learning-rate decay,
-- checkpointing,
-- and restartable long-run logging.
-
-Rule:
-- One recipe variable at a time.
-
-Exit criteria:
-- You can tie at least one recipe choice to a concrete improvement or failure mode.
 
 ## Track Summary
 Tracks still exist, but they are secondary to milestones:
@@ -551,9 +599,15 @@ Tracks still exist, but they are secondary to milestones:
 - Observability: `023`
 - Optimizers: `025`, `026`, `027`, `028`
 - Engineering: `029`
-- Hardware: `030`
-- Profiling: `031`
-- Training recipe: `032`
+- Profiling: `030`
+- Scaling: `031`
+- Hardware: `032`
+
+## Next
+After `032`, the planned next phase is the systems rebuild described in [docs/phase_3_systems.md](./phase_3_systems.md).
+The broader project thesis and decision rules live in [docs/project_direction.md](./project_direction.md).
+The personal context behind those choices is summarized in [docs/personal_context.md](./personal_context.md).
+Later worthwhile side projects, such as a Rust tokenizer, are listed in [docs/future_projects.md](./future_projects.md).
 
 ## Later
 Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.

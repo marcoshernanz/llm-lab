@@ -47,7 +47,7 @@ def build_run_metadata(
 
     train_seconds = metadata.get("train_seconds")
     train_steps = metadata.get("train_steps")
-    batch_size = metadata.get("batch_size")
+    batch_size = metadata.get("global_batch_size", metadata.get("batch_size"))
     context_length = metadata.get("context_length")
     tokens_per_step = None
     if isinstance(batch_size, (int, float)) and isinstance(context_length, (int, float)):
@@ -112,6 +112,8 @@ def print_run_summary(
         "execution_target",
         "jax_backend",
         "jax_device_count",
+        "sharding_mode",
+        "mesh_axis_name",
         "token_shard_root",
         "tokenizer_path",
         "train_shards_used",
@@ -119,6 +121,8 @@ def print_run_summary(
         "validation_shard_index",
         "train_subset_shard_index",
         "shard_mmap",
+        "global_batch_size",
+        "per_device_batch_size",
         "batch_size",
         "eval_batch_size",
         "learning_rate",
@@ -134,6 +138,9 @@ def print_run_summary(
         "loaded_train_tokens",
         "loaded_train_subset_tokens",
         "loaded_validation_tokens",
+        "parameter_sharding",
+        "train_batch_sharding",
+        "logits_sharding",
         "tokens_per_step",
         "train_tokens_seen",
         "final_train_loss",
@@ -142,6 +149,19 @@ def print_run_summary(
         "train_seconds",
         "steps_per_second",
         "tokens_per_second",
+        "profile_train_compile_seconds",
+        "profile_eval_compile_seconds",
+        "profile_shard_load_seconds",
+        "profile_train_chunk_seconds",
+        "profile_train_chunk_seconds_mean",
+        "profile_train_step_seconds",
+        "profile_train_tokens_per_second",
+        "profile_train_subset_eval_seconds",
+        "profile_validation_subset_eval_seconds",
+        "profile_training_phase_seconds",
+        "profile_training_other_seconds",
+        "profile_sampling_seconds",
+        "profile_sample_tokens_per_second",
         "total_seconds",
     ]
 

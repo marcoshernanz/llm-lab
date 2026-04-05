@@ -45,10 +45,14 @@ This progression is intentional. The repo optimizes for understanding each conce
 
 - Phase 1 foundations: [docs/phase_1_foundations.md](docs/phase_1_foundations.md)
 - Phase 2 scaling: [docs/phase_2_scaling.md](docs/phase_2_scaling.md)
+- Project direction: [docs/project_direction.md](docs/project_direction.md)
+- Personal context: [docs/personal_context.md](docs/personal_context.md)
+- Phase 3 systems rebuild: [docs/phase_3_systems.md](docs/phase_3_systems.md)
+- Future projects: [docs/future_projects.md](docs/future_projects.md)
 - Phase 1 learning log: [docs/phase_1_learning_log.md](docs/phase_1_learning_log.md)
 - Phase 2 learning log: [docs/phase_2_learning_log.md](docs/phase_2_learning_log.md)
 
-The phase-1 document explains the learning path from simple baselines through `018_decoder_refactor.py`. The phase-2 document starts after that baseline and currently targets `fineweb-edu/sample-10BT` on TPU `v5e-1`, before later scaling, profiling, and optimizer study. The two learning logs split completed run history by phase.
+The phase-1 document explains the learning path from simple baselines through `018_decoder_refactor.py`. The phase-2 document starts after that baseline and now covers the path from early `v5e-1` TPU bring-up through `v5e-8` scaling, optimizer study, and the next multi-core milestone. The two learning logs split completed run history by phase.
 
 ## Working style
 

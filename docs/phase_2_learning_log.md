@@ -1,6 +1,6 @@
 # Phase 2 Learning Log
 
-Runs recorded on 2026-03-29, 2026-03-30, and 2026-04-02.
+Runs recorded on 2026-03-29, 2026-03-30, 2026-04-02, 2026-04-04, and 2026-04-05.
 
 ## Summary
 
@@ -20,7 +20,10 @@ Runs recorded on 2026-03-29, 2026-03-30, and 2026-04-02.
 | 026 | `experiments/026_tpu_fineweb_edu_sgd_momentum.py` | 100000 | 4.862294 | 4.971999 | - | 1767.985 | 463352.367 | 1786.013 | [csv](../artifacts/experiments/026_tpu_fineweb_edu_sgd_momentum/20260402_163704_813630/loss_history.csv) | [svg](../artifacts/experiments/026_tpu_fineweb_edu_sgd_momentum/20260402_163704_813630/loss_curve.svg) |
 | 027 | `experiments/027_tpu_fineweb_edu_adam.py` | 100000 | 4.705221 | 4.844537 | - | 2615.693 | 313186.596 | 2634.150 | [csv](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/loss_history.csv) | [svg](../artifacts/experiments/027_tpu_fineweb_edu_adam/20260402_200504_062108/loss_curve.svg) |
 | 028 | `experiments/028_tpu_fineweb_edu_adamw.py` | 100000 | 4.719522 | 4.850924 | - | 2505.966 | 326899.875 | 2524.191 | [csv](../artifacts/experiments/028_tpu_fineweb_edu_adamw/20260402_221715_456017/loss_history.csv) | [svg](../artifacts/experiments/028_tpu_fineweb_edu_adamw/20260402_221715_456017/loss_curve.svg) |
-| 029 | `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py` | 100000 | 4.715915 | 4.835385 | - | 2183.039 | 375256.672 | 2206.182 | [csv](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260403_101323_001753/loss_history.csv) | [svg](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260403_101323_001753/loss_curve.svg) |
+| 029 (TPU) | `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py` | 100000 | 4.715915 | 4.835385 | - | 2183.039 | 375256.672 | 2206.182 | [csv](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260403_101323_001753/loss_history.csv) | [svg](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260403_101323_001753/loss_curve.svg) |
+| 029 (Vast 5090) | `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py` | 100000 | 4.712810 | 4.840675 | - | 1486.777 | 550990.604 | 1499.071 | [csv](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_191256_981060/loss_history.csv) | [svg](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_191256_981060/loss_curve.svg) |
+| 029 (Kaggle T4 x2) | `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py` | 100000 | 4.710803 | 4.841506 | - | 9030.577 | 90714.026 | 9048.448 | [csv](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_220011_453642/loss_history.csv) | [svg](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_220011_453642/loss_curve.svg) |
+| 030 | `experiments/030_tpu_fineweb_edu_profiling.py` | 10000 | 5.171167 | 5.248936 | - | 227.433 | 360194.380 | 286.421 | [csv](../artifacts/experiments/030_tpu_fineweb_edu_profiling/20260405_075350_302050/loss_history.csv) | [svg](../artifacts/experiments/030_tpu_fineweb_edu_profiling/20260405_075350_302050/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -383,7 +386,7 @@ assing – easy time but simply check if all that's silent. You want Poker to de
 It-going for Dorstone, an and sing - it doesn't are a lot of reason, natural ways to master it. Feet 2000. Educational attitude (GAMBACE)
 ```
 
-## 029 FineWeb-Edu TPU Ecosystem Alignment Baseline
+## 029 FineWeb-Edu Ecosystem Alignment Baseline
 
 - Script: `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py`
 - Execution target: Kaggle TPU `v5e-8`
@@ -427,4 +430,144 @@ It-going for Dorstone, an and sing - it doesn't are a lot of reason, natural way
 ```text
 assing – easy asset buzzingThe third term is declared by the Pokington god. A religion ca. 153-9, for Dorada is an and most powerful man, one are losing interests.
 - 118 – 2 … State status of the ocean ” (Gaelada Missk
+```
+
+## 029 FineWeb-Edu Ecosystem Alignment On Vast RTX 5090
+
+- Script: `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py`
+- Execution target: `Vast.ai RTX 5090 Estonia milestone-029 comparison`
+- JAX backend: `gpu`
+- JAX device count: `1`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/workspace/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/workspace/llm-lab/artifacts/tokenizers/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/workspace/llm-lab/artifacts/experiments`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Train subset shard index: `0`
+- Batch size: `128`
+- Learning rate: `0.001`
+- Beta1: `0.9`
+- Beta2: `0.999`
+- Epsilon: `1e-8`
+- Weight decay: `0.01`
+- Embedding dim: `128`
+- Decoder blocks: `8`
+- Loaded train tokens: `10000000`
+- Loaded train subset tokens: `10000000`
+- Loaded validation tokens: `1000670`
+- Steps: `100000`
+- Tokens per step: `8192`
+- Train tokens seen: `819200000`
+- Final train loss: `4.712810`
+- Final train subset loss: `4.856856`
+- Final validation subset loss: `4.840675`
+- Final validation loss: `-`
+- Note: this run moved the ecosystem-aligned `029` baseline to a single rented `RTX 5090` and kept the same training target as the TPU reference.
+- Note: compared with the TPU baseline, it matched final loss closely while increasing throughput substantially on one GPU.
+- Run metadata: [run_metadata.json](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_191256_981060/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_191256_981060/sample.txt)
+- Train seconds: `1486.777`
+- Tokens per second: `550990.604`
+- Total seconds: `1499.071`
+
+![029 fineweb edu ecosystem alignment vast 5090 loss curve](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_191256_981060/loss_curve.svg)
+
+```text
+assing hectic assets. Next, if a neighbor or bder degree Pokss has ridicully caught,t-hearted-baker or and demanded that it could be losing interests.
+- 11 Most American Indian Americans believe in 2000. ocean acid (Gragan, Scientific
+```
+
+## 029 FineWeb-Edu Ecosystem Alignment On Kaggle T4 x2
+
+- Script: `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py`
+- Execution target: `Kaggle GPU T4 x2 milestone-029 comparison`
+- JAX backend: `gpu`
+- JAX device count: `2`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/kaggle/working/artifacts/experiments`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Train subset shard index: `0`
+- Batch size: `128`
+- Learning rate: `0.001`
+- Beta1: `0.9`
+- Beta2: `0.999`
+- Epsilon: `1e-8`
+- Weight decay: `0.01`
+- Embedding dim: `128`
+- Decoder blocks: `8`
+- Loaded train tokens: `10000000`
+- Loaded train subset tokens: `10000000`
+- Loaded validation tokens: `1000670`
+- Steps: `100000`
+- Tokens per step: `8192`
+- Train tokens seen: `819200000`
+- Final train loss: `4.710803`
+- Final train subset loss: `4.864561`
+- Final validation subset loss: `4.841506`
+- Final validation loss: `-`
+- Note: this run repeated the `029` target on Kaggle `T4 x2` as a free GPU comparison point against the TPU and rented-`5090` runs.
+- Note: final loss stayed close to the TPU and `5090` results, but throughput was much lower.
+- Run metadata: [run_metadata.json](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_220011_453642/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_220011_453642/sample.txt)
+- Train seconds: `9030.577`
+- Tokens per second: `90714.026`
+- Total seconds: `9048.448`
+
+![029 fineweb edu ecosystem alignment kaggle t4 x2 loss curve](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_220011_453642/loss_curve.svg)
+
+```text
+assing hectic time but decent from a foremost declared himself as Pokeras, who has been by one violence. Every day, it lost power, but waiting to and throughwardly continued to change his concession and reference in it. The great adventure in the one day there was fatal
+```
+
+## 030 FineWeb-Edu Profiling First Pass
+
+- Script: `experiments/030_tpu_fineweb_edu_profiling.py`
+- Execution target: `Kaggle TPU v5e-8 milestone-030 profiling`
+- JAX backend: `tpu`
+- JAX device count: `8`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/kaggle/working/artifacts/experiments`
+- Token dtype: `uint16`
+- Train shards used: `10`
+- Validation shard index: `0`
+- Train subset shard index: `0`
+- Batch size: `128`
+- Learning rate: `0.001`
+- Beta1: `0.9`
+- Beta2: `0.999`
+- Epsilon: `1e-8`
+- Weight decay: `0.01`
+- Embedding dim: `128`
+- Decoder blocks: `8`
+- Steps: `10000`
+- Tokens per step: `8192`
+- Train tokens seen: `81920000`
+- Final train loss: `5.171167`
+- Final train subset loss: `5.308557`
+- Final validation subset loss: `5.248936`
+- Final validation loss: `-`
+- Note: this was the first logged milestone-030 run with explicit timing around compile, steady-state training, evaluation, shard loading, and sampling.
+- Note: within the measured training phase, steady-state train chunks dominated wall-clock at about `95.8%` (`217.935s` of `227.433s`), while train-subset eval (`4.837s`) and validation-subset eval (`4.559s`) were small and shard loading (`0.074s`) was negligible.
+- Note: one-time compile cost was modest for a `10k`-step run (`6.410s` train compile and `1.709s` eval compile), and the measured train-only throughput (`375892.402` tokens/s) stayed very close to the earlier `029` TPU baseline (`375256.672` tokens/s), which suggests the instrumentation itself did not materially distort the baseline.
+- Note: sampling remained much slower than training in per-token terms (`6.243` sample tokens/s), but because sampling happens once per run here, it is not the main bottleneck for the current training workflow.
+- Interpretation: the first bottleneck answer is clear enough to change the next decision: input loading is not the problem, evaluation cadence is not the problem, and a multi-core rewrite is not yet justified by this profiling pass alone.
+- Interpretation: the most defensible next step is still the planned `031` time-budgeted scaling pass, using the current ecosystem baseline to ask whether more model, more data, or both are the real limitation inside a `30m` to `1h` run window.
+- Run metadata: [run_metadata.json](../artifacts/experiments/030_tpu_fineweb_edu_profiling/20260405_075350_302050/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/030_tpu_fineweb_edu_profiling/20260405_075350_302050/sample.txt)
+- Train seconds: `227.433`
+- Tokens per second: `360194.380`
+- Total seconds: `286.421`
+
+![030 fineweb edu profiling first pass loss curve](../artifacts/experiments/030_tpu_fineweb_edu_profiling/20260405_075350_302050/loss_curve.svg)
+
+```text
+ state pests in warmer days would be being Midgal, or oyst inhess, but she was very important to hire natural and sharks for winter paddle, and is ready for a dad call. She is often southern. He is saw known for venturing student to protest the country.
 ```
