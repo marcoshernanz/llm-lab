@@ -39,7 +39,7 @@ std::vector<int> prepare_vocab() {
 int main() {
   std::vector<float> embeddings(vocab_size * embedding_dim);
   std::vector<float> weights(embedding_dim * vocab_size);
-  std::vector<float> biases(vocab_size);
+  std::vector<float> biases(vocab_size, 0.0f);
   // for auto or for i in? x good name?
   for (float &x : embeddings) {
     x = randn();
@@ -47,9 +47,16 @@ int main() {
   for (float &x : weights) {
     x = randn();
   }
-  for (float &x : biases) {
-    x = randn();
-  }
 
   std::vector<int> token_ids = prepare_vocab();
+
+  for (int &id : token_ids) {
+    std::vector<float> out(1, vocab_size);
+    for (size_t i = 0; i < vocab_size; ++i) {
+      for (size_t j = 0; j < embedding_dim; ++j) {
+        out[i] += embeddings[id * vocab_size + j] * weights[i * embedding_dim + i];
+      }
+      out[i] += biases[i];
+    }
+  }
 }
