@@ -1,6 +1,7 @@
 """Train the milestone-031 multi-core baseline with self-describing artifacts."""
 
 import argparse
+from functools import partial
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from flax import nnx
 
 import jax
 import jax.numpy as jnp
+from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
 from lib.data import (
     build_examples,
@@ -16,7 +18,7 @@ from lib.data import (
     load_token_shard,
     load_tokenizer,
 )
-from lib.eval import evaluate_positions, sample_evaluation_positions
+from lib.eval import sample_evaluation_positions
 from lib.plotting import LossTracker
 from lib.run_artifacts import build_run_metadata, print_run_summary, save_run_artifacts
 from lib.timer import Timer
@@ -44,7 +46,7 @@ class ExperimentConfig:
     train_subset_shard_index: int = 0
     shard_mmap: bool = True
     eval_batch_size: int = 64
-    batch_size: int = 128
+    global_batch_size: int = 128
     learning_rate: float = 0.001
     beta1: float = 0.9
     beta2: float = 0.999
@@ -68,8 +70,8 @@ class ExperimentConfig:
             raise ValueError("train_chunk_length must be positive")
         if self.train_steps % self.train_chunk_length != 0:
             raise ValueError("train_steps must be divisible by train_chunk_length")
-        if self.batch_size <= 0:
-            raise ValueError("batch_size must be positive")
+        if self.global_batch_size <= 0:
+            raise ValueError("global_batch_size must be positive")
         if self.learning_rate <= 0:
             raise ValueError("learning_rate must be positive")
         if self.beta1 < 0 or self.beta1 >= 1:
@@ -130,10 +132,11 @@ def parse_args() -> ExperimentConfig:
         help="Maximum number of train shards to rotate across.",
     )
     parser.add_argument(
+        "--global-batch-size",
         "--batch-size",
         type=int,
-        default=ExperimentConfig.batch_size,
-        help="Training batch size.",
+        default=ExperimentConfig.global_batch_size,
+        help="Global training batch size across all devices.",
     )
     parser.add_argument(
         "--learning-rate",
@@ -162,7 +165,7 @@ def parse_args() -> ExperimentConfig:
         artifacts_root=args.artifacts_root,
         execution_target=args.execution_target,
         max_train_shards=args.max_train_shards,
-        batch_size=args.batch_size,
+        global_batch_size=args.global_batch_size,
         learning_rate=args.learning_rate,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
@@ -225,6 +228,95 @@ def create_model_and_optimizer(
     return model, optimizer
 
 
+def create_data_mesh() -> Mesh:
+    """Create a simple 1D device mesh for data-parallel training."""
+    return jax.make_mesh((jax.device_count(),), ("data",))
+
+
+def get_per_device_batch_size(global_batch_size: int, mesh: Mesh) -> int:
+    """Convert a global batch size into a per-device batch size."""
+    mesh_size = mesh.devices.size
+    if global_batch_size % mesh_size != 0:
+        raise ValueError(
+            "global_batch_size must be divisible by the device mesh size. "
+            f"Got global_batch_size={global_batch_size} and mesh_size={mesh_size}."
+        )
+    return global_batch_size // mesh_size
+
+
+def get_batch_sharding(mesh: Mesh, ndim: int) -> NamedSharding:
+    """Shard the leading batch axis while replicating the remaining axes."""
+    if ndim <= 0:
+        raise ValueError("Batch arrays must have at least one dimension.")
+    return NamedSharding(mesh, P("data", *([None] * (ndim - 1))))
+
+
+def shard_batch_array(array: jax.Array, mesh: Mesh) -> jax.Array:
+    """Place one batch array onto the data mesh with a sharded leading axis."""
+    return jax.device_put(array, get_batch_sharding(mesh, array.ndim))
+
+
+def describe_array_sharding(array: jax.Array) -> str:
+    """Return a short human-readable sharding description for one array."""
+    sharding = getattr(array, "sharding", None)
+    if sharding is None:
+        return "unsharded"
+    if isinstance(sharding, NamedSharding):
+        return str(sharding.spec)
+    return str(sharding)
+
+
+def get_parameter_sharding(model: DecoderOnlyTransformer) -> str:
+    """Summarize the distinct parameter shardings present in the model."""
+    params = nnx.state(model, nnx.Param)
+    param_leaves = jax.tree.leaves(params, is_leaf=lambda x: isinstance(x, nnx.Param))
+    shardings = sorted({describe_array_sharding(param[...]) for param in param_leaves})
+    return ", ".join(shardings)
+
+
+@nnx.jit
+@partial(jax.sharding.auto_axes, out_sharding=P("data", None, None))
+def forward_logits(
+    model: DecoderOnlyTransformer,
+    input_ids: jax.Array,
+) -> jax.Array:
+    """Run the model forward to inspect the output sharding."""
+    return model(input_ids)
+
+
+def evaluate_sharded_positions(
+    tokens: jax.Array,
+    start_positions: jax.Array,
+    model: DecoderOnlyTransformer,
+    mesh: Mesh,
+    context_length: int,
+    batch_size: int,
+) -> float:
+    """Evaluate loss on sharded batches while keeping the loop easy to inspect."""
+    if context_length <= 0:
+        raise ValueError("context_length must be positive")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if start_positions.shape[0] == 0:
+        raise ValueError("start_positions must contain at least one position")
+
+    total_loss = 0.0
+    total_examples = 0
+
+    for batch_start in range(0, start_positions.shape[0], batch_size):
+        batch_end = min(batch_start + batch_size, start_positions.shape[0])
+        batch_positions = start_positions[batch_start:batch_end]
+        input_ids, target_ids = build_examples(tokens, batch_positions, context_length)
+        sharded_input_ids = shard_batch_array(input_ids, mesh)
+        sharded_target_ids = shard_batch_array(target_ids, mesh)
+        batch_loss = evaluate_batch_loss(model, sharded_input_ids, sharded_target_ids)
+        current_batch_size = int(batch_positions.shape[0])
+        total_loss += float(batch_loss) * current_batch_size
+        total_examples += current_batch_size
+
+    return total_loss / total_examples
+
+
 def loss_fn(
     model: DecoderOnlyTransformer,
     input_ids: jax.Array,
@@ -237,6 +329,7 @@ def loss_fn(
 
 
 @nnx.jit
+@partial(jax.sharding.auto_axes, out_sharding=P())
 def train_step(
     model: DecoderOnlyTransformer,
     optimizer: nnx.Optimizer[DecoderOnlyTransformer],
@@ -250,6 +343,7 @@ def train_step(
 
 
 @nnx.jit
+@partial(jax.sharding.auto_axes, out_sharding=P())
 def evaluate_batch_loss(
     model: DecoderOnlyTransformer,
     input_ids: jax.Array,
@@ -264,6 +358,7 @@ def train_chunk(
     optimizer: nnx.Optimizer[DecoderOnlyTransformer],
     tokens: jax.Array,
     config: ExperimentConfig,
+    mesh: Mesh,
     rng: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
     """Average several random training batches into one logged chunk."""
@@ -272,12 +367,19 @@ def train_chunk(
         rng, batch_rng = jax.random.split(rng)
         start_positions = jax.random.randint(
             batch_rng,
-            shape=(config.batch_size,),
+            shape=(config.global_batch_size,),
             minval=0,
             maxval=tokens.shape[0] - config.context_length,
         )
         input_ids, target_ids = build_examples(tokens, start_positions, config.context_length)
-        total_loss = total_loss + train_step(model, optimizer, input_ids, target_ids)
+        sharded_input_ids = shard_batch_array(input_ids, mesh)
+        sharded_target_ids = shard_batch_array(target_ids, mesh)
+        total_loss = total_loss + train_step(
+            model,
+            optimizer,
+            sharded_input_ids,
+            sharded_target_ids,
+        )
     return total_loss / config.train_chunk_length, rng
 
 
@@ -321,118 +423,135 @@ def main() -> None:
 
     timer = Timer()
     timer.start("total")
-    tokenizer = load_tokenizer(config.tokenizer_path)
-    train_shard_paths = select_train_shards(config.token_shard_root, config.max_train_shards)
-    validation_tokens = load_experiment_split(
-        config.token_shard_root,
-        "validation",
-        config.validation_shard_index,
-        mmap=config.shard_mmap,
-    )
-    train_subset_tokens = load_experiment_split(
-        config.token_shard_root,
-        "train",
-        config.train_subset_shard_index,
-        mmap=config.shard_mmap,
-    )
-    model, optimizer = create_model_and_optimizer(
-        config,
-        vocab_size=tokenizer.vocab_size,
-    )
+    mesh = create_data_mesh()
+    per_device_batch_size = get_per_device_batch_size(config.global_batch_size, mesh)
 
-    rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
-    validation_start_positions = sample_evaluation_positions(
-        validation_tokens,
-        context_length=config.context_length,
-        subset_size=config.validation_subset_examples,
-        rng=validation_rng,
-    )
-    train_subset_start_positions = sample_evaluation_positions(
-        train_subset_tokens,
-        context_length=config.context_length,
-        subset_size=config.validation_subset_examples,
-        rng=train_subset_rng,
-    )
-    loss_tracker = LossTracker()
-    train_tokens = None
-
-    timer.start("train")
-    for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
-        active_train_shard_index = chunk_index % len(train_shard_paths)
-        train_tokens = load_token_shard(
-            train_shard_paths[active_train_shard_index],
+    with jax.set_mesh(mesh):
+        tokenizer = load_tokenizer(config.tokenizer_path)
+        train_shard_paths = select_train_shards(config.token_shard_root, config.max_train_shards)
+        validation_tokens = load_experiment_split(
+            config.token_shard_root,
+            "validation",
+            config.validation_shard_index,
             mmap=config.shard_mmap,
         )
-        train_loss, rng = train_chunk(model, optimizer, train_tokens, config, rng)
-        train_subset_loss = evaluate_positions(
-            train_subset_tokens,
-            train_subset_start_positions,
-            model,
-            evaluate_batch_loss,
-            config.context_length,
-            config.eval_batch_size,
+        train_subset_tokens = load_experiment_split(
+            config.token_shard_root,
+            "train",
+            config.train_subset_shard_index,
+            mmap=config.shard_mmap,
         )
-        validation_subset_loss = evaluate_positions(
+        model, optimizer = create_model_and_optimizer(
+            config,
+            vocab_size=tokenizer.vocab_size,
+        )
+
+        rng, validation_rng, train_subset_rng = jax.random.split(jax.random.key(config.seed), 3)
+        validation_start_positions = sample_evaluation_positions(
             validation_tokens,
-            validation_start_positions,
-            model,
-            evaluate_batch_loss,
+            context_length=config.context_length,
+            subset_size=config.validation_subset_examples,
+            rng=validation_rng,
+        )
+        train_subset_start_positions = sample_evaluation_positions(
+            train_subset_tokens,
+            context_length=config.context_length,
+            subset_size=config.validation_subset_examples,
+            rng=train_subset_rng,
+        )
+        logits_input_ids, _ = build_examples(
+            train_subset_tokens,
+            train_subset_start_positions[:config.eval_batch_size],
             config.context_length,
-            config.eval_batch_size,
         )
+        sharded_logits_input_ids = shard_batch_array(logits_input_ids, mesh)
+        logits = forward_logits(model, sharded_logits_input_ids)
+        loss_tracker = LossTracker()
+        train_tokens = None
 
-        current_step = (chunk_index + 1) * config.train_chunk_length
-        loss_tracker.log(
-            step=current_step,
-            train_loss=float(train_loss),
-            train_subset_loss=train_subset_loss,
-            validation_subset_loss=validation_subset_loss,
+        timer.start("train")
+        for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
+            active_train_shard_index = chunk_index % len(train_shard_paths)
+            train_tokens = load_token_shard(
+                train_shard_paths[active_train_shard_index],
+                mmap=config.shard_mmap,
+            )
+            train_loss, rng = train_chunk(model, optimizer, train_tokens, config, mesh, rng)
+            train_subset_loss = evaluate_sharded_positions(
+                train_subset_tokens,
+                train_subset_start_positions,
+                model,
+                mesh,
+                config.context_length,
+                config.eval_batch_size,
+            )
+            validation_subset_loss = evaluate_sharded_positions(
+                validation_tokens,
+                validation_start_positions,
+                model,
+                mesh,
+                config.context_length,
+                config.eval_batch_size,
+            )
+
+            current_step = (chunk_index + 1) * config.train_chunk_length
+            loss_tracker.log(
+                step=current_step,
+                train_loss=float(train_loss),
+                train_subset_loss=train_subset_loss,
+                validation_subset_loss=validation_subset_loss,
+            )
+
+        train_seconds = timer.stop("train")
+        rng, sample_rng = jax.random.split(rng)
+        if train_tokens is None:
+            raise ValueError("No train shard was loaded during training.")
+        sample = generate_text(
+            model,
+            tokenizer,
+            train_tokens,
+            config.sample_tokens,
+            config.context_length,
+            sample_rng,
         )
+        total_seconds = timer.stop("total")
 
-    train_seconds = timer.stop("train")
-    rng, sample_rng = jax.random.split(rng)
-    if train_tokens is None:
-        raise ValueError("No train shard was loaded during training.")
-    sample = generate_text(
-        model,
-        tokenizer,
-        train_tokens,
-        config.sample_tokens,
-        config.context_length,
-        sample_rng,
-    )
-    total_seconds = timer.stop("total")
-
-    metadata = build_run_metadata(
-        script_path=Path(__file__),
-        config=asdict(config),
-        execution_target=config.execution_target,
-        run_details={
-            "train_shards_used": len(train_shard_paths),
-            "loaded_train_tokens": train_tokens.shape[0],
-            "loaded_train_subset_tokens": train_subset_tokens.shape[0],
-            "loaded_validation_tokens": validation_tokens.shape[0],
-        },
-        run_metrics={
-            "final_train_loss": loss_tracker.train_losses[-1],
-            "final_train_subset_loss": loss_tracker.train_subset_losses[-1],
-            "final_validation_subset_loss": loss_tracker.validation_subset_losses[-1],
-            "train_seconds": train_seconds,
-            "total_seconds": total_seconds,
-        },
-    )
-    artifacts = save_run_artifacts(
-        script_path=Path(__file__),
-        loss_tracker=loss_tracker,
-        sample_text=sample,
-        metadata=metadata,
-        artifacts_root=config.artifacts_root,
-    )
-    print_run_summary(
-        metadata=metadata,
-        artifacts=artifacts,
-        sample_text=sample,
-    )
+        metadata = build_run_metadata(
+            script_path=Path(__file__),
+            config=asdict(config),
+            execution_target=config.execution_target,
+            run_details={
+                "train_shards_used": len(train_shard_paths),
+                "loaded_train_tokens": train_tokens.shape[0],
+                "loaded_train_subset_tokens": train_subset_tokens.shape[0],
+                "loaded_validation_tokens": validation_tokens.shape[0],
+                "sharding_mode": "explicit-with-auto-axes",
+                "mesh_axis_name": "data",
+                "per_device_batch_size": per_device_batch_size,
+                "parameter_sharding": get_parameter_sharding(model),
+                "train_batch_sharding": describe_array_sharding(sharded_logits_input_ids),
+                "logits_sharding": describe_array_sharding(logits),
+            },
+            run_metrics={
+                "final_train_loss": loss_tracker.train_losses[-1],
+                "final_train_subset_loss": loss_tracker.train_subset_losses[-1],
+                "final_validation_subset_loss": loss_tracker.validation_subset_losses[-1],
+                "train_seconds": train_seconds,
+                "total_seconds": total_seconds,
+            },
+        )
+        artifacts = save_run_artifacts(
+            script_path=Path(__file__),
+            loss_tracker=loss_tracker,
+            sample_text=sample,
+            metadata=metadata,
+            artifacts_root=config.artifacts_root,
+        )
+        print_run_summary(
+            metadata=metadata,
+            artifacts=artifacts,
+            sample_text=sample,
+        )
 
 
 if __name__ == "__main__":
