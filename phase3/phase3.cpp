@@ -69,7 +69,7 @@ int main() {
     std::vector<float> out(vocab_size, 0.0f);
     for (size_t i = 0; i < vocab_size; ++i) {
       for (size_t j = 0; j < embedding_dim; ++j) {
-        out[i] += embeddings[id * embedding_dim + j] * weights[i * vocab_size + i];
+        out[i] += embeddings[id * embedding_dim + j] * weights[j * vocab_size + i];
       }
       out[i] += biases[i];
     }
