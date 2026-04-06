@@ -26,7 +26,7 @@ The emphasis of phase 2 is:
 - and then hand off to the later systems rebuild.
 
 ## Status
-As of 2026-04-05:
+As of 2026-04-06:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
 - `021` is complete as the TPU multi-shard baseline,
@@ -41,8 +41,10 @@ As of 2026-04-05:
 - `029` is complete as the ecosystem-aligned baseline,
 - `030` is complete as the first profiling pass on the single-device ecosystem baseline,
 - `030` showed that steady-state training dominates wall-clock, while shard loading and subset evaluation are small enough that they do not justify a systems rewrite yet,
-- `031` is now the next milestone and focuses on explicit multi-core execution on TPU `v5e-8`,
-- `032` now follows `031` as the best-possible `10h` scaling pass on top of the multi-core baseline,
+- `031` is complete as the first working multi-core JAX TPU baseline,
+- `031` showed that the multi-core path trains correctly and that throughput scales strongly once per-device batch is increased enough to use the `v5e-8` slice productively,
+- `032` is now the next milestone and focuses on one best-possible long run on TPU `v5e-8`,
+- `032` should start from the full tokenized `sample-10BT` dataset, not the current `10`-shard local subset,
 - phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
@@ -601,10 +603,10 @@ Exit criteria:
 - The resulting run is strong enough to serve as the final phase-2 scaling reference before the later systems rebuild.
 
 Concrete work:
-- Increase the available FineWeb-Edu train shard count beyond the current `10`-shard subset.
-- Run one longer baseline with the current `031` model on the larger data budget to anchor the `10h` budget.
-- Then scale model size within the same `10h` budget, ideally changing one major model axis at a time.
-- Compare train loss, validation subset loss, train/validation gap, tokens per second, total tokens seen, and end-of-run quality.
+- Build or stage the full tokenized `sample-10BT` shard set so the run is not limited to the current `10`-shard local subset.
+- Start from the current multi-core baseline with the strongest observed throughput setting: `global_batch_size=1024`.
+- Use a single chosen scaled model target for the one long run instead of a sweep, with the decision justified from the `031` benchmark results.
+- Compare end-of-run train loss, validation subset loss, train/validation gap, tokens per second, total tokens seen, and overall sample quality.
 
 ## Track Summary
 Tracks still exist, but they are secondary to milestones:
