@@ -1,4 +1,4 @@
-"""Train the milestone-031 multi-core baseline with self-describing artifacts."""
+"""Train the milestone-032 best-model long-run baseline with self-describing artifacts."""
 
 import argparse
 from dataclasses import asdict, dataclass
@@ -34,14 +34,14 @@ DEFAULT_TOKENIZER_PATH = (
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Keep the milestone-031 baseline settings explicit and easy to inspect."""
+    """Keep the milestone-032 long-run settings explicit and easy to inspect."""
 
     token_shard_root: Path = DEFAULT_TOKEN_SHARD_ROOT
     tokenizer_path: Path = DEFAULT_TOKENIZER_PATH
     artifacts_root: Path | None = None
     execution_target: str | None = None
     seed: int = 0
-    max_train_shards: int | None = 10
+    max_train_shards: int | None = None
     validation_shard_index: int = 0
     train_subset_shard_index: int = 0
     shard_mmap: bool = True
@@ -52,15 +52,15 @@ class ExperimentConfig:
     beta2: float = 0.999
     epsilon: float = 1e-8
     weight_decay: float = 0.01
-    train_steps: int = 20_000
+    train_steps: int = 152_000
     train_chunk_length: int = 100
-    eval_interval_steps: int = 100
+    eval_interval_steps: int = 1_000
     validation_subset_examples: int = 256
     sample_tokens: int = 60
-    embedding_dim: int = 128
+    embedding_dim: int = 256
     num_heads: int = 8
-    num_decoder_blocks: int = 8
-    hidden_dim: int = 256
+    num_decoder_blocks: int = 12
+    hidden_dim: int = 1024
     context_length: int = 64
 
     def validate(self) -> None:
@@ -105,9 +105,9 @@ class ExperimentConfig:
 
 
 def parse_args() -> ExperimentConfig:
-    """Parse the small set of runtime overrides useful in TPU notebooks."""
+    """Parse the small set of runtime overrides useful in long TPU runs."""
     parser = argparse.ArgumentParser(
-        description="Train one milestone-031 TPU multi-core baseline point with run metadata."
+        description="Train one milestone-032 TPU best-model long-run point with run metadata."
     )
     parser.add_argument(
         "--token-shard-root",
@@ -486,7 +486,7 @@ def generate_text(
 
 
 def main() -> None:
-    """Run one milestone-031 TPU multi-core baseline point end to end."""
+    """Run one milestone-032 TPU best-model long-run point end to end."""
     config = parse_args()
     nnx.use_eager_sharding(True)
 
