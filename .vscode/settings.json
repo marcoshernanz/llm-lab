@@ -8,11 +8,16 @@
   "cSpell.words": [
     "adam",
     "adamw",
+    "dlogits",
     "gelu",
+    "logit",
+    "logits",
     "maxval",
     "minval",
     "pmean",
+    "randint",
     "smap",
-    "softmax"
+    "softmax",
+    "tinyshakespeare"
   ]
 }

@@ -72,6 +72,29 @@ The right move is:
 
 That path preserves first-principles learning while keeping scope narrow enough to finish.
 
+## Learning Order After Phase 2
+
+The high-level order should be:
+
+1. freeze one real training target,
+2. rebuild that target on CPU in C++,
+3. learn and profile the real CPU bottlenecks,
+4. study GPU fundamentals,
+5. add CUDA for the measured hotspots,
+6. only then move into more advanced kernel and distributed topics.
+
+This matters because the repo should teach things in the order they become real bottlenecks, not in the order they seem exciting.
+
+In practical terms, the priority stack after phase 2 is:
+
+- CPU trainer correctness,
+- profiling,
+- GPU fundamentals,
+- CUDA,
+- then later Triton, FlashAttention, and distributed training.
+
+Topics such as MoE, exotic kernel DSLs, or broad framework design should stay later because they add complexity before the dense single-trainer path is fully understood.
+
 ## Decision Rules
 
 When deciding whether something belongs in this repo, ask:
@@ -82,6 +105,25 @@ When deciding whether something belongs in this repo, ask:
 4. Would skipping it make later C++/CUDA work more confused?
 
 If the answer is mostly no, it probably does not belong here.
+
+## Framework Rule
+
+Framework choice should be treated as a tool choice, not as identity.
+
+For this repo:
+
+- use the framework that best exposes the current learning target,
+- prefer the simplest path that makes the relevant concept inspectable,
+- and do not keep a tool only because a lot of work has already gone into it.
+
+That means:
+
+- JAX is useful when studying scaling, compilation, and multi-device behavior,
+- PyTorch is useful when studying imperative training behavior and when keeping the bridge to low-level systems work as short as possible,
+- and later C++/CUDA work should not be forced through a high-level framework shape if that shape now fights the learning goal.
+
+The important thing is not loyalty to JAX or PyTorch.
+It is whether the tool makes the current bottleneck easier to see.
 
 ## Anti-Rules
 

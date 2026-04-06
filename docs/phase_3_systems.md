@@ -68,17 +68,34 @@ Before writing C++, freeze:
 
 If these are still moving, phase 3 has started too early.
 
-### Stage 2: C++ CPU Reference Trainer
+### Stage 2: Numerical And Systems Prerequisites
+
+Before serious CUDA work, make the following explicit study targets part of the phase:
+
+- floating-point behavior,
+- numerical stability in softmax / log-sum-exp / normalization,
+- memory layout and locality,
+- GPU execution basics,
+- and the relationship between arithmetic work and memory movement.
+
+This stage exists so later low-level implementation decisions are explained by mechanism rather than copied from other systems.
+
+### Stage 3: C++ CPU Reference Trainer
 
 Build the trainer on CPU first.
 
 Requirements:
 
 - correctness over speed,
-- clean numerical parity checks against the JAX reference,
+- clean numerical parity checks against the frozen reference,
 - minimal dependencies,
 - no Python bindings at first,
 - no attempt at a general-purpose public API.
+
+Notes:
+
+- A small PyTorch semantic reference is acceptable if it shortens the path to trustworthy parity checks.
+- The main implementation target is still the C++ trainer, not a parallel high-level framework port.
 
 Exit criteria:
 
@@ -86,7 +103,7 @@ Exit criteria:
 - loss trends match the reference well enough to trust semantics,
 - tensor shapes and memory layout are fully understood.
 
-### Stage 3: C++ CPU Optimization
+### Stage 4: C++ CPU Optimization
 
 Only after correctness:
 
@@ -97,7 +114,7 @@ Only after correctness:
 
 This stage exists to expose what truly matters before touching CUDA.
 
-### Stage 4: CUDA Bring-Up
+### Stage 5: CUDA Bring-Up
 
 Add CUDA only for the real hotspots found by profiling.
 
@@ -114,6 +131,16 @@ Exit criteria:
 - one GPU run works end to end,
 - kernel-level speedups are tied to measured bottlenecks,
 - CPU and GPU paths remain behaviorally comparable.
+
+### Stage 6: Later Kernel And Distributed Work
+
+Only after the GPU trainer is real should phase 3 branch into more advanced areas such as:
+
+- Triton,
+- FlashAttention-style IO-aware kernels,
+- and distributed training / collectives / sharding.
+
+These are valuable topics, but they should sit on top of a working trainer and a measured bottleneck, not replace them.
 
 ## Project Shape
 
@@ -142,6 +169,22 @@ Examples:
 - broad framework abstractions are not phase-3-critical,
 - a small amount of build tooling is fine,
 - and if one carefully chosen low-level dependency prevents wasting months on solved problems, it should be considered honestly.
+
+## Framework Reference Rule
+
+Phase 3 should not be framework-centered.
+
+Good use of high-level frameworks in this phase:
+
+- as a semantic reference,
+- as a parity oracle,
+- or as a quick way to confirm that a low-level implementation is still doing the right math.
+
+Bad use of high-level frameworks in this phase:
+
+- porting the whole training stack just to mirror the existing repo in a different framework,
+- keeping two equally serious high-level codepaths alive,
+- or delaying the C++ trainer because the framework port keeps getting more polished.
 
 ## Relationship To Older Projects
 

@@ -1,6 +1,6 @@
 # Phase 2 Learning Log
 
-Runs recorded on 2026-03-29, 2026-03-30, 2026-04-02, 2026-04-04, and 2026-04-05.
+Runs recorded on 2026-03-29, 2026-03-30, 2026-04-02, 2026-04-04, 2026-04-05, and 2026-04-06.
 
 ## Summary
 
@@ -24,6 +24,11 @@ Runs recorded on 2026-03-29, 2026-03-30, 2026-04-02, 2026-04-04, and 2026-04-05.
 | 029 (Vast 5090) | `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py` | 100000 | 4.712810 | 4.840675 | - | 1486.777 | 550990.604 | 1499.071 | [csv](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_191256_981060/loss_history.csv) | [svg](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_191256_981060/loss_curve.svg) |
 | 029 (Kaggle T4 x2) | `experiments/029_tpu_fineweb_edu_ecosystem_refactor.py` | 100000 | 4.710803 | 4.841506 | - | 9030.577 | 90714.026 | 9048.448 | [csv](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_220011_453642/loss_history.csv) | [svg](../artifacts/experiments/029_tpu_fineweb_edu_ecosystem_refactor/20260404_220011_453642/loss_curve.svg) |
 | 030 | `experiments/030_tpu_fineweb_edu_profiling.py` | 10000 | 5.171167 | 5.248936 | - | 227.433 | 360194.380 | 286.421 | [csv](../artifacts/experiments/030_tpu_fineweb_edu_profiling/20260405_075350_302050/loss_history.csv) | [svg](../artifacts/experiments/030_tpu_fineweb_edu_profiling/20260405_075350_302050/loss_curve.svg) |
+| 031 (Kaggle T4 x2) | `experiments/031_tpu_fineweb_edu_multi_core.py` | 10000 | 6.888954 | 6.853048 | - | 541.790 | 151202.516 | 571.968 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260405_091503_512454/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260405_091503_512454/loss_curve.svg) |
+| 031 benchmark (v5e-8, gbs=128) | `experiments/031_tpu_fineweb_edu_multi_core.py` | 10000 | 6.894848 | 6.851010 | - | 208.592 | 392728.680 | 273.655 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091224_702599/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091224_702599/loss_curve.svg) |
+| 031 benchmark (v5e-8, gbs=512) | `experiments/031_tpu_fineweb_edu_multi_core.py` | 10000 | 6.093329 | 6.116215 | - | 227.483 | 1440457.344 | 293.163 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091946_594964/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091946_594964/loss_curve.svg) |
+| 031 benchmark (v5e-8, gbs=1024) | `experiments/031_tpu_fineweb_edu_multi_core.py` | 10000 | 5.643157 | 5.714739 | - | 240.334 | 2726873.872 | 307.154 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_092546_633827/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_092546_633827/loss_curve.svg) |
+| 031 (v5e-8, gbs=1024, 100k) | `experiments/031_tpu_fineweb_edu_multi_core.py` | 100000 | 5.322255 | 5.429159 | - | 2256.491 | 2904332.933 | 2324.130 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_085424_312031/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_085424_312031/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -570,4 +575,89 @@ assing hectic time but decent from a foremost declared himself as Pokeras, who h
 
 ```text
  state pests in warmer days would be being Midgal, or oyst inhess, but she was very important to hire natural and sharks for winter paddle, and is ready for a dad call. She is often southern. He is saw known for venturing student to protest the country.
+```
+
+## 031 FineWeb-Edu Multi-Core On Kaggle T4 x2
+
+- Script: `experiments/031_tpu_fineweb_edu_multi_core.py`
+- Execution target: `Kaggle multi-device milestone-031`
+- JAX backend: `gpu`
+- JAX device count: `2`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384/fineweb_edu_sample10bt_bpe_16384.json`
+- Sharding mode: `automatic`
+- Mesh axis name: `data`
+- Global batch size: `128`
+- Per-device batch size: `64`
+- Steps: `10000`
+- Final train loss: `6.888954`
+- Final train subset loss: `7.006499`
+- Final validation subset loss: `6.853048`
+- Note: this was the first useful milestone-031 comparison run after the broken explicit-plus-`auto_axes` path was retired.
+- Note: it proved that the automatic multi-device path actually trains, but throughput on free `T4 x2` stayed much lower than the TPU path.
+- Run metadata: [run_metadata.json](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260405_091503_512454/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260405_091503_512454/sample.txt)
+- Train seconds: `541.790`
+- Tokens per second: `151202.516`
+- Total seconds: `571.968`
+
+![031 fineweb edu multi core kaggle t4 x2 loss curve](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260405_091503_512454/loss_curve.svg)
+
+```text
+ something or temperationsts that it would Mid if it booksirections the reduce the ext quick it will learn that the available and on can’t slow to the conditions at the game. F
+Ar influence4) callaceEL], direct southern limitfullines support, it known Whiles, that student zone is known as
+```
+
+## 031 FineWeb-Edu Multi-Core Benchmark Sweep On Kaggle TPU v5e-8
+
+- Script: `experiments/031_tpu_fineweb_edu_multi_core.py`
+- Execution target: `Kaggle TPU v5e-8 milestone-031 multi-core`
+- JAX backend: `tpu`
+- JAX device count: `8`
+- Sharding mode: `automatic`
+- Mesh axis name: `data`
+- Shared settings: `train_steps=10000`, `train_chunk_length=100`, `eval_batch_size=256`, `validation_subset_examples=256`, `max_train_shards=10`
+
+| Global Batch | Per-Device Batch | Final Train Loss | Final Val Subset Loss | Train Seconds | Tokens/Sec | Train-Only Compute Tokens/Sec | Train+Data Tokens/Sec | Eval Seconds | CSV | Graph |
+| -----------: | ---------------: | ---------------: | --------------------: | ------------: | ---------: | ----------------------------: | --------------------: | -----------: | --- | ----- |
+| 128 | 16 | 6.894848 | 6.851010 | 208.592 | 392728.680 | 401731.010 | 401480.442 | 4.520 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091224_702599/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091224_702599/loss_curve.svg) |
+| 512 | 64 | 6.093329 | 6.116215 | 227.483 | 1440457.344 | 1470992.232 | 1470128.133 | 4.561 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091946_594964/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091946_594964/loss_curve.svg) |
+| 1024 | 128 | 5.643157 | 5.714739 | 240.334 | 2726873.872 | 2782378.186 | 2780716.384 | 4.620 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_092546_633827/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_092546_633827/loss_curve.svg) |
+
+- Note: this sweep answered the main throughput question from `031`: the earlier disappointing `v5e-8` numbers were mostly a per-device underutilization problem, not a correctness problem.
+- Note: increasing global batch from `128` to `1024` kept step rate in the same ballpark (`47.941` to `41.609` steps/s) while increasing train-only compute throughput from about `0.40M` to `2.78M` tokens/s.
+- Note: data loading and periodic subset evaluation remained small in all three benchmark runs, so they are not the reason the multi-core slice underperforms the single-core `v5e-1` Colab comparison.
+- Interpretation: the current `031` multi-core baseline does scale materially when per-device batch is increased, but it still does not deliver near-linear speedup against a `v5e-1` single-core comparison point at the same per-device batch.
+
+## 031 FineWeb-Edu Multi-Core Long Run On Kaggle TPU v5e-8
+
+- Script: `experiments/031_tpu_fineweb_edu_multi_core.py`
+- Execution target: `Kaggle TPU v5e-8 milestone-031 multi-core`
+- JAX backend: `tpu`
+- JAX device count: `8`
+- Sharding mode: `automatic`
+- Mesh axis name: `data`
+- Global batch size: `1024`
+- Per-device batch size: `128`
+- Eval batch size: `256`
+- Steps: `100000`
+- Tokens per step: `65536`
+- Train tokens seen: `6553600000`
+- Final train loss: `5.322255`
+- Final train subset loss: `5.545794`
+- Final validation subset loss: `5.429159`
+- Final validation loss: `-`
+- Note: this long run showed that the larger-batch `031` baseline is not only faster in tokens/s, but also reaches a much stronger quality point than the smaller-batch `10k` comparison runs.
+- Note: compared with the `031` `gbs=1024` `10k` benchmark run, extending to `100k` steps reduced validation subset loss substantially from `5.714739` to `5.429159`.
+- Note: compared with the earlier single-device-style `022` long TPU baseline, the quality improved as well, but that comparison is not clean because the total token budget here is much larger.
+- Run metadata: [run_metadata.json](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_085424_312031/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_085424_312031/sample.txt)
+- Train seconds: `2256.491`
+- Tokens per second: `2904332.933`
+- Total seconds: `2324.130`
+
+![031 fineweb edu multi core kaggle tpu v5e8 long run loss curve](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_085424_312031/loss_curve.svg)
+
+```text
+assing – easy time for Next.The third that's that it is very Poking to one’s ridition by one violation and a few times. Dorada is an eightet - that one person can make one reason, name or reference sounds. Feesvers inside the person’s opinive examples ofkins
 ```

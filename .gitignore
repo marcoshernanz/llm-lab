@@ -13,5 +13,9 @@ __pycache__/
 .vscode/.ropeproject/
 .cache/
 
+# Phase 3 C++ build outputs
+build/
+*.dSYM/
+
 # Large local datasets
 datasets/fineweb_edu/

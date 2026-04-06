@@ -20,13 +20,13 @@ The emphasis of phase 2 is:
 - TPU-first execution for real runs,
 - controlled scaling,
 - then optimizer implementation and comparisons,
-- then multi-core execution,
-- then a time-budgeted scaling pass on the multi-core baseline,
 - then profiling,
+- then multi-core execution on the current ecosystem baseline,
+- then a time-budgeted scaling pass on that multi-core baseline,
 - and then hand off to the later systems rebuild.
 
 ## Status
-As of 2026-04-03:
+As of 2026-04-05:
 - `019` is complete as the first local FineWeb-Edu shard baseline,
 - `020` is complete as the local FineWeb-Edu multi-shard baseline,
 - `021` is complete as the TPU multi-shard baseline,
@@ -39,7 +39,10 @@ As of 2026-04-03:
 - `027` is complete as the handwritten Adam baseline,
 - `028` is complete as the handwritten AdamW baseline,
 - `029` is complete as the ecosystem-aligned baseline,
-- `030` is the next milestone and now focuses on profiling before any explicit multi-core execution work,
+- `030` is complete as the first profiling pass on the single-device ecosystem baseline,
+- `030` showed that steady-state training dominates wall-clock, while shard loading and subset evaluation are small enough that they do not justify a systems rewrite yet,
+- `031` is now the next milestone and focuses on explicit multi-core execution on TPU `v5e-8`,
+- `032` now follows `031` as the time-budgeted scaling pass on top of the multi-core baseline,
 - phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
@@ -519,56 +522,25 @@ Exit criteria:
 - Profiling answers at least one concrete bottleneck question.
 - The results change a real next decision.
 
-### Milestone 031: Time-Budgeted Scaling Pass
-Track: Scaling
+Status:
+- Complete via `experiments/030_tpu_fineweb_edu_profiling.py`.
+- The first profiling pass showed that steady-state training, not shard loading or subset evaluation, dominates wall-clock on the current single-device ecosystem baseline.
+- The measured bottleneck did not by itself require a systems rewrite, but the next milestone is still moving to explicit multi-core execution in order to study the execution model directly before the next scaling pass.
 
-Goal:
-- Push the largest useful model and data budget that still fits inside a reasonable real-run window, roughly `30m` to `1h`.
-
-Why this comes here:
-- `030` should establish the main bottlenecks first.
-- Once the current runtime behavior is measured, the next useful question is how much more model and data the current hardware budget can actually support before a multi-core rewrite is justified.
-- Recent curves suggest the current model may be small for the available runtime budget, while the widening train/validation gap suggests the current data budget is also too small.
-
-What stays fixed:
-- Same hardware target.
-- Same single-device ecosystem baseline from `029` unless the profiling results justify one narrow change first.
-- Same optimizer family.
-- Same artifact format and subset-loss logging.
-
-What changes:
-- Model size and train-data budget, within a fixed wall-clock budget.
-- Prefer increasing available train shards before or alongside model growth, rather than scaling model size against a too-small repeated dataset.
-
-Questions to answer:
-- With a fixed `30m` to `1h` budget, what is the largest useful model you can train?
-- How much does using more FineWeb-Edu train shards reduce the train/validation gap?
-- Is the current bottleneck more about model capacity, data budget, or both?
-
-Concrete work:
-- Increase the available FineWeb-Edu train shard count beyond the current `10`-shard subset.
-- Run one fixed-time baseline with the current `030` model on the larger data budget.
-- Then scale model size within the same time budget, ideally changing one major model axis at a time.
-- Compare train loss, validation subset loss, train/validation gap, tokens per second, and total tokens seen.
-
-Exit criteria:
-- One time-budgeted run shows how much larger the current setup can go without turning into an open-ended long run.
-- You can say whether more data, more model, or both are the right next scaling direction.
-- The run budget is concrete enough that later profiling work has a meaningful target to optimize.
-
-### Milestone 032: Multi-Core JAX TPU Baseline
+### Milestone 031: Multi-Core JAX TPU Baseline
 Track: Hardware
 
 Goal:
 - Move from single-device TPU execution to real multi-core JAX execution on `v5e-8`.
 
 Why this comes here:
-- Profiling should identify whether multi-core execution is actually the most justified next systems change.
-- Only after that should the repo take on the extra complexity of explicit multi-device execution.
+- `030` already established the current single-device runtime behavior clearly enough that the next remaining systems question is the explicit multi-core execution model itself.
+- The profiling results do not force a multi-core rewrite, but they also remove the main uncertainty about hidden input or evaluation bottlenecks.
+- Doing the multi-core bring-up now keeps the next scaling pass grounded in the actual execution model you want to study.
 
 What stays fixed:
 - Same dataset.
-- Same scaled model shape, unless `031` shows a very strong reason to change it first.
+- Same scaled model shape as the current ecosystem baseline, unless the multi-core bring-up exposes one narrow change that is required for correctness.
 - Same chosen optimizer baseline.
 - Same artifact format and subset-loss logging.
 
@@ -583,13 +555,56 @@ Questions to answer:
 - Does the loss behavior stay comparable at the same global batch size?
 - What new host/device friction appears?
 
-Rule:
-- Prefer the simplest data-parallel implementation that the profiling results justify.
+Concrete work:
+- Add the simplest data-parallel execution path that the current baseline can support cleanly.
+- Keep global batch semantics explicit and easy to inspect.
+- Run one representative multi-core training baseline end to end.
+- Compare throughput, artifact quality, and loss behavior against the single-device `029` and `030` references.
 
 Exit criteria:
 - One multi-core run completes end to end.
 - Throughput improvement is measured clearly.
 - You can explain the main conceptual changes required to go multi-core.
+
+Rule:
+- Prefer the simplest data-parallel implementation that the current learning goal justifies.
+
+### Milestone 032: Time-Budgeted Scaling Pass
+Track: Scaling
+
+Goal:
+- Push the largest useful model and data budget that still fits inside a reasonable real-run window, roughly `30m` to `1h`.
+
+Why this comes here:
+- `031` should establish the execution model you actually want to use for the next serious scaling pass.
+- Once the multi-core path is working, the next useful question is how much more model and data the real hardware budget can support inside a fixed wall-clock window.
+- Recent curves still suggest the current model may be small for the available runtime budget, while the widening train/validation gap suggests the current data budget is also too small.
+
+What stays fixed:
+- Same hardware target established in `031`.
+- Same multi-core ecosystem baseline from `031` unless the execution results justify one narrow change first.
+- Same optimizer family.
+- Same artifact format and subset-loss logging.
+
+What changes:
+- Model size and train-data budget, within a fixed wall-clock budget.
+- Prefer increasing available train shards before or alongside model growth, rather than scaling model size against a too-small repeated dataset.
+
+Questions to answer:
+- With a fixed `30m` to `1h` budget, what is the largest useful model you can train on the new execution baseline?
+- How much does using more FineWeb-Edu train shards reduce the train/validation gap?
+- Is the current bottleneck more about model capacity, data budget, or both?
+
+Exit criteria:
+- One time-budgeted run shows how much larger the current setup can go without turning into an open-ended long run.
+- You can say whether more data, more model, or both are the right next scaling direction.
+- The run budget is concrete enough that later profiling work has a meaningful target to optimize.
+
+Concrete work:
+- Increase the available FineWeb-Edu train shard count beyond the current `10`-shard subset.
+- Run one fixed-time baseline with the current `031` model on the larger data budget.
+- Then scale model size within the same time budget, ideally changing one major model axis at a time.
+- Compare train loss, validation subset loss, train/validation gap, tokens per second, and total tokens seen.
 
 ## Track Summary
 Tracks still exist, but they are secondary to milestones:
@@ -600,8 +615,8 @@ Tracks still exist, but they are secondary to milestones:
 - Optimizers: `025`, `026`, `027`, `028`
 - Engineering: `029`
 - Profiling: `030`
-- Scaling: `031`
-- Hardware: `032`
+- Hardware: `031`
+- Scaling: `032`
 
 ## Next
 After `032`, the planned next phase is the systems rebuild described in [docs/phase_3_systems.md](./phase_3_systems.md).
