@@ -81,7 +81,8 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
 /// Run one full forward and backward pass for a single training example.
 ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
                                        const std::vector<float> &weights,
-                                       const std::vector<float> &biases, const std::vector<int> ids,
+                                       const std::vector<float> &biases,
+                                       const std::vector<int> &ids,
                                        int target) {
   std::vector<float> logits(vocab_size, 0.0f);
   for (size_t i = 0; i < vocab_size; ++i) {
@@ -120,7 +121,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
   std::vector<float> d_weights(context_len * embedding_dim * vocab_size, 0.0f);
   std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
 
-  for (size_t c = 0; c < context_len; c++) {
+  for (size_t c = 0; c < context_len; ++c) {
     for (size_t i = 0; i < vocab_size; ++i) {
       for (size_t j = 0; j < embedding_dim; ++j) {
         d_weights[c * embedding_dim * vocab_size + j * vocab_size + i] =
@@ -160,10 +161,10 @@ void run_training(std::vector<float> &embeddings, std::vector<float> &weights,
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
     const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
     float loss = 0.0f;
+    std::vector<int> ids(context_len);
     for (int step = 0; step < chunk_steps; ++step) {
       const int index = randint(static_cast<int>(token_ids.size()) - context_len);
-      std::vector<int> ids(context_len);
-      for (size_t i = 0; i < context_len; i++) {
+      for (size_t i = 0; i < context_len; ++i) {
         ids[i] = token_ids[index + i];
       }
       const int target = token_ids[index + context_len];
