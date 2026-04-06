@@ -17,6 +17,7 @@
     "pmean",
     "randint",
     "smap",
-    "softmax"
+    "softmax",
+    "tinyshakespeare"
   ]
 }

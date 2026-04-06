@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <random>
 #include <stdexcept>
@@ -9,8 +10,8 @@
 #include <unordered_map>
 #include <vector>
 
-const std::string corpus = "This is a test string for my first MLP model";
-const int vocab_size = 64;
+const std::string corpus_path = "../datasets/tinyshakespeare.txt";
+const int vocab_size = 128;
 const int embedding_dim = 32;
 const int steps = 1000;
 const float learning_rate = 0.01f;
@@ -42,8 +43,17 @@ int randint(int max) {
   return dist(rng());
 }
 
+/// Load the training text from disk.
+std::string load_corpus() {
+  std::ifstream file(corpus_path);
+  if (!file) {
+    throw std::runtime_error("could not open corpus file");
+  }
+  return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
+
 /// Build a tiny character vocabulary and return the encoded corpus.
-std::vector<int> prepare_vocab() {
+std::vector<int> prepare_vocab(const std::string &corpus) {
   std::vector<int> token_ids(corpus.size());
   for (size_t i = 0; i < corpus.size(); ++i) {
     const char c = corpus[i];
@@ -155,6 +165,7 @@ int main() {
     x = randn();
   }
 
-  const std::vector<int> token_ids = prepare_vocab();
+  const std::string corpus = load_corpus();
+  const std::vector<int> token_ids = prepare_vocab(corpus);
   run_training(embeddings, weights, biases, token_ids);
 }
