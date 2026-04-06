@@ -84,9 +84,12 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
                                        const std::vector<float> &biases, const std::vector<int> ids,
                                        int target) {
   std::vector<float> logits(vocab_size, 0.0f);
-  for (size_t c = 0; c < context_len; c++) {
+  for (size_t i = 0; i < vocab_size; ++i) {
+    logits[i] = biases[i];
+  }
+
+  for (size_t c = 0; c < context_len; ++c) {
     for (size_t i = 0; i < vocab_size; ++i) {
-      logits[i] += biases[i];
       for (size_t j = 0; j < embedding_dim; ++j) {
         logits[i] += embeddings[ids[c] * embedding_dim + j] *
                      weights[c * embedding_dim * vocab_size + j * vocab_size + i];
