@@ -9,9 +9,11 @@
     "adam",
     "adamw",
     "gelu",
+    "logit",
     "maxval",
     "minval",
     "pmean",
+    "randint",
     "smap",
     "softmax"
   ]
