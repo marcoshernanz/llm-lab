@@ -47,6 +47,7 @@ This progression is intentional. The repo optimizes for understanding each conce
 - Phase 2 scaling: [docs/phase_2_scaling.md](docs/phase_2_scaling.md)
 - Project direction: [docs/project_direction.md](docs/project_direction.md)
 - Personal context: [docs/personal_context.md](docs/personal_context.md)
+- Phase 3 bootstrap: [docs/phase_3_bootstrap.md](docs/phase_3_bootstrap.md)
 - Phase 3 systems rebuild: [docs/phase_3_systems.md](docs/phase_3_systems.md)
 - Future projects: [docs/future_projects.md](docs/future_projects.md)
 - Phase 1 learning log: [docs/phase_1_learning_log.md](docs/phase_1_learning_log.md)

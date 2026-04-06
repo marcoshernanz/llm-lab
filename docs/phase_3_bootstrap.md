@@ -13,6 +13,7 @@ Start with:
 - one source file: `phase3/phase3.cpp`
 - one tiny Makefile: `phase3/Makefile`
 - one executable: `phase3/build/phase3`
+- one default run path: `make -C phase3 run`
 
 Do not start with:
 
@@ -24,9 +25,9 @@ Do not start with:
 
 That machinery can be added later, but only after the single-file trainer starts to feel cramped for real reasons.
 
-## Compile
+## Run
 
-Run the bootstrap from inside its own folder:
+Run the bootstrap from the repo root:
 
 ```bash
 make -C phase3 run
@@ -38,21 +39,16 @@ This keeps the first step honest:
 - a readable compiler invocation in one small Makefile,
 - and easy debugging with a single binary.
 
-## Run
+Right now the executable is treated like a simple script:
 
-The available commands are:
+- `make -C phase3 run` builds the file and runs it with no arguments.
+- `make -C phase3 clean` deletes the generated binary.
 
-```bash
-make -C phase3 run
-make -C phase3 data
-make -C phase3 clean
-```
+That matches the current learning goal:
 
-The intended growth path is:
-
-1. `run` for tiny numerical checks such as softmax and cross-entropy.
-2. `data` for loading and inspecting the frozen training data path.
-3. later commands for tensor checks, forward passes, and a tiny training step.
+1. keep one file,
+2. keep one command,
+3. and let the C++ code evolve before adding a richer CLI surface.
 
 ## Why This Shape Fits The Repo
 
@@ -61,7 +57,7 @@ This repo is optimizing for understanding, not framework design.
 A single file helps because:
 
 - all control flow is visible at once,
-- numerical code stays close to the CLI entrypoint,
+- numerical code stays close to the entrypoint,
 - and refactors are delayed until repeated patterns are real rather than imagined.
 
 ## When To Split The File
@@ -72,4 +68,7 @@ Keep one file until at least one of these becomes true:
 - one concept deserves isolated tests or benchmarks,
 - or one subsystem changes independently from the others.
 
-Until then, the simplest good shape is one executable in one file.
+The same logic applies to the command surface.
+
+Do not add subcommands, config parsing, or a larger build system until the current
+single-script shape starts creating real friction.
