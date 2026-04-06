@@ -95,26 +95,27 @@ int main() {
     d_logits[target] -= 1.0f;
 
     std::vector<float> d_biases = d_logits;
-    for (size_t i = 0; i < vocab_size; i++) {
-      biases[i] -= learning_rate * d_biases[i];
-    }
-
     std::vector<float> d_weights(embedding_dim * vocab_size);
     for (size_t i = 0; i < vocab_size; ++i) {
       for (size_t j = 0; j < embedding_dim; ++j) {
         d_weights[j * vocab_size + i] = embeddings[id * embedding_dim + j] * d_logits[i];
       }
     }
+    std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
+    for (size_t i = 0; i < vocab_size; ++i) {
+      for (size_t j = 0; j < embedding_dim; ++j) {
+        d_embeddings[id * embedding_dim + j] += weights[j * vocab_size + i] * d_logits[i];
+      }
+    }
+
+    for (size_t i = 0; i < vocab_size; i++) {
+      biases[i] -= learning_rate * d_biases[i];
+    }
     for (size_t i = 0; i < embedding_dim * vocab_size; i++) {
       weights[i] -= learning_rate * d_weights[i];
     }
-
-    std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
-    for (size_t j = 0; j < embedding_dim; ++j) {
-      d_embeddings[id * embedding_dim + j] += weights[j * vocab_size + id] * d_logits[id];
-    }
     for (size_t j = 0; j < embedding_dim; j++) {
-      embeddings[vocab_size * id + j] -= learning_rate * d_embeddings[vocab_size * id + j];
+      embeddings[id * embedding_dim + j] -= learning_rate * d_embeddings[vocab_size * id + j];
     }
 
     std::cout << "step=" << step << " loss=" << loss << "\n";
