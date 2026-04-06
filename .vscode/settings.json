@@ -8,8 +8,10 @@
   "cSpell.words": [
     "adam",
     "adamw",
+    "dlogits",
     "gelu",
     "logit",
+    "logits",
     "maxval",
     "minval",
     "pmean",

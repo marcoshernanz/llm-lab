@@ -87,11 +87,11 @@ int main() {
 
     float loss = static_cast<float>(max_logit + std::log(sum_exp) - out[target]);
 
-    std::vector<float> dlogits(vocab_size);
+    std::vector<float> d_logits(vocab_size);
     for (size_t i = 0; i < vocab_size; i++) {
-      dlogits[i] = std::exp(out[i] - max_logit) / sum_exp;
+      d_logits[i] = std::exp(out[i] - max_logit) / sum_exp;
     }
-    dlogits[target] -= 1.0f;
+    d_logits[target] -= 1.0f;
 
     std::cout << "step=" << step << " loss=" << loss << "\n";
   }
