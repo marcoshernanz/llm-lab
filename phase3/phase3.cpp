@@ -114,7 +114,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
   d_logits[target] -= 1.0f;
 
   std::vector<float> d_biases = d_logits;
-  std::vector<float> d_weights(embedding_dim * vocab_size, 0.0f);
+  std::vector<float> d_weights(context_len * embedding_dim * vocab_size, 0.0f);
   std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
 
   for (size_t c = 0; c < context_len; c++) {
