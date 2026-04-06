@@ -10,7 +10,8 @@
 const std::string corpus = "This is a test string for my first MLP model";
 const int vocab_size = 64;
 const int embedding_dim = 32;
-const int steps = 10;
+const int steps = 1000;
+const float learning_rate = 0.01f;
 
 std::unordered_map<char, int> char_to_id;
 std::vector<char> id_to_char(vocab_size);
@@ -94,13 +95,26 @@ int main() {
     d_logits[target] -= 1.0f;
 
     std::vector<float> d_biases = d_logits;
+    for (size_t i = 0; i < vocab_size; i++) {
+      biases[i] -= learning_rate * d_biases[i];
+    }
+
     std::vector<float> d_weights(embedding_dim * vocab_size);
-    std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
     for (size_t i = 0; i < vocab_size; ++i) {
       for (size_t j = 0; j < embedding_dim; ++j) {
         d_weights[j * vocab_size + i] = embeddings[id * embedding_dim + j] * d_logits[i];
-        d_embeddings[id * embedding_dim + j] += weights[j * vocab_size + i] * d_logits[i];
       }
+    }
+    for (size_t i = 0; i < embedding_dim * vocab_size; i++) {
+      weights[i] -= learning_rate * d_weights[i];
+    }
+
+    std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
+    for (size_t j = 0; j < embedding_dim; ++j) {
+      d_embeddings[id * embedding_dim + j] += weights[j * vocab_size + id] * d_logits[id];
+    }
+    for (size_t j = 0; j < embedding_dim; j++) {
+      embeddings[vocab_size * id + j] -= learning_rate * d_embeddings[vocab_size * id + j];
     }
 
     std::cout << "step=" << step << " loss=" << loss << "\n";
