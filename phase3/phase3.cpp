@@ -13,7 +13,8 @@
 const std::string corpus_path = "../datasets/tinyshakespeare.txt";
 const int vocab_size = 128;
 const int embedding_dim = 32;
-const int steps = 1000;
+const int steps = 10000;
+const int steps_per_chunk = 100;
 const float learning_rate = 0.01f;
 
 std::unordered_map<char, int> char_to_id;
@@ -54,6 +55,8 @@ std::string load_corpus() {
 
 /// Build a tiny character vocabulary and return the encoded corpus.
 std::vector<int> prepare_vocab(const std::string &corpus) {
+  char_to_id.clear();
+  char_to_id.reserve(vocab_size);
   std::vector<int> token_ids(corpus.size());
   for (size_t i = 0; i < corpus.size(); ++i) {
     const char c = corpus[i];
@@ -140,15 +143,21 @@ void apply_gradients(std::vector<float> &embeddings, std::vector<float> &weights
 /// Run the current single-file training loop.
 void run_training(std::vector<float> &embeddings, std::vector<float> &weights,
                   std::vector<float> &biases, const std::vector<int> &token_ids) {
-  for (size_t step = 0; step < steps; ++step) {
-    const int index = randint(static_cast<int>(token_ids.size()) - 1);
-    const int id = token_ids[index];
-    const int target = token_ids[index + 1];
+  for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
+    const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
+    float loss = 0.0f;
+    for (int step = 0; step < chunk_steps; ++step) {
+      const int index = randint(static_cast<int>(token_ids.size()) - 1);
+      const int id = token_ids[index];
+      const int target = token_ids[index + 1];
 
-    const ForwardBackwardResult result = forward_backward(embeddings, weights, biases, id, target);
-    apply_gradients(embeddings, weights, biases, result);
+      const ForwardBackwardResult result =
+          forward_backward(embeddings, weights, biases, id, target);
+      apply_gradients(embeddings, weights, biases, result);
+      loss += result.loss;
+    }
 
-    std::cout << "step=" << step << " loss=" << result.loss << "\n";
+    std::cout << "step=" << start_step << " loss=" << loss / chunk_steps << "\n";
   }
 }
 
