@@ -3,6 +3,7 @@
 import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from time import perf_counter
 
 import optax  # pyright: ignore
 from flax import nnx
@@ -53,6 +54,7 @@ class ExperimentConfig:
     weight_decay: float = 0.01
     train_steps: int = 20_000
     train_chunk_length: int = 100
+    eval_interval_steps: int = 100
     validation_subset_examples: int = 256
     sample_tokens: int = 60
     embedding_dim: int = 128
@@ -69,6 +71,10 @@ class ExperimentConfig:
             raise ValueError("train_chunk_length must be positive")
         if self.train_steps % self.train_chunk_length != 0:
             raise ValueError("train_steps must be divisible by train_chunk_length")
+        if self.eval_interval_steps < 0:
+            raise ValueError("eval_interval_steps must be non-negative")
+        if self.eval_interval_steps != 0 and self.eval_interval_steps % self.train_chunk_length != 0:
+            raise ValueError("eval_interval_steps must be divisible by train_chunk_length")
         if self.global_batch_size <= 0:
             raise ValueError("global_batch_size must be positive")
         if self.learning_rate <= 0:
@@ -156,6 +162,30 @@ def parse_args() -> ExperimentConfig:
         default=ExperimentConfig.train_chunk_length,
         help="Number of optimizer steps averaged into one logged point.",
     )
+    parser.add_argument(
+        "--eval-interval-steps",
+        type=int,
+        default=ExperimentConfig.eval_interval_steps,
+        help="How often to run subset evaluation. Use 0 to skip periodic eval and only run it at the end.",
+    )
+    parser.add_argument(
+        "--eval-batch-size",
+        type=int,
+        default=ExperimentConfig.eval_batch_size,
+        help="Batch size used for subset evaluation.",
+    )
+    parser.add_argument(
+        "--validation-subset-examples",
+        type=int,
+        default=ExperimentConfig.validation_subset_examples,
+        help="Number of sampled positions used for each subset evaluation.",
+    )
+    parser.add_argument(
+        "--sample-tokens",
+        type=int,
+        default=ExperimentConfig.sample_tokens,
+        help="Number of tokens to sample at the end. Use 0 to skip sampling during benchmarks.",
+    )
     args = parser.parse_args()
 
     config = ExperimentConfig(
@@ -168,6 +198,10 @@ def parse_args() -> ExperimentConfig:
         learning_rate=args.learning_rate,
         train_steps=args.train_steps,
         train_chunk_length=args.train_chunk_length,
+        eval_interval_steps=args.eval_interval_steps,
+        eval_batch_size=args.eval_batch_size,
+        validation_subset_examples=args.validation_subset_examples,
+        sample_tokens=args.sample_tokens,
     )
     config.validate()
     return config
@@ -271,6 +305,40 @@ def get_parameter_sharding(model: DecoderOnlyTransformer) -> str:
     param_leaves = jax.tree.leaves(params, is_leaf=lambda x: isinstance(x, nnx.Param))
     shardings = sorted({describe_array_sharding(param[...]) for param in param_leaves})
     return ", ".join(shardings)
+
+
+def log_train_only(
+    loss_tracker: LossTracker,
+    *,
+    step: int,
+    train_loss: float,
+) -> None:
+    """Record one train-only point when no subset evaluation is run at that step."""
+    if step <= 0:
+        raise ValueError("step must be positive")
+
+    loss_tracker.train_steps.append(step)
+    loss_tracker.train_losses.append(train_loss)
+    if loss_tracker.print_updates:
+        print(f"step={step} train_loss={train_loss:.6f}")
+
+
+def log_evaluation_only(
+    loss_tracker: LossTracker,
+    *,
+    step: int,
+    validation_subset_loss: float,
+    train_subset_loss: float | None = None,
+) -> None:
+    """Append an evaluation point without duplicating the train series."""
+    if step <= 0:
+        raise ValueError("step must be positive")
+
+    loss_tracker.validation_subset_steps.append(step)
+    loss_tracker.validation_subset_losses.append(validation_subset_loss)
+    if train_subset_loss is not None:
+        loss_tracker.train_subset_steps.append(step)
+        loss_tracker.train_subset_losses.append(train_subset_loss)
 
 
 @jax.jit
@@ -466,16 +534,72 @@ def main() -> None:
         logits = forward_logits(model, sharded_logits_input_ids)
         loss_tracker = LossTracker()
         train_tokens = None
+        last_train_subset_loss: float | None = None
+        last_validation_subset_loss: float | None = None
+        last_eval_step = 0
+        data_load_seconds = 0.0
+        train_compute_seconds = 0.0
+        eval_seconds = 0.0
 
         timer.start("train")
         for chunk_index, _ in enumerate(range(0, config.train_steps, config.train_chunk_length)):
             active_train_shard_index = chunk_index % len(train_shard_paths)
+            load_start = perf_counter()
             train_tokens = load_token_shard(
                 train_shard_paths[active_train_shard_index],
                 mmap=config.shard_mmap,
             )
+            data_load_seconds += perf_counter() - load_start
+            train_start = perf_counter()
             model, train_loss, rng = train_chunk(model, optimizer, train_tokens, config, mesh, rng)
-            train_subset_loss = evaluate_sharded_positions(
+            train_loss = jax.block_until_ready(train_loss)
+            train_compute_seconds += perf_counter() - train_start
+
+            current_step = (chunk_index + 1) * config.train_chunk_length
+            train_loss_value = float(train_loss)
+            should_evaluate = (
+                config.eval_interval_steps > 0
+                and current_step % config.eval_interval_steps == 0
+            )
+            if should_evaluate:
+                eval_start = perf_counter()
+                last_train_subset_loss = evaluate_sharded_positions(
+                    train_subset_tokens,
+                    train_subset_start_positions,
+                    model,
+                    mesh,
+                    config.context_length,
+                    config.eval_batch_size,
+                )
+                last_validation_subset_loss = evaluate_sharded_positions(
+                    validation_tokens,
+                    validation_start_positions,
+                    model,
+                    mesh,
+                    config.context_length,
+                    config.eval_batch_size,
+                )
+                eval_seconds += perf_counter() - eval_start
+                last_eval_step = current_step
+                loss_tracker.log(
+                    step=current_step,
+                    train_loss=train_loss_value,
+                    train_subset_loss=last_train_subset_loss,
+                    validation_subset_loss=last_validation_subset_loss,
+                )
+            else:
+                log_train_only(
+                    loss_tracker,
+                    step=current_step,
+                    train_loss=train_loss_value,
+                )
+
+        train_seconds = timer.stop("train")
+        if train_tokens is None:
+            raise ValueError("No train shard was loaded during training.")
+        if last_validation_subset_loss is None or last_eval_step != config.train_steps:
+            eval_start = perf_counter()
+            last_train_subset_loss = evaluate_sharded_positions(
                 train_subset_tokens,
                 train_subset_start_positions,
                 model,
@@ -483,7 +607,7 @@ def main() -> None:
                 config.context_length,
                 config.eval_batch_size,
             )
-            validation_subset_loss = evaluate_sharded_positions(
+            last_validation_subset_loss = evaluate_sharded_positions(
                 validation_tokens,
                 validation_start_positions,
                 model,
@@ -491,19 +615,16 @@ def main() -> None:
                 config.context_length,
                 config.eval_batch_size,
             )
-
-            current_step = (chunk_index + 1) * config.train_chunk_length
-            loss_tracker.log(
-                step=current_step,
-                train_loss=float(train_loss),
-                train_subset_loss=train_subset_loss,
-                validation_subset_loss=validation_subset_loss,
+            eval_seconds += perf_counter() - eval_start
+            log_evaluation_only(
+                loss_tracker,
+                step=config.train_steps,
+                train_subset_loss=last_train_subset_loss,
+                validation_subset_loss=last_validation_subset_loss,
             )
 
-        train_seconds = timer.stop("train")
         rng, sample_rng = jax.random.split(rng)
-        if train_tokens is None:
-            raise ValueError("No train shard was loaded during training.")
+        sampling_start = perf_counter()
         sample = generate_text(
             model,
             tokenizer,
@@ -512,7 +633,16 @@ def main() -> None:
             config.context_length,
             sample_rng,
         )
+        sampling_seconds = perf_counter() - sampling_start
         total_seconds = timer.stop("total")
+        train_plus_data_seconds = train_compute_seconds + data_load_seconds
+        train_tokens_seen = config.train_steps * config.global_batch_size * config.context_length
+        train_tokens_per_second_compute_only = None
+        if train_compute_seconds > 0:
+            train_tokens_per_second_compute_only = train_tokens_seen / train_compute_seconds
+        train_tokens_per_second_with_data = None
+        if train_plus_data_seconds > 0:
+            train_tokens_per_second_with_data = train_tokens_seen / train_plus_data_seconds
 
         metadata = build_run_metadata(
             script_path=Path(__file__),
@@ -532,9 +662,16 @@ def main() -> None:
             },
             run_metrics={
                 "final_train_loss": loss_tracker.train_losses[-1],
-                "final_train_subset_loss": loss_tracker.train_subset_losses[-1],
-                "final_validation_subset_loss": loss_tracker.validation_subset_losses[-1],
+                "final_train_subset_loss": last_train_subset_loss,
+                "final_validation_subset_loss": last_validation_subset_loss,
                 "train_seconds": train_seconds,
+                "data_load_seconds": data_load_seconds,
+                "train_compute_seconds": train_compute_seconds,
+                "train_plus_data_seconds": train_plus_data_seconds,
+                "eval_seconds": eval_seconds,
+                "sampling_seconds": sampling_seconds,
+                "train_tokens_per_second_compute_only": train_tokens_per_second_compute_only,
+                "train_tokens_per_second_with_data": train_tokens_per_second_with_data,
                 "total_seconds": total_seconds,
             },
         )
