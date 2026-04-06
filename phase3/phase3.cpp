@@ -62,7 +62,7 @@ int main() {
 
   std::vector<int> token_ids = prepare_vocab();
 
-  for (int step = 0; step < steps; ++step) {
+  for (size_t step = 0; step < steps; ++step) {
     int index = randint(token_ids.size() - 1);
     int id = token_ids[index];
     int target = token_ids[index + 1];
@@ -92,6 +92,16 @@ int main() {
       d_logits[i] = std::exp(out[i] - max_logit) / sum_exp;
     }
     d_logits[target] -= 1.0f;
+
+    std::vector<float> d_biases = d_logits;
+    std::vector<float> d_weights(embedding_dim * vocab_size);
+    std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
+    for (size_t i = 0; i < vocab_size; ++i) {
+      for (size_t j = 0; j < embedding_dim; ++j) {
+        d_weights[j * vocab_size + i] = embeddings[id * embedding_dim + j] * d_logits[i];
+        d_embeddings[id * embedding_dim + j] += weights[j * vocab_size + i] * d_logits[i];
+      }
+    }
 
     std::cout << "step=" << step << " loss=" << loss << "\n";
   }
