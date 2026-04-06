@@ -47,7 +47,8 @@ std::vector<int> prepare_vocab() {
   std::vector<int> token_ids(corpus.size());
   for (size_t i = 0; i < corpus.size(); ++i) {
     const char c = corpus[i];
-    if (const auto it = char_to_id.find(c); it != char_to_id.end()) {
+    const auto it = char_to_id.find(c);
+    if (it != char_to_id.end()) {
       token_ids[i] = it->second;
       continue;
     }
