@@ -22,7 +22,7 @@ The emphasis of phase 2 is:
 - then optimizer implementation and comparisons,
 - then profiling,
 - then multi-core execution on the current ecosystem baseline,
-- then a time-budgeted scaling pass on that multi-core baseline,
+- then a best-possible long-run scaling pass on that multi-core baseline,
 - and then hand off to the later systems rebuild.
 
 ## Status
@@ -42,7 +42,7 @@ As of 2026-04-05:
 - `030` is complete as the first profiling pass on the single-device ecosystem baseline,
 - `030` showed that steady-state training dominates wall-clock, while shard loading and subset evaluation are small enough that they do not justify a systems rewrite yet,
 - `031` is now the next milestone and focuses on explicit multi-core execution on TPU `v5e-8`,
-- `032` now follows `031` as the time-budgeted scaling pass on top of the multi-core baseline,
+- `032` now follows `031` as the best-possible `10h` scaling pass on top of the multi-core baseline,
 - phase 2 now has both a first-principles implementation path and a production-style implementation path to compare against each other.
 
 ## Starting Baseline
@@ -569,15 +569,15 @@ Exit criteria:
 Rule:
 - Prefer the simplest data-parallel implementation that the current learning goal justifies.
 
-### Milestone 032: Time-Budgeted Scaling Pass
+### Milestone 032: Best-Model Long-Run Scaling Pass
 Track: Scaling
 
 Goal:
-- Push the largest useful model and data budget that still fits inside a reasonable real-run window, roughly `30m` to `1h`.
+- Build the strongest model and training setup that can run productively for about `10h` on TPU `v5e-8`.
 
 Why this comes here:
 - `031` should establish the execution model you actually want to use for the next serious scaling pass.
-- Once the multi-core path is working, the next useful question is how much more model and data the real hardware budget can support inside a fixed wall-clock window.
+- Once the multi-core path is working, the next useful question is how much model and data the real hardware budget can support when you stop optimizing for short convenience runs and instead optimize for the best attainable result in one long run.
 - Recent curves still suggest the current model may be small for the available runtime budget, while the widening train/validation gap suggests the current data budget is also too small.
 
 What stays fixed:
@@ -587,24 +587,24 @@ What stays fixed:
 - Same artifact format and subset-loss logging.
 
 What changes:
-- Model size and train-data budget, within a fixed wall-clock budget.
+- Model size, train-data budget, and possibly schedule length within a long-run `10h` budget.
 - Prefer increasing available train shards before or alongside model growth, rather than scaling model size against a too-small repeated dataset.
 
 Questions to answer:
-- With a fixed `30m` to `1h` budget, what is the largest useful model you can train on the new execution baseline?
+- With a roughly `10h` TPU `v5e-8` budget, what is the best model you can actually train on the new execution baseline?
 - How much does using more FineWeb-Edu train shards reduce the train/validation gap?
-- Is the current bottleneck more about model capacity, data budget, or both?
+- Given that long budget, is the limiting factor more about model capacity, data budget, optimization schedule, or some combination of all three?
 
 Exit criteria:
-- One time-budgeted run shows how much larger the current setup can go without turning into an open-ended long run.
-- You can say whether more data, more model, or both are the right next scaling direction.
-- The run budget is concrete enough that later profiling work has a meaningful target to optimize.
+- One long-run configuration is clearly the strongest practical baseline the repo can support on `v5e-8` without turning into an unbounded training project.
+- You can justify the chosen model size, batch size, data budget, and schedule length as the best use of the `10h` window.
+- The resulting run is strong enough to serve as the final phase-2 scaling reference before the later systems rebuild.
 
 Concrete work:
 - Increase the available FineWeb-Edu train shard count beyond the current `10`-shard subset.
-- Run one fixed-time baseline with the current `031` model on the larger data budget.
-- Then scale model size within the same time budget, ideally changing one major model axis at a time.
-- Compare train loss, validation subset loss, train/validation gap, tokens per second, and total tokens seen.
+- Run one longer baseline with the current `031` model on the larger data budget to anchor the `10h` budget.
+- Then scale model size within the same `10h` budget, ideally changing one major model axis at a time.
+- Compare train loss, validation subset loss, train/validation gap, tokens per second, total tokens seen, and end-of-run quality.
 
 ## Track Summary
 Tracks still exist, but they are secondary to milestones:
