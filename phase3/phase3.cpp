@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <random>
@@ -74,15 +75,18 @@ int main() {
       out[i] += biases[i];
     }
 
-    float sum = 0.0f;
+    float max_logit = out[0];
     for (float &x : out) {
-      sum += std::exp(x);
-    }
-    for (float &x : out) {
-      x = -log(std::exp(x) / sum);
+      max_logit = std::max(max_logit, x);
     }
 
-    float loss = out[target];
+    double sum_exp = 0.0;
+    for (float &x : out) {
+      sum_exp += std::exp(static_cast<double>(x - max_logit));
+    }
+
+    float loss = static_cast<float>(max_logit + std::log(sum_exp) - out[target]);
+
     std::cout << "step=" << step << " loss=" << loss << "\n";
   }
 }
