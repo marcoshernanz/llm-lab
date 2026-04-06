@@ -26,9 +26,13 @@ from models.transformer import DecoderOnlyTransformer
 from tokenizer.bpe import BPEModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_bpe_16384"
+DEFAULT_TOKEN_SHARD_ROOT = ROOT_DIR / "datasets" / "fineweb_edu" / "sample10bt_bpe_16384_full"
 DEFAULT_TOKENIZER_PATH = (
-    ROOT_DIR / "artifacts" / "tokenizers" / "fineweb_edu_sample10bt_bpe_16384.json"
+    ROOT_DIR
+    / "datasets"
+    / "fineweb_edu"
+    / "sample10bt_bpe_16384_full"
+    / "fineweb_edu_sample10bt_bpe_16384.json"
 )
 
 
