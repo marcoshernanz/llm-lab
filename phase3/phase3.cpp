@@ -116,10 +116,15 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
   std::vector<float> d_biases = d_logits;
   std::vector<float> d_weights(embedding_dim * vocab_size, 0.0f);
   std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
-  for (size_t i = 0; i < vocab_size; ++i) {
-    for (size_t j = 0; j < embedding_dim; ++j) {
-      d_weights[j * vocab_size + i] = embeddings[id * embedding_dim + j] * d_logits[i];
-      d_embeddings[id * embedding_dim + j] += weights[j * vocab_size + i] * d_logits[i];
+
+  for (size_t c = 0; c < context_len; c++) {
+    for (size_t i = 0; i < vocab_size; ++i) {
+      for (size_t j = 0; j < embedding_dim; ++j) {
+        d_weights[c * embedding_dim * vocab_size + j * vocab_size + i] =
+            embeddings[ids[c] * embedding_dim + j] * d_logits[i];
+        d_embeddings[ids[c] * embedding_dim + j] +=
+            weights[c * embedding_dim * vocab_size + j * vocab_size + i] * d_logits[i];
+      }
     }
   }
 
