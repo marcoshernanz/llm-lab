@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 const std::string corpus_path = "../datasets/tinyshakespeare.txt";
@@ -21,15 +22,6 @@ const float learning_rate = 0.01f;
 const float validation_split = 0.1f;
 
 std::unordered_map<char, int> char_to_id;
-
-struct ForwardBackwardResult {
-  float loss;
-  std::vector<float> d_embeddings;
-  std::vector<float> d_hidden_bias;
-  std::vector<float> d_hidden_weights;
-  std::vector<float> d_output_bias;
-  std::vector<float> d_output_weights;
-};
 
 /// Return the shared random generator for reproducible experiments.
 std::mt19937 &rng() {
@@ -48,6 +40,48 @@ int randint(int min, int max) {
   std::uniform_int_distribution<int> dist(min, max - 1);
   return dist(rng());
 }
+
+std::vector<float> tensor_randn(int numel) {
+  std::vector<float> tensor(numel);
+  for (auto &x : tensor) {
+    x = randn();
+  }
+  return tensor;
+}
+
+std::vector<float> tensor_zeros(int numel) {
+  std::vector<float> tensor(numel);
+  for (auto &x : tensor) {
+    x = randn();
+  }
+  return tensor;
+}
+
+class Model {
+public:
+  std::vector<float> embeddings;
+  std::vector<float> hidden_weights;
+  std::vector<float> hidden_bias;
+  std::vector<float> output_weights;
+  std::vector<float> output_bias;
+
+  Model() {
+    this->embeddings = tensor_randn(vocab_size * embedding_dim);
+    this->hidden_bias = tensor_randn(context_len * embedding_dim * hidden_dim);
+    this->hidden_bias = tensor_zeros(hidden_dim);
+    this->output_weights = tensor_randn(hidden_dim * vocab_size);
+    this->output_bias = tensor_zeros(vocab_size);
+  }
+};
+
+struct ForwardBackwardResult {
+  float loss;
+  std::vector<float> d_embeddings;
+  std::vector<float> d_hidden_bias;
+  std::vector<float> d_hidden_weights;
+  std::vector<float> d_output_bias;
+  std::vector<float> d_output_weights;
+};
 
 /// Load the training text from disk.
 std::string load_corpus() {
