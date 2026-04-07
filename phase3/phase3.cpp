@@ -140,8 +140,8 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
   std::vector<float> d_h(hidden_dim, 0.0f);
   for (size_t i = 0; i < vocab_size; i++) {
     for (size_t j = 0; j < hidden_dim; j++) {
-      d_w_out[j * vocab_size + i] = d_logits[i] * h[j];
-      d_h[j] = d_logits[i] * w_out[j * vocab_size + i];
+      d_w_out[j * vocab_size + i] += d_logits[i] * h[j];
+      d_h[j] += d_logits[i] * w_out[j * vocab_size + i];
     }
   }
 
