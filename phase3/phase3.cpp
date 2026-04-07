@@ -147,7 +147,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
 
   std::vector<float> d_z(hidden_dim);
   for (size_t i = 0; i < hidden_dim; i++) {
-    d_z[i] = 1.0f - std::pow(h[i], 2);
+    d_z[i] = d_h[i] * (1.0f - std::pow(h[i], 2));
   }
 
   std::vector<float> d_b = d_z;
