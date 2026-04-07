@@ -144,6 +144,11 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
     }
   }
 
+  std::vector<float> d_z(hidden_dim);
+  for (size_t i = 0; i < hidden_dim; i++) {
+    d_z[i] = 1.0f - std::pow(h[i], 2);
+  }
+
   std::vector<float> d_biases = d_logits;
   std::vector<float> d_weights(context_len * embedding_dim * vocab_size, 0.0f);
   std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
