@@ -65,7 +65,7 @@ class ExperimentConfig:
     num_heads: int = 8
     num_decoder_blocks: int = 12
     hidden_dim: int = 1024
-    context_length: int = 64
+    context_length: int = 256
 
     def validate(self) -> None:
         """Reject invalid experiment settings early."""
