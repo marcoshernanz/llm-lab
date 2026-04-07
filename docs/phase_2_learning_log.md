@@ -1,6 +1,6 @@
 # Phase 2 Learning Log
 
-Runs recorded on 2026-03-29, 2026-03-30, 2026-04-02, 2026-04-04, 2026-04-05, and 2026-04-06.
+Runs recorded on 2026-03-29, 2026-03-30, 2026-04-02, 2026-04-04, 2026-04-05, 2026-04-06, and 2026-04-07.
 
 ## Summary
 
@@ -29,6 +29,7 @@ Runs recorded on 2026-03-29, 2026-03-30, 2026-04-02, 2026-04-04, 2026-04-05, and
 | 031 benchmark (v5e-8, gbs=512) | `experiments/031_tpu_fineweb_edu_multi_core.py` | 10000 | 6.093329 | 6.116215 | - | 227.483 | 1440457.344 | 293.163 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091946_594964/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_091946_594964/loss_curve.svg) |
 | 031 benchmark (v5e-8, gbs=1024) | `experiments/031_tpu_fineweb_edu_multi_core.py` | 10000 | 5.643157 | 5.714739 | - | 240.334 | 2726873.872 | 307.154 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_092546_633827/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_092546_633827/loss_curve.svg) |
 | 031 (v5e-8, gbs=1024, 100k) | `experiments/031_tpu_fineweb_edu_multi_core.py` | 100000 | 5.322255 | 5.429159 | - | 2256.491 | 2904332.933 | 2324.130 | [csv](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_085424_312031/loss_history.csv) | [svg](../artifacts/experiments/031_tpu_fineweb_edu_multi_core/20260406_085424_312031/loss_curve.svg) |
+| 032 | `experiments/032_tpu_fineweb_edu_best_model.py` | 152000 | 4.283544 | 4.381880 | - | 15171.915 | 2626292.643 | 15245.688 | [csv](../artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/loss_history.csv) | [svg](../artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/loss_curve.svg) |
 
 ## 019 FineWeb-Edu Shards JAX
 
@@ -660,4 +661,57 @@ Ar influence4) callaceEL], direct southern limitfullines support, it known While
 
 ```text
 assing – easy time for Next.The third that's that it is very Poking to one’s ridition by one violation and a few times. Dorada is an eightet - that one person can make one reason, name or reference sounds. Feesvers inside the person’s opinive examples ofkins
+```
+
+## 032 FineWeb-Edu Best-Model Long Run On Kaggle TPU v5e-8
+
+- Script: `experiments/032_tpu_fineweb_edu_best_model.py`
+- Execution target: `Kaggle TPU v5e-8 milestone-032 best-model run`
+- JAX backend: `tpu`
+- JAX device count: `8`
+- Dataset source: public Hugging Face dataset repo `marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384-full`
+- Token shard root: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384_full`
+- Tokenizer: `/kaggle/working/llm-lab/datasets/fineweb_edu/sample10bt_bpe_16384_full/fineweb_edu_sample10bt_bpe_16384.json`
+- Artifact root: `/kaggle/working/artifacts/experiments`
+- Token dtype: `uint16`
+- Train shards used: `1007`
+- Validation shard index: `0`
+- Train subset shard index: `0`
+- Sharding mode: `automatic`
+- Mesh axis name: `data`
+- Global batch size: `1024`
+- Per-device batch size: `128`
+- Eval batch size: `256`
+- Learning rate: `0.001`
+- Beta1: `0.9`
+- Beta2: `0.999`
+- Epsilon: `1e-8`
+- Weight decay: `0.01`
+- Context length: `256`
+- Embedding dim: `256`
+- Decoder blocks: `12`
+- Hidden dim: `1024`
+- Steps: `152000`
+- Tokens per step: `262144`
+- Train tokens seen: `39845888000`
+- Final train loss: `4.283544`
+- Final train subset loss: `4.337260`
+- Final validation subset loss: `4.381880`
+- Final validation loss: `-`
+- Note: this was the final milestone-032 long run on the full tokenized `sample-10BT` shard set, using all `1007` available train shards rather than the earlier `10`-shard subset.
+- Note: compared with the best `031` long run (`gbs=1024`, `100k` steps, smaller model), this run improved validation subset loss from `5.429159` to `4.381880` while keeping multi-core throughput in the same broad range.
+- Note: the larger model and longer context reduced overall token throughput somewhat relative to the `031` `gbs=1024` long run (`2.626M` vs `2.904M` tokens/s), but the quality improvement was large enough that the tradeoff was clearly worthwhile.
+- Note: the final train-to-validation subset gap was only about `0.0446`, which suggests the run stayed well-behaved even after roughly `4` passes over the full `10.07B`-token train set.
+- Interpretation: within the repo’s current architecture and execution model, this is the strongest phase-2 scaling reference so far and a defensible final baseline before the later systems rebuild.
+- Run metadata: [run_metadata.json](../artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/run_metadata.json)
+- Sample artifact: [sample.txt](../artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/sample.txt)
+- Train seconds: `15171.915`
+- Tokens per second: `2626292.643`
+- Total seconds: `15245.688`
+
+![032 fineweb edu best model long run kaggle tpu v5e8 loss curve](../artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/loss_curve.svg)
+
+```text
+ appear to be a record identity and is evidently black legal terms” – concentrated their role’ from the Ethnic Association.
+Maltad Herson, whose work has been in special charge in media research at theborhood for centuries, said Meinn Fein, one of the powerful associates Hey
 ```
