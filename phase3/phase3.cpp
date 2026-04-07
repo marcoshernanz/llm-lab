@@ -100,6 +100,10 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
     }
   }
 
+  for (float &x : h) {
+    x = std::tanh(x);
+  }
+
   std::vector<float> logits(vocab_size, 0.0f);
   for (size_t i = 0; i < vocab_size; ++i) {
     logits[i] = b_out[i];
@@ -130,7 +134,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
   }
   d_logits[target] -= 1.0f;
 
-  std::vector<float> d_biases = d_logits;
+  std::vector<float> d_b_out = d_logits;
   std::vector<float> d_weights(context_len * embedding_dim * vocab_size, 0.0f);
   std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
 
