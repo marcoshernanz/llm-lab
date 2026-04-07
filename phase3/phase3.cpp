@@ -179,15 +179,20 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
 void apply_gradients(std::vector<float> &embeddings, std::vector<float> &w, std::vector<float> &b,
                      std::vector<float> &w_out, std::vector<float> &b_out,
                      const ForwardBackwardResult &result) {
-  for (size_t i = 0; i < biases.size(); ++i) {
-    biases[i] -= learning_rate * result.d_biases[i];
-  }
-
-  for (size_t i = 0; i < weights.size(); ++i) {
-    weights[i] -= learning_rate * result.d_weights[i];
-  }
   for (size_t i = 0; i < embeddings.size(); ++i) {
     embeddings[i] -= learning_rate * result.d_embeddings[i];
+  }
+  for (size_t i = 0; i < w.size(); ++i) {
+    w[i] -= learning_rate * result.d_w[i];
+  }
+  for (size_t i = 0; i < b.size(); ++i) {
+    b[i] -= learning_rate * result.d_b[i];
+  }
+  for (size_t i = 0; i < w_out.size(); ++i) {
+    w_out[i] -= learning_rate * result.d_w_out[i];
+  }
+  for (size_t i = 0; i < b_out.size(); ++i) {
+    b_out[i] -= learning_rate * result.d_b_out[i];
   }
 }
 
