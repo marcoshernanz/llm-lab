@@ -42,16 +42,14 @@ int randint(int min, int max) {
 }
 
 /// Create one random parameter tensor with standard-normal entries.
-std::vector<float> tensor_randn(int numel) {
-  std::vector<float> tensor(numel);
-  for (auto &x : tensor) {
+void init_randn(std::vector<float> &vector) {
+  for (auto &x : vector) {
     x = randn();
   }
-  return tensor;
 }
 
 /// Create one zero-initialized tensor with the requested size.
-std::vector<float> tensor_zeros(int numel) { return std::vector<float>(numel, 0.0f); }
+void init_zeros(std::vector<float> &vector) { std::fill(vector.begin(), vector.end(), 0.0f); }
 
 /// Apply one SGD update to a parameter tensor.
 void update_parameter(std::vector<float> &param, const std::vector<float> &grad) {
@@ -70,11 +68,21 @@ public:
   std::vector<float> output_bias;
 
   Model() {
-    this->embeddings = tensor_randn(vocab_size * embedding_dim);
-    this->hidden_weights = tensor_randn(context_len * embedding_dim * hidden_dim);
-    this->hidden_bias = tensor_zeros(hidden_dim);
-    this->output_weights = tensor_randn(hidden_dim * vocab_size);
-    this->output_bias = tensor_zeros(vocab_size);
+    this->embeddings.reserve(vocab_size * embedding_dim);
+    this->hidden_weights.reserve(context_len * embedding_dim * hidden_dim);
+    this->hidden_bias.reserve(hidden_dim);
+    this->output_weights.reserve(hidden_dim * vocab_size);
+    this->output_bias.reserve(vocab_size);
+  }
+
+  static Model init() {
+    Model model = Model();
+    init_randn(model.embeddings);
+    init_randn(model.hidden_weights);
+    init_zeros(model.hidden_bias);
+    init_randn(model.output_weights);
+    init_zeros(model.output_bias);
+    return model;
   }
 
   /// Run one full forward and backward pass for one training example.
@@ -148,7 +156,7 @@ public:
       }
     }
 
-    Model gradient(true);
+    Model gradient;
     gradient.embeddings = d_embeddings;
     gradient.hidden_weights = d_hidden_weights;
     gradient.hidden_bias = d_hidden_bias;
@@ -241,7 +249,7 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
 
 /// Initialize the toy model and train it.
 int main() {
-  Model model;
+  Model model = Model::init();
 
   const std::string corpus = load_corpus();
   const std::vector<int> token_ids = prepare_vocab(corpus);
