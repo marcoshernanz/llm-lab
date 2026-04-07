@@ -24,9 +24,11 @@ std::unordered_map<char, int> char_to_id;
 
 struct ForwardBackwardResult {
   float loss;
-  std::vector<float> d_biases;
-  std::vector<float> d_weights;
   std::vector<float> d_embeddings;
+  std::vector<float> d_b;
+  std::vector<float> d_w;
+  std::vector<float> d_b_out;
+  std::vector<float> d_w_out;
 };
 
 /// Return the shared random generator for reproducible experiments.
@@ -148,22 +150,6 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
     d_z[i] = 1.0f - std::pow(h[i], 2);
   }
 
-  /*
-   std::vector<float> h(hidden_dim, 0.0f);
-   for (size_t i = 0; i < vocab_size; ++i) {
-     h[i] = b[i];
-   }
-
-   for (size_t c = 0; c < context_len; ++c) {
-     for (size_t i = 0; i < hidden_dim; ++i) {
-       for (size_t j = 0; j < embedding_dim; ++j) {
-         h[i] += embeddings[ids[c] * embedding_dim + j] *
-                 w[c * embedding_dim * hidden_dim + j * hidden_dim + i];
-       }
-     }
-   }
-  */
-
   std::vector<float> d_b = d_z;
   std::vector<float> d_w(context_len * embedding_dim * vocab_size, 0.0f);
   std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
@@ -181,9 +167,11 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
 
   return ForwardBackwardResult{
       .loss = loss,
-      .d_biases = d_biases,
-      .d_weights = d_weights,
       .d_embeddings = d_embeddings,
+      .d_b = d_b,
+      .d_w = d_w,
+      .d_b_out = d_b_out,
+      .d_w_out = d_w_out,
   };
 }
 
