@@ -86,7 +86,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
                                        const std::vector<float> &b_out, const std::vector<int> &ids,
                                        int target) {
 
-  std::vector<float> h(context_len * hidden_dim, 0.0f);
+  std::vector<float> h(hidden_dim, 0.0f);
   for (size_t i = 0; i < vocab_size; ++i) {
     h[i] = b[i];
   }
@@ -135,6 +135,15 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
   d_logits[target] -= 1.0f;
 
   std::vector<float> d_b_out = d_logits;
+  std::vector<float> d_w_out(hidden_dim * vocab_size, 0.0f);
+  std::vector<float> d_h(hidden_dim, 0.0f);
+  for (size_t i = 0; i < vocab_size; i++) {
+    for (size_t j = 0; j < hidden_dim; j++) {
+      d_w_out[]
+    }
+  }
+
+  std::vector<float> d_biases = d_logits;
   std::vector<float> d_weights(context_len * embedding_dim * vocab_size, 0.0f);
   std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
 
