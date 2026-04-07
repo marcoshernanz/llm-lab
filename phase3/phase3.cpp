@@ -88,7 +88,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
                                        const std::vector<float> &b_out, const std::vector<int> &ids,
                                        int target) {
   std::vector<float> h(hidden_dim, 0.0f);
-  for (size_t i = 0; i < vocab_size; ++i) {
+  for (size_t i = 0; i < hidden_dim; ++i) {
     h[i] = b[i];
   }
 
