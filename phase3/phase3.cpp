@@ -41,6 +41,7 @@ int randint(int min, int max) {
   return dist(rng());
 }
 
+/// Create one random parameter tensor with standard-normal entries.
 std::vector<float> tensor_randn(int numel) {
   std::vector<float> tensor(numel);
   for (auto &x : tensor) {
@@ -49,17 +50,17 @@ std::vector<float> tensor_randn(int numel) {
   return tensor;
 }
 
-std::vector<float> tensor_zeros(int numel) {
-  std::vector<float> tensor(numel, 0);
-  return tensor;
-}
+/// Create one zero-initialized tensor with the requested size.
+std::vector<float> tensor_zeros(int numel) { return std::vector<float>(numel, 0.0f); }
 
+/// Apply one SGD update to a parameter tensor.
 void update_parameter(std::vector<float> &param, const std::vector<float> &grad) {
   for (size_t i = 0; i < param.size(); ++i) {
     param[i] -= learning_rate * grad[i];
   }
 }
 
+/// Hold the trainable tensors for the tiny language model.
 class Model {
 public:
   std::vector<float> embeddings;
@@ -76,7 +77,8 @@ public:
     this->output_bias = tensor_zeros(vocab_size);
   }
 
-  std::pair<float, Model> forward_backward(const std::vector<int> &ids, const int target) {
+  /// Run one full forward and backward pass for one training example.
+  std::pair<float, Model> forward_backward(const std::vector<int> &ids, const int target) const {
     std::vector<float> hidden = hidden_bias;
     for (size_t c = 0; c < context_len; ++c) {
       for (size_t i = 0; i < hidden_dim; ++i) {
@@ -146,7 +148,7 @@ public:
       }
     }
 
-    Model gradient;
+    Model gradient(true);
     gradient.embeddings = d_embeddings;
     gradient.hidden_weights = d_hidden_weights;
     gradient.hidden_bias = d_hidden_bias;
@@ -156,6 +158,7 @@ public:
     return {loss, gradient};
   }
 
+  /// Apply one SGD update from one gradient container.
   void update(const Model &gradient) {
     update_parameter(embeddings, gradient.embeddings);
     update_parameter(hidden_weights, gradient.hidden_weights);
@@ -205,7 +208,7 @@ void fill_context(std::vector<int> &ids, const std::vector<int> &token_ids, int 
 }
 
 /// Run the current single-file training loop.
-void run_training(Model model, const std::vector<int> &token_ids) {
+void run_training(Model &model, const std::vector<int> &token_ids) {
   const int split_index =
       static_cast<int>(std::floor(token_ids.size() * (1.0f - validation_split)));
 
@@ -220,7 +223,7 @@ void run_training(Model model, const std::vector<int> &token_ids) {
       fill_context(ids, token_ids, train_index);
       const int target = token_ids[train_index + context_len];
 
-      auto [loss, gradient] = model.forward_backward(ids, target);
+      const auto [loss, gradient] = model.forward_backward(ids, target);
       train_loss += loss;
 
       const int val_index = randint(split_index, static_cast<int>(token_ids.size()) - context_len);
@@ -238,7 +241,7 @@ void run_training(Model model, const std::vector<int> &token_ids) {
 
 /// Initialize the toy model and train it.
 int main() {
-  Model model = Model();
+  Model model;
 
   const std::string corpus = load_corpus();
   const std::vector<int> token_ids = prepare_vocab(corpus);
