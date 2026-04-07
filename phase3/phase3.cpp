@@ -228,7 +228,7 @@ void run_training(std::vector<float> &embeddings, std::vector<float> &w, std::ve
 
       const int val_picked_index = randint(val_index, token_ids.size() - context_len);
       for (size_t i = 0; i < context_len; ++i) {
-        ids[i] = token_ids[index + i];
+        ids[i] = token_ids[val_picked_index + i];
       }
       const int val_target = token_ids[val_picked_index + context_len];
 
