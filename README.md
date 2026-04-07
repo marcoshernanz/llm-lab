@@ -1,86 +1,116 @@
 # llm-lab
 
-`llm-lab` is a personal AI systems learning repo.
+From-scratch language model lab, scaled from toy models to a full-dataset TPU run.
 
-The goal is not to ship a framework or chase the fastest path to a modern LLM. The goal is to understand AI from first principles, build the important pieces by hand, and keep each step small enough to reason about clearly.
+This repo is a compact record of building up modern LM training capability step by step:
 
-Right now the focus is on learning core AI concepts well enough to make later low-level systems work meaningful. Longer term, the repo is intended to grow into a place for experimenting with HPC-oriented AI work too: custom CUDA kernels, Rust tokenizers, C++, and other low-level implementation details. For now, JAX is the main working environment because the current bottleneck is conceptual understanding, not kernel-level performance work.
+- start from bigrams and MLPs
+- build RNNs, GRUs, attention, and decoder-only transformers
+- move onto tokenization, real web-scale data, TPU scaling, profiling, and multi-device training
+- finish Phase 2 with a full `sample-10BT` run on TPU `v5e-8`
 
-## What this repo is for
+## Showcase
 
-- Learning language models step by step, from simple baselines to decoder-only transformers.
-- Keeping experiments small, explicit, and easy to inspect.
-- Building intuition for tensor shapes, forward passes, losses, sampling, and training dynamics.
-- Separating reusable model code from minimal runnable scripts.
-- Creating a foundation for later systems work once the modeling concepts are solid.
+**Best current run**
 
-## Repository direction
+- script: [`experiments/032_tpu_fineweb_edu_best_model.py`](experiments/032_tpu_fineweb_edu_best_model.py)
+- hardware: TPU `v5e-8`
+- dataset: full tokenized FineWeb-Edu `sample-10BT`
+- model: `12` decoder blocks, `256` embedding dim, `1024` hidden dim, context length `256`
+- batch: global batch size `1024`
+- train tokens seen: `39.85B`
+- final train loss: `4.283544`
+- final validation subset loss: `4.381880`
+- throughput: `2.63M` tokens / second
 
-The intended structure is:
+Artifacts:
 
-- `experiments/`: minimal end-to-end scripts for focused learning milestones.
-- `models/`: reusable model implementations that experiments can import.
-- `tokenizer/`: tokenizer experiments and supporting code.
-- `docs/`: phase guides, notes, and learning history.
-- `artifacts/`: generated experiment outputs such as loss curves and tokenizer artifacts.
+- [`docs/phase_2_learning_log.md`](docs/phase_2_learning_log.md)
+- [`loss_curve.svg`](artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/loss_curve.svg)
+- [`run_metadata.json`](artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/run_metadata.json)
 
-In other words: model definitions should live in `models/`, while experiments should stay thin and runnable, using those models with as little surrounding code as possible.
+**Published datasets**
 
-## Current scope
+- small phase-2 shard set:
+  [`marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384`](https://huggingface.co/datasets/marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384)
+- full shard set used for the final run:
+  [`marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384-full`](https://huggingface.co/datasets/marcoshernanz/llm-lab-fineweb-edu-sample10bt-bpe-16384-full)
 
-The current work lives mostly in `experiments/` and implements the progression up to transformers in JAX:
+## Trajectory
 
-- bigram language models
-- MLP language models
-- context-window models
-- vanilla RNNs and GRUs
-- single-head attention
-- residual connections, layer norm, and feed-forward blocks
-- decoder-only transformers
-- tokenized decoder experiments
+| Stage          | Outcome                                                    |
+| -------------- | ---------------------------------------------------------- |
+| foundations    | bigram, MLP, context-window, RNN, GRU                      |
+| architecture   | attention, residuals, layer norm, decoder-only transformer |
+| data           | tokenizer training, token shards, FineWeb-Edu pipeline     |
+| optimization   | SGD, momentum, Adam, AdamW                                 |
+| systems        | TPU bring-up, profiling, multi-device execution            |
+| final baseline | full-dataset long run on TPU `v5e-8`                       |
 
-This progression is intentional. The repo optimizes for understanding each concept in isolation before moving down the stack into more performance-oriented implementation work.
+## Experiment Index
 
-## Start here
+| Experiment                                                | What it does                                 |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `001_bigram.py`                                           | bigram language model baseline               |
+| `002_mlp.py`                                              | first MLP language model                     |
+| `003_context_window_linear.py`                            | linear context-window model                  |
+| `004_context_window_mlp.py`                               | context-window MLP                           |
+| `005_larger_context_mlp.py`                               | larger-context MLP baseline                  |
+| `006_vanilla_rnn.py`                                      | first vanilla RNN                            |
+| `007_vanilla_rnn.py`                                      | improved vanilla RNN pass                    |
+| `008_gru.py`                                              | GRU language model                           |
+| `009_single_head_attention.py`                            | first single-head attention model            |
+| `010_single_head_attention.py`                            | refined single-head attention baseline       |
+| `011_attention_residual.py`                               | add residual connections                     |
+| `012_attention_residual_layer_norm.py`                    | add layer norm                               |
+| `013_attention_residual_layer_norm_ffn.py`                | add feed-forward block                       |
+| `014_single_block_decoder_only_transformer.py`            | first decoder-only transformer block         |
+| `015_single_block_multi_head_decoder_only_transformer.py` | multi-head decoder block                     |
+| `016_small_multi_layer_decoder.py`                        | small multi-layer decoder                    |
+| `017_tokenized_small_multi_layer_decoder.py`              | tokenized decoder training path              |
+| `018_decoder_refactor.py`                                 | reusable decoder refactor baseline           |
+| `019_fineweb_edu_shards.py`                               | first FineWeb-Edu shard training run         |
+| `020_fineweb_edu_multi_shard.py`                          | local multi-shard FineWeb baseline           |
+| `021_tpu_fineweb_edu_multi_shard.py`                      | TPU multi-shard bring-up                     |
+| `022_tpu_fineweb_edu_scaling_baseline.py`                 | first aggressive TPU scaling pass            |
+| `023_tpu_fineweb_edu_observability.py`                    | self-describing run artifacts                |
+| `024_tpu_fineweb_edu_batch_size_sweep.py`                 | batch-size sweep on TPU                      |
+| `025_tpu_fineweb_edu_sgd_baseline.py`                     | locked from-scratch SGD baseline             |
+| `026_tpu_fineweb_edu_sgd_momentum.py`                     | momentum SGD comparison                      |
+| `027_tpu_fineweb_edu_adam.py`                             | handwritten Adam comparison                  |
+| `028_tpu_fineweb_edu_adamw.py`                            | handwritten AdamW comparison                 |
+| `029_tpu_fineweb_edu_ecosystem_refactor.py`               | production-style JAX / Flax / Optax baseline |
+| `030_tpu_fineweb_edu_profiling.py`                        | profiling and timing breakdown               |
+| `031_tpu_fineweb_edu_multi_core.py`                       | working multi-device TPU baseline            |
+| `032_tpu_fineweb_edu_best_model.py`                       | best long-run full-dataset model             |
 
-- Phase 1 foundations: [docs/phase_1_foundations.md](docs/phase_1_foundations.md)
-- Phase 2 scaling: [docs/phase_2_scaling.md](docs/phase_2_scaling.md)
-- Project direction: [docs/project_direction.md](docs/project_direction.md)
-- Personal context: [docs/personal_context.md](docs/personal_context.md)
-- Phase 3 bootstrap: [docs/phase_3_bootstrap.md](docs/phase_3_bootstrap.md)
-- Phase 3 systems rebuild: [docs/phase_3_systems.md](docs/phase_3_systems.md)
-- Future projects: [docs/future_projects.md](docs/future_projects.md)
-- Phase 1 learning log: [docs/phase_1_learning_log.md](docs/phase_1_learning_log.md)
-- Phase 2 learning log: [docs/phase_2_learning_log.md](docs/phase_2_learning_log.md)
+## Evidence
 
-The phase-1 document explains the learning path from simple baselines through `018_decoder_refactor.py`. The phase-2 document starts after that baseline and now covers the path from early `v5e-1` TPU bring-up through `v5e-8` scaling, optimizer study, and the next multi-core milestone. The two learning logs split completed run history by phase.
+The two main documents are:
 
-## Working style
+- [`docs/phase_1_learning_log.md`](docs/phase_1_learning_log.md)
+- [`docs/phase_2_learning_log.md`](docs/phase_2_learning_log.md)
 
-- Learning first, correctness second, speed of delivery third.
-- Prefer clean forward evolution over preserving old APIs.
-- Keep abstractions earned, not premature.
-- Use this repo to understand the stack deeply enough that later low-level optimization work is based on real model understanding.
+They contain the actual run history, metrics, curves, and milestone conclusions.
 
-## Running code
+The project roadmap and handoff into the next systems phase are in:
 
-Install dependencies with:
+- [`docs/phase_2_scaling.md`](docs/phase_2_scaling.md)
+- [`docs/phase_3_systems.md`](docs/phase_3_systems.md)
+- [`docs/project_direction.md`](docs/project_direction.md)
+
+## Run It
+
+Install dependencies:
 
 ```bash
 uv sync
 ```
 
-Run an experiment directly, for example:
+Run the strongest current baseline:
 
 ```bash
-uv run python experiments/017_tokenized_small_multi_layer_decoder.py
+uv run python experiments/032_tpu_fineweb_edu_best_model.py \
+  --token-shard-root datasets/fineweb_edu/sample10bt_bpe_16384_full \
+  --tokenizer-path datasets/fineweb_edu/sample10bt_bpe_16384_full/fineweb_edu_sample10bt_bpe_16384.json
 ```
-
-## Near-term goal
-
-Turn the repo into a clean learning lab where:
-
-- concepts are implemented from scratch
-- reusable models live in `models/`
-- experiments stay minimal and pedagogical
-- later HPC work has a solid modeling foundation to build on
