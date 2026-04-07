@@ -85,17 +85,29 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
                                        const std::vector<float> &w_out,
                                        const std::vector<float> &b_out, const std::vector<int> &ids,
                                        int target) {
-  std::vector<float> logits(vocab_size, 0.0f);
+
+  std::vector<float> h(context_len * hidden_dim, 0.0f);
   for (size_t i = 0; i < vocab_size; ++i) {
-    logits[i] = biases[i];
+    h[i] = b[i];
   }
 
   for (size_t c = 0; c < context_len; ++c) {
-    for (size_t i = 0; i < vocab_size; ++i) {
+    for (size_t i = 0; i < hidden_dim; ++i) {
       for (size_t j = 0; j < embedding_dim; ++j) {
-        logits[i] += embeddings[ids[c] * embedding_dim + j] *
-                     weights[c * embedding_dim * vocab_size + j * vocab_size + i];
+        h[i] += embeddings[ids[c] * embedding_dim + j] *
+                w[c * embedding_dim * hidden_dim + j * hidden_dim + i];
       }
+    }
+  }
+
+  std::vector<float> logits(vocab_size, 0.0f);
+  for (size_t i = 0; i < vocab_size; ++i) {
+    logits[i] = b_out[i];
+  }
+
+  for (size_t i = 0; i < vocab_size; ++i) {
+    for (size_t j = 0; j < hidden_dim; ++j) {
+      logits[i] += h[j] * w_out[j * vocab_size + i];
     }
   }
 
@@ -173,8 +185,8 @@ void run_training(std::vector<float> &embeddings, std::vector<float> &w, std::ve
       const int target = token_ids[index + context_len];
 
       const ForwardBackwardResult result =
-          forward_backward(embeddings, weights, biases, ids, target);
-      apply_gradients(embeddings, weights, biases, result);
+          forward_backward(embeddings, w, b, w_out, b_out, ids, target);
+      apply_gradients(embeddings, w, b, w_out, b_out, result);
       loss += result.loss;
     }
 
@@ -202,5 +214,5 @@ int main() {
 
   const std::string corpus = load_corpus();
   const std::vector<int> token_ids = prepare_vocab(corpus);
-  run_training(embeddings, weights, biases, token_ids);
+  run_training(embeddings, w, b, w_out, b_out, token_ids);
 }
