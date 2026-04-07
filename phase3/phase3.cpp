@@ -57,7 +57,7 @@ std::vector<float> tensor_zeros(int numel) {
   return tensor;
 }
 
-void update_parameter(std::vector<float> param, std::vector<float> grad) {
+void update_parameter(std::vector<float> &param, std::vector<float> &grad) {
   for (size_t i = 0; i < param.size(); ++i) {
     param[i] -= learning_rate * grad[i];
   }
