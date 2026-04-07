@@ -151,15 +151,15 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
   }
 
   std::vector<float> d_b = d_z;
-  std::vector<float> d_w(context_len * embedding_dim * vocab_size, 0.0f);
+  std::vector<float> d_w(context_len * embedding_dim * hidden_dim, 0.0f);
   std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
 
   for (size_t c = 0; c < context_len; ++c) {
-    for (size_t i = 0; i < vocab_size; ++i) {
+    for (size_t i = 0; i < hidden_dim; ++i) {
       for (size_t j = 0; j < embedding_dim; ++j) {
-        d_embeddings[ids[c] * embedding_dim + j] =
+        d_embeddings[ids[c] * embedding_dim + j] +=
             d_z[i] * w[c * embedding_dim * hidden_dim + j * hidden_dim + i];
-        d_w[c * embedding_dim * hidden_dim + j * hidden_dim + i] =
+        d_w[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
             d_z[i] * embeddings[ids[c] * embedding_dim + j];
       }
     }
