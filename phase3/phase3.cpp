@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <random>
@@ -44,12 +43,7 @@ float randn() {
   return dist(rng());
 }
 
-/// Sample one integer in the half-open range [0, max).
-int randint(int max) {
-  std::uniform_int_distribution<int> dist(0, max - 1);
-  return dist(rng());
-}
-
+/// Sample one integer in the half-open range [min, max).
 int randint(int min, int max) {
   std::uniform_int_distribution<int> dist(min, max - 1);
   return dist(rng());
@@ -93,10 +87,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
                                        const std::vector<float> &w_out,
                                        const std::vector<float> &b_out, const std::vector<int> &ids,
                                        int target) {
-  std::vector<float> hidden(hidden_dim, 0.0f);
-  for (size_t i = 0; i < hidden_dim; ++i) {
-    hidden[i] = b[i];
-  }
+  std::vector<float> hidden = b;
 
   for (size_t c = 0; c < context_len; ++c) {
     for (size_t i = 0; i < hidden_dim; ++i) {
@@ -111,10 +102,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
     x = std::tanh(x);
   }
 
-  std::vector<float> logits(vocab_size, 0.0f);
-  for (size_t i = 0; i < vocab_size; ++i) {
-    logits[i] = b_out[i];
-  }
+  std::vector<float> logits = b_out;
 
   for (size_t i = 0; i < vocab_size; ++i) {
     for (size_t j = 0; j < hidden_dim; ++j) {
@@ -206,7 +194,8 @@ void apply_gradients(std::vector<float> &embeddings, std::vector<float> &w, std:
 void run_training(std::vector<float> &embeddings, std::vector<float> &w, std::vector<float> &b,
                   std::vector<float> &w_out, std::vector<float> &b_out,
                   const std::vector<int> &token_ids) {
-  int val_index = std::floor(token_ids.size() * (1 - validation_split));
+  const int split_index =
+      static_cast<int>(std::floor(token_ids.size() * (1.0f - validation_split)));
 
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
     const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
@@ -215,22 +204,23 @@ void run_training(std::vector<float> &embeddings, std::vector<float> &w, std::ve
 
     std::vector<int> ids(context_len);
     for (int step = 0; step < chunk_steps; ++step) {
-      const int index = randint(val_index - context_len);
+      const int train_index = randint(0, split_index - context_len);
       for (size_t i = 0; i < context_len; ++i) {
-        ids[i] = token_ids[index + i];
+        ids[i] = token_ids[train_index + i];
       }
-      const int target = token_ids[index + context_len];
+      const int target = token_ids[train_index + context_len];
 
       const ForwardBackwardResult result =
           forward_backward(embeddings, w, b, w_out, b_out, ids, target);
       apply_gradients(embeddings, w, b, w_out, b_out, result);
       train_loss += result.loss;
 
-      const int val_picked_index = randint(val_index, token_ids.size() - context_len);
+      const int val_index =
+          randint(split_index, static_cast<int>(token_ids.size()) - context_len);
       for (size_t i = 0; i < context_len; ++i) {
-        ids[i] = token_ids[val_picked_index + i];
+        ids[i] = token_ids[val_index + i];
       }
-      const int val_target = token_ids[val_picked_index + context_len];
+      const int val_target = token_ids[val_index + context_len];
 
       const ForwardBackwardResult val_result =
           forward_backward(embeddings, w, b, w_out, b_out, ids, val_target);
