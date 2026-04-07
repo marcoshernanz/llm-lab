@@ -68,11 +68,11 @@ public:
   std::vector<float> output_bias;
 
   Model() {
-    this->embeddings.reserve(vocab_size * embedding_dim);
-    this->hidden_weights.reserve(context_len * embedding_dim * hidden_dim);
-    this->hidden_bias.reserve(hidden_dim);
-    this->output_weights.reserve(hidden_dim * vocab_size);
-    this->output_bias.reserve(vocab_size);
+    embeddings.resize(vocab_size * embedding_dim);
+    hidden_weights.resize(context_len * embedding_dim * hidden_dim);
+    hidden_bias.resize(hidden_dim);
+    output_weights.resize(hidden_dim * vocab_size);
+    output_bias.resize(vocab_size);
   }
 
   static Model init() {
