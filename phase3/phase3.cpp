@@ -50,10 +50,7 @@ std::vector<float> tensor_randn(int numel) {
 }
 
 std::vector<float> tensor_zeros(int numel) {
-  std::vector<float> tensor(numel);
-  for (auto &x : tensor) {
-    x = randn();
-  }
+  std::vector<float> tensor(numel, 0);
   return tensor;
 }
 
