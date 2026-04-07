@@ -19,6 +19,7 @@ const int hidden_dim = 64;
 const int steps = 10000;
 const int steps_per_chunk = 100;
 const float learning_rate = 0.01f;
+const float validation_split = 0.1f;
 
 std::unordered_map<char, int> char_to_id;
 
@@ -46,6 +47,11 @@ float randn() {
 /// Sample one integer in the half-open range [0, max).
 int randint(int max) {
   std::uniform_int_distribution<int> dist(0, max - 1);
+  return dist(rng());
+}
+
+int randint(int min, int max) {
+  std::uniform_int_distribution<int> dist(min, max - 1);
   return dist(rng());
 }
 
@@ -200,12 +206,16 @@ void apply_gradients(std::vector<float> &embeddings, std::vector<float> &w, std:
 void run_training(std::vector<float> &embeddings, std::vector<float> &w, std::vector<float> &b,
                   std::vector<float> &w_out, std::vector<float> &b_out,
                   const std::vector<int> &token_ids) {
+  int val_index = std::floor(token_ids.size() * (1 - validation_split));
+
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
     const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
-    float loss = 0.0f;
+    float train_loss = 0.0f;
+    float val_loss = 0.0f;
+
     std::vector<int> ids(context_len);
     for (int step = 0; step < chunk_steps; ++step) {
-      const int index = randint(static_cast<int>(token_ids.size()) - context_len);
+      const int index = randint(val_index - context_len);
       for (size_t i = 0; i < context_len; ++i) {
         ids[i] = token_ids[index + i];
       }
@@ -214,10 +224,21 @@ void run_training(std::vector<float> &embeddings, std::vector<float> &w, std::ve
       const ForwardBackwardResult result =
           forward_backward(embeddings, w, b, w_out, b_out, ids, target);
       apply_gradients(embeddings, w, b, w_out, b_out, result);
-      loss += result.loss;
+      train_loss += result.loss;
+
+      const int val_picked_index = randint(val_index, token_ids.size() - context_len);
+      for (size_t i = 0; i < context_len; ++i) {
+        ids[i] = token_ids[index + i];
+      }
+      const int val_target = token_ids[val_picked_index + context_len];
+
+      const ForwardBackwardResult val_result =
+          forward_backward(embeddings, w, b, w_out, b_out, ids, val_target);
+      val_loss += val_result.loss;
     }
 
-    std::cout << "step=" << start_step << " loss=" << loss / chunk_steps << "\n";
+    std::cout << "step=" << start_step << " train_loss=" << train_loss / chunk_steps
+              << " val_loss=" << val_loss / chunk_steps << "\n";
   }
 }
 
