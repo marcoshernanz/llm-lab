@@ -73,7 +73,7 @@ public:
     this->output_bias = tensor_zeros(vocab_size);
   }
 
-  std::vector<float> forward(const std::vector<int> &ids, const int target) {
+  float forward_backward(const std::vector<int> &ids, const int target) {
     std::vector<float> hidden = hidden_bias;
     for (size_t c = 0; c < context_len; ++c) {
       for (size_t i = 0; i < hidden_dim; ++i) {
@@ -94,7 +94,56 @@ public:
       }
     }
 
-    return logits;
+    float max_logit = logits[0];
+    for (const float logit : logits) {
+      max_logit = std::max(max_logit, logit);
+    }
+
+    double sum_exp = 0.0;
+    for (const float logit : logits) {
+      sum_exp += std::exp(static_cast<double>(logit - max_logit));
+    }
+
+    const float loss = static_cast<float>(max_logit + std::log(sum_exp) - logits[target]);
+
+    std::vector<float> d_logits(vocab_size);
+    for (size_t i = 0; i < vocab_size; ++i) {
+      d_logits[i] =
+          static_cast<float>(std::exp(static_cast<double>(logits[i] - max_logit)) / sum_exp);
+    }
+    d_logits[target] -= 1.0f;
+
+    std::vector<float> d_output_bias = d_logits;
+    std::vector<float> d_output_weights(hidden_dim * vocab_size, 0.0f);
+    std::vector<float> d_hidden(hidden_dim, 0.0f);
+    for (size_t i = 0; i < vocab_size; i++) {
+      for (size_t j = 0; j < hidden_dim; j++) {
+        d_output_weights[j * vocab_size + i] += d_logits[i] * hidden[j];
+        d_hidden[j] += d_logits[i] * output_weights[j * vocab_size + i];
+      }
+    }
+
+    std::vector<float> d_z(hidden_dim);
+    for (size_t i = 0; i < hidden_dim; i++) {
+      d_z[i] = d_hidden[i] * (1.0f - hidden[i] * hidden[i]);
+    }
+
+    std::vector<float> d_hidden_bias = d_z;
+    std::vector<float> d_hidden_weights(context_len * embedding_dim * hidden_dim, 0.0f);
+    std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
+
+    for (size_t c = 0; c < context_len; ++c) {
+      for (size_t i = 0; i < hidden_dim; ++i) {
+        for (size_t j = 0; j < embedding_dim; ++j) {
+          d_embeddings[ids[c] * embedding_dim + j] +=
+              d_z[i] * hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+          d_hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
+              d_z[i] * embeddings[ids[c] * embedding_dim + j];
+        }
+      }
+    }
+
+    return loss;
   }
 };
 
