@@ -15,6 +15,7 @@ const std::string corpus_path = "../datasets/tinyshakespeare.txt";
 const int vocab_size = 128;
 const int context_len = 4;
 const int embedding_dim = 32;
+const int hidden_dim = 64;
 const int steps = 10000;
 const int steps_per_chunk = 100;
 const float learning_rate = 0.01f;
@@ -80,9 +81,9 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
 
 /// Run one full forward and backward pass for a single training example.
 ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
-                                       const std::vector<float> &weights,
-                                       const std::vector<float> &biases,
-                                       const std::vector<int> &ids,
+                                       const std::vector<float> &w, const std::vector<float> &b,
+                                       const std::vector<float> &w_out,
+                                       const std::vector<float> &b_out, const std::vector<int> &ids,
                                        int target) {
   std::vector<float> logits(vocab_size, 0.0f);
   for (size_t i = 0; i < vocab_size; ++i) {
@@ -141,8 +142,9 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
 }
 
 /// Apply one SGD update using the current single-example gradients.
-void apply_gradients(std::vector<float> &embeddings, std::vector<float> &weights,
-                     std::vector<float> &biases, const ForwardBackwardResult &result) {
+void apply_gradients(std::vector<float> &embeddings, std::vector<float> &w, std::vector<float> &b,
+                     std::vector<float> &w_out, std::vector<float> &b_out,
+                     const ForwardBackwardResult &result) {
   for (size_t i = 0; i < biases.size(); ++i) {
     biases[i] -= learning_rate * result.d_biases[i];
   }
@@ -156,8 +158,9 @@ void apply_gradients(std::vector<float> &embeddings, std::vector<float> &weights
 }
 
 /// Run the current single-file training loop.
-void run_training(std::vector<float> &embeddings, std::vector<float> &weights,
-                  std::vector<float> &biases, const std::vector<int> &token_ids) {
+void run_training(std::vector<float> &embeddings, std::vector<float> &w, std::vector<float> &b,
+                  std::vector<float> &w_out, std::vector<float> &b_out,
+                  const std::vector<int> &token_ids) {
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
     const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
     float loss = 0.0f;
@@ -182,13 +185,18 @@ void run_training(std::vector<float> &embeddings, std::vector<float> &weights,
 /// Initialize the toy model and train it.
 int main() {
   std::vector<float> embeddings(vocab_size * embedding_dim);
-  std::vector<float> weights(context_len * embedding_dim * vocab_size);
-  std::vector<float> biases(vocab_size, 0.0f);
+  std::vector<float> w(context_len * embedding_dim * hidden_dim);
+  std::vector<float> b(hidden_dim, 0.0f);
+  std::vector<float> w_out(hidden_dim * vocab_size);
+  std::vector<float> b_out(vocab_size, 0.0f);
 
   for (float &x : embeddings) {
     x = randn();
   }
-  for (float &x : weights) {
+  for (float &x : w) {
+    x = randn();
+  }
+  for (float &x : w_out) {
     x = randn();
   }
 
