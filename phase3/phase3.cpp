@@ -72,7 +72,45 @@ public:
     this->output_weights = tensor_randn(hidden_dim * vocab_size);
     this->output_bias = tensor_zeros(vocab_size);
   }
+
+  std::vector<float> forward(const std::vector<int> &ids, const int target) {
+    std::vector<float> hidden = hidden_bias;
+    for (size_t c = 0; c < context_len; ++c) {
+      for (size_t i = 0; i < hidden_dim; ++i) {
+        for (size_t j = 0; j < embedding_dim; ++j) {
+          hidden[i] += embeddings[ids[c] * embedding_dim + j] *
+                       hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+        }
+      }
+    }
+    for (float &x : hidden) {
+      x = std::tanh(x);
+    }
+
+    std::vector<float> logits = output_bias;
+    for (size_t i = 0; i < vocab_size; ++i) {
+      for (size_t j = 0; j < hidden_dim; ++j) {
+        logits[i] += hidden[j] * output_weights[j * vocab_size + i];
+      }
+    }
+
+    return logits;
+  }
 };
+
+float loss(const std::vector<float> logits, const int target) {
+  float max_logit = logits[0];
+  for (const float logit : logits) {
+    max_logit = std::max(max_logit, logit);
+  }
+
+  double sum_exp = 0.0;
+  for (const float logit : logits) {
+    sum_exp += std::exp(static_cast<double>(logit - max_logit));
+  }
+
+  return static_cast<float>(max_logit + std::log(sum_exp) - logits[target]);
+}
 
 struct ForwardBackwardResult {
   float loss;
@@ -267,10 +305,42 @@ void apply_gradients(std::vector<float> &embeddings, std::vector<float> &hidden_
   }
 }
 
+void forward(const Model model, const std::vector<int> &ids, const int target) {
+  std::vector<float> hidden = hidden_bias;
+  for (size_t c = 0; c < context_len; ++c) {
+    for (size_t i = 0; i < hidden_dim; ++i) {
+      for (size_t j = 0; j < embedding_dim; ++j) {
+        hidden[i] += embeddings[ids[c] * embedding_dim + j] *
+                     hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+      }
+    }
+  }
+  for (float &x : hidden) {
+    x = std::tanh(x);
+  }
+
+  std::vector<float> logits = output_bias;
+  for (size_t i = 0; i < vocab_size; ++i) {
+    for (size_t j = 0; j < hidden_dim; ++j) {
+      logits[i] += hidden[j] * output_weights[j * vocab_size + i];
+    }
+  }
+
+  float max_logit = logits[0];
+  for (const float logit : logits) {
+    max_logit = std::max(max_logit, logit);
+  }
+
+  double sum_exp = 0.0;
+  for (const float logit : logits) {
+    sum_exp += std::exp(static_cast<double>(logit - max_logit));
+  }
+
+  const float loss = static_cast<float>(max_logit + std::log(sum_exp) - logits[target]);
+}
+
 /// Run the current single-file training loop.
-void run_training(std::vector<float> &embeddings, std::vector<float> &hidden_weights,
-                  std::vector<float> &hidden_bias, std::vector<float> &output_weights,
-                  std::vector<float> &output_bias, const std::vector<int> &token_ids) {
+void run_training(Model model, const std::vector<int> &token_ids) {
   const int split_index =
       static_cast<int>(std::floor(token_ids.size() * (1.0f - validation_split)));
 
@@ -285,8 +355,8 @@ void run_training(std::vector<float> &embeddings, std::vector<float> &hidden_wei
       fill_context(ids, token_ids, train_index);
       const int target = token_ids[train_index + context_len];
 
-      const ForwardBackwardResult result = forward_backward(
-          embeddings, hidden_weights, hidden_bias, output_weights, output_bias, ids, target);
+      const Model result = forward_backward(embeddings, hidden_weights, hidden_bias, output_weights,
+                                            output_bias, ids, target);
       apply_gradients(embeddings, hidden_weights, hidden_bias, output_weights, output_bias, result);
       train_loss += result.loss;
 
@@ -304,23 +374,9 @@ void run_training(std::vector<float> &embeddings, std::vector<float> &hidden_wei
 
 /// Initialize the toy model and train it.
 int main() {
-  std::vector<float> embeddings(vocab_size * embedding_dim);
-  std::vector<float> hidden_weights(context_len * embedding_dim * hidden_dim);
-  std::vector<float> hidden_bias(hidden_dim, 0.0f);
-  std::vector<float> output_weights(hidden_dim * vocab_size);
-  std::vector<float> output_bias(vocab_size, 0.0f);
-
-  for (float &x : embeddings) {
-    x = randn();
-  }
-  for (float &x : hidden_weights) {
-    x = randn();
-  }
-  for (float &x : output_weights) {
-    x = randn();
-  }
+  Model model = Model();
 
   const std::string corpus = load_corpus();
   const std::vector<int> token_ids = prepare_vocab(corpus);
-  run_training(embeddings, hidden_weights, hidden_bias, output_weights, output_bias, token_ids);
+  run_training(model, token_ids);
 }
