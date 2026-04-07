@@ -87,21 +87,21 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
                                        const std::vector<float> &w_out,
                                        const std::vector<float> &b_out, const std::vector<int> &ids,
                                        int target) {
-  std::vector<float> h(hidden_dim, 0.0f);
+  std::vector<float> hidden(hidden_dim, 0.0f);
   for (size_t i = 0; i < hidden_dim; ++i) {
-    h[i] = b[i];
+    hidden[i] = b[i];
   }
 
   for (size_t c = 0; c < context_len; ++c) {
     for (size_t i = 0; i < hidden_dim; ++i) {
       for (size_t j = 0; j < embedding_dim; ++j) {
-        h[i] += embeddings[ids[c] * embedding_dim + j] *
-                w[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+        hidden[i] += embeddings[ids[c] * embedding_dim + j] *
+                     w[c * embedding_dim * hidden_dim + j * hidden_dim + i];
       }
     }
   }
 
-  for (float &x : h) {
+  for (float &x : hidden) {
     x = std::tanh(x);
   }
 
@@ -112,7 +112,7 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
 
   for (size_t i = 0; i < vocab_size; ++i) {
     for (size_t j = 0; j < hidden_dim; ++j) {
-      logits[i] += h[j] * w_out[j * vocab_size + i];
+      logits[i] += hidden[j] * w_out[j * vocab_size + i];
     }
   }
 
@@ -137,17 +137,17 @@ ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
 
   std::vector<float> d_b_out = d_logits;
   std::vector<float> d_w_out(hidden_dim * vocab_size, 0.0f);
-  std::vector<float> d_h(hidden_dim, 0.0f);
+  std::vector<float> d_hidden(hidden_dim, 0.0f);
   for (size_t i = 0; i < vocab_size; i++) {
     for (size_t j = 0; j < hidden_dim; j++) {
-      d_w_out[j * vocab_size + i] += d_logits[i] * h[j];
-      d_h[j] += d_logits[i] * w_out[j * vocab_size + i];
+      d_w_out[j * vocab_size + i] += d_logits[i] * hidden[j];
+      d_hidden[j] += d_logits[i] * w_out[j * vocab_size + i];
     }
   }
 
   std::vector<float> d_z(hidden_dim);
   for (size_t i = 0; i < hidden_dim; i++) {
-    d_z[i] = d_h[i] * (1.0f - std::pow(h[i], 2));
+    d_z[i] = d_hidden[i] * (1.0f - hidden[i] * hidden[i]);
   }
 
   std::vector<float> d_b = d_z;
