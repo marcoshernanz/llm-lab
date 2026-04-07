@@ -73,7 +73,7 @@ public:
 
   Model() {
     this->embeddings = tensor_randn(vocab_size * embedding_dim);
-    this->hidden_bias = tensor_randn(context_len * embedding_dim * hidden_dim);
+    this->hidden_weights = tensor_randn(context_len * embedding_dim * hidden_dim);
     this->hidden_bias = tensor_zeros(hidden_dim);
     this->output_weights = tensor_randn(hidden_dim * vocab_size);
     this->output_bias = tensor_zeros(vocab_size);
