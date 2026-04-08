@@ -116,7 +116,7 @@ public:
     std::vector<float> logits(batch_size * vocab_size);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; i++) {
-        logits[b * hidden_dim + i] = output_bias[i];
+        logits[b * vocab_size + i] = output_bias[i];
       }
     }
 
