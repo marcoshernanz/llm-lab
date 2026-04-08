@@ -167,12 +167,17 @@ public:
     }
 
     std::vector<float> d_output_bias = d_logits;
-    std::vector<float> d_output_weights(hidden_dim * vocab_size, 0.0f);
-    std::vector<float> d_hidden(hidden_dim, 0.0f);
-    for (size_t i = 0; i < vocab_size; i++) {
-      for (size_t j = 0; j < hidden_dim; j++) {
-        d_output_weights[j * vocab_size + i] += d_logits[i] * hidden[j];
-        d_hidden[j] += d_logits[i] * output_weights[j * vocab_size + i];
+    std::vector<float> d_output_weights(batch_size * hidden_dim * vocab_size, 0.0f);
+    std::vector<float> d_hidden(batch_size * hidden_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; i++) {
+        for (size_t j = 0; j < hidden_dim; j++) {
+          d_output_weights[b * hidden_dim * vocab_size j * vocab_size + i] +=
+              d_logits[b * vocab_size + i] * hidden[b * hidden_dim + j];
+          d_hidden[b * hidden_dim + j] +=
+              d_logits[b * vocab_size + i] *
+              output_weights[b * hidden_dim * vocab_size j * vocab_size + i];
+        }
       }
     }
 
