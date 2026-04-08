@@ -154,7 +154,7 @@ public:
       loss_sum += losses[b];
     }
 
-    const float average_loss = loss_sum / static_cast<float>(batch_size);
+    const float avg_loss = loss_sum / static_cast<float>(batch_size);
 
     std::vector<float> d_logits(vocab_size);
     for (size_t b = 0; b < batch_size; ++b) {
@@ -204,7 +204,7 @@ public:
     gradient.output_weights = d_output_weights;
     gradient.output_bias = d_output_bias;
 
-    return {loss, gradient};
+    return {avg_loss, gradient};
   }
 
   /// Apply one SGD update from one gradient container.
