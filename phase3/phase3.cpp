@@ -89,7 +89,7 @@ public:
 
   /// Run one full forward and backward pass for one training example.
   std::pair<float, Model> forward_backward(const std::vector<int> &ids,
-                                           const std::vector<int> targets) const {
+                                           const std::vector<int> &targets) const {
     std::vector<float> hidden(batch_size * hidden_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < hidden_dim; i++) {
