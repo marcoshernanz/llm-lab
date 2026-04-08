@@ -113,10 +113,19 @@ public:
       x = std::tanh(x);
     }
 
-    std::vector<float> logits = output_bias;
-    for (size_t i = 0; i < vocab_size; ++i) {
-      for (size_t j = 0; j < hidden_dim; ++j) {
-        logits[i] += hidden[j] * output_weights[j * vocab_size + i];
+    std::vector<float> logits(batch_size * vocab_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; i++) {
+        logits[b * hidden_dim + i] = output_bias[i];
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; b++) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        for (size_t j = 0; j < hidden_dim; ++j) {
+          logits[b * vocab_size + i] +=
+              hidden[b * hidden_dim + j] * output_weights[j * vocab_size + i];
+        }
       }
     }
 
