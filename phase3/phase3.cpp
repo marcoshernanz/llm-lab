@@ -88,12 +88,11 @@ public:
     return model;
   }
 
-  /// Run one full forward and backward pass for one training example.
-  std::pair<float, Model> forward_backward(const std::vector<int> &ids,
-                                           const std::vector<int> &targets) const {
+  /// Compute one batch of hidden activations from token ids.
+  std::vector<float> compute_hidden(const std::vector<int> &ids) const {
     std::vector<float> hidden(batch_size * hidden_dim);
     for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < hidden_dim; i++) {
+      for (size_t i = 0; i < hidden_dim; ++i) {
         hidden[b * hidden_dim + i] = hidden_bias[i];
       }
     }
@@ -114,9 +113,14 @@ public:
       x = std::tanh(x);
     }
 
+    return hidden;
+  }
+
+  /// Compute one batch of logits from hidden activations.
+  std::vector<float> compute_logits(const std::vector<float> &hidden) const {
     std::vector<float> logits(batch_size * vocab_size);
     for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < vocab_size; i++) {
+      for (size_t i = 0; i < vocab_size; ++i) {
         logits[b * vocab_size + i] = output_bias[i];
       }
     }
@@ -129,6 +133,15 @@ public:
         }
       }
     }
+
+    return logits;
+  }
+
+  /// Run one full forward and backward pass for one training example.
+  std::pair<float, Model> forward_backward(const std::vector<int> &ids,
+                                           const std::vector<int> &targets) const {
+    const std::vector<float> hidden = compute_hidden(ids);
+    const std::vector<float> logits = compute_logits(hidden);
 
     std::vector<float> max_logits(batch_size);
     for (size_t b = 0; b < batch_size; ++b) {
@@ -148,12 +161,10 @@ public:
       }
     }
 
-    std::vector<float> losses(batch_size);
     float loss_sum = 0.0f;
     for (size_t b = 0; b < batch_size; ++b) {
-      losses[b] = static_cast<float>(max_logits[b] + std::log(sums_exp[b]) -
+      loss_sum += static_cast<float>(max_logits[b] + std::log(sums_exp[b]) -
                                      logits[b * vocab_size + targets[b]]);
-      loss_sum += losses[b];
     }
 
     const float avg_loss = loss_sum / static_cast<float>(batch_size);
@@ -161,7 +172,7 @@ public:
     std::vector<float> d_logits(batch_size * vocab_size);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; ++i) {
-        d_logits[b * vocab_size + i] += static_cast<float>(
+        d_logits[b * vocab_size + i] = static_cast<float>(
             std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b])) /
             sums_exp[b]);
       }
@@ -178,8 +189,8 @@ public:
     std::vector<float> d_output_weights(hidden_dim * vocab_size, 0.0f);
     std::vector<float> d_hidden(batch_size * hidden_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < vocab_size; i++) {
-        for (size_t j = 0; j < hidden_dim; j++) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        for (size_t j = 0; j < hidden_dim; ++j) {
           d_output_weights[j * vocab_size + i] +=
               d_logits[b * vocab_size + i] * hidden[b * hidden_dim + j];
           d_hidden[b * hidden_dim + j] +=
@@ -190,7 +201,7 @@ public:
 
     std::vector<float> d_z(batch_size * hidden_dim);
     for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < hidden_dim; i++) {
+      for (size_t i = 0; i < hidden_dim; ++i) {
         d_z[b * hidden_dim + i] = d_hidden[b * hidden_dim + i] *
                                   (1.0f - hidden[b * hidden_dim + i] * hidden[b * hidden_dim + i]);
       }
@@ -247,44 +258,8 @@ public:
 
   /// Compute the average loss for one batch without building gradients.
   float forward_loss(const std::vector<int> &ids, const std::vector<int> &targets) const {
-    std::vector<float> hidden(batch_size * hidden_dim);
-    for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < hidden_dim; ++i) {
-        hidden[b * hidden_dim + i] = hidden_bias[i];
-      }
-    }
-
-    for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t c = 0; c < context_len; ++c) {
-        for (size_t i = 0; i < hidden_dim; ++i) {
-          for (size_t j = 0; j < embedding_dim; ++j) {
-            hidden[b * hidden_dim + i] +=
-                embeddings[ids[b * context_len + c] * embedding_dim + j] *
-                hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
-          }
-        }
-      }
-    }
-
-    for (float &x : hidden) {
-      x = std::tanh(x);
-    }
-
-    std::vector<float> logits(batch_size * vocab_size);
-    for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < vocab_size; ++i) {
-        logits[b * vocab_size + i] = output_bias[i];
-      }
-    }
-
-    for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < vocab_size; ++i) {
-        for (size_t j = 0; j < hidden_dim; ++j) {
-          logits[b * vocab_size + i] +=
-              hidden[b * hidden_dim + j] * output_weights[j * vocab_size + i];
-        }
-      }
-    }
+    const std::vector<float> hidden = compute_hidden(ids);
+    const std::vector<float> logits = compute_logits(hidden);
 
     std::vector<float> max_logits(batch_size);
     for (size_t b = 0; b < batch_size; ++b) {
