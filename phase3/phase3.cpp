@@ -150,7 +150,8 @@ public:
     std::vector<float> losses(batch_size);
     float loss_sum = 0.0f;
     for (size_t b = 0; b < batch_size; ++b) {
-      losses[b] = static_cast<float>(max_logits[b] + std::log(sums_exp[b]) - logits[targets[b]]);
+      losses[b] = static_cast<float>(max_logits[b] + std::log(sums_exp[b]) -
+                                     logits[b * vocab_size + targets[b]]);
       loss_sum += losses[b];
     }
 
@@ -163,7 +164,7 @@ public:
             std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b])) /
             sums_exp[b]);
       }
-      d_logits[targets[b]] -= 1.0f;
+      d_logits[b * vocab_size + targets[b]] -= 1.0f;
     }
 
     std::vector<float> d_output_bias = d_logits;
