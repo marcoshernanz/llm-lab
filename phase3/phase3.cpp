@@ -249,6 +249,13 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
   return token_ids;
 }
 
+/// Copy one context window from the token stream into the working buffer.
+void fill_context(std::vector<int> &ids, const std::vector<int> &token_ids, int start) {
+  for (size_t i = 0; i < context_len; ++i) {
+    ids[i] = token_ids[start + i];
+  }
+}
+
 void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &targets) {
   for (size_t i = 0; i < batch_size; i++) {
     int index = randint(min, max);
@@ -277,12 +284,8 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
       const auto [loss, gradient] = model.forward_backward(ids, target);
       train_loss += loss;
 
-      const int val_index = randint(split_index, static_cast<int>(token_ids.size()) - context_len);
-      for (size_t i = 0; i < context_len; ++i) {
-        ids[i] = token_ids[val_index + i];
-      }
-      const int val_target = token_ids[val_index + context_len];
-      val_loss += model.forward_backward(ids, val_target).first;
+      generate_batch(0, static_cast<int>(token_ids.size()) - context_len, ids, targets);
+      val_loss += model.forward_backward(ids, targets).first;
 
       model.update(gradient);
     }
