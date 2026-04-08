@@ -120,7 +120,7 @@ public:
       }
     }
 
-    for (size_t b = 0; b < batch_size; b++) {
+    for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; ++i) {
         for (size_t j = 0; j < hidden_dim; ++j) {
           logits[b * vocab_size + i] +=
@@ -129,9 +129,15 @@ public:
       }
     }
 
-    float max_logit = logits[0];
-    for (const float logit : logits) {
-      max_logit = std::max(max_logit, logit);
+    std::vector<float> max_logits(batch_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      max_logits[b] = logits[b * vocab_size];
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        max_logits[b] = std::max(max_logits[b], logits[b * vocab_size + i]);
+      }
     }
 
     double sum_exp = 0.0;
