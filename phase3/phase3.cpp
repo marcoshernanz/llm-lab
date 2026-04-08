@@ -218,6 +218,22 @@ public:
       }
     }
 
+    for (float &x : d_embeddings) {
+      x /= static_cast<float>(batch_size);
+    }
+    for (float &x : d_hidden_weights) {
+      x /= static_cast<float>(batch_size);
+    }
+    for (float &x : d_hidden_bias) {
+      x /= static_cast<float>(batch_size);
+    }
+    for (float &x : d_output_weights) {
+      x /= static_cast<float>(batch_size);
+    }
+    for (float &x : d_output_bias) {
+      x /= static_cast<float>(batch_size);
+    }
+
     Model gradient;
     gradient.embeddings = d_embeddings;
     gradient.hidden_weights = d_hidden_weights;
