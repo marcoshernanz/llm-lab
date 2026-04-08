@@ -14,6 +14,7 @@
     "logits",
     "maxval",
     "minval",
+    "numel",
     "pmean",
     "randint",
     "smap",

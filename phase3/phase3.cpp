@@ -2,31 +2,28 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <random>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 const std::string corpus_path = "../datasets/tinyshakespeare.txt";
 const int vocab_size = 128;
 const int context_len = 4;
 const int embedding_dim = 32;
+const int hidden_dim = 64;
 const int steps = 10000;
 const int steps_per_chunk = 100;
+const int batch_size = 32;
+const float inv_batch_size = 1.0f / static_cast<float>(batch_size);
 const float learning_rate = 0.01f;
+const float validation_split = 0.1f;
 
 std::unordered_map<char, int> char_to_id;
-
-struct ForwardBackwardResult {
-  float loss;
-  std::vector<float> d_biases;
-  std::vector<float> d_weights;
-  std::vector<float> d_embeddings;
-};
 
 /// Return the shared random generator for reproducible experiments.
 std::mt19937 &rng() {
@@ -40,11 +37,266 @@ float randn() {
   return dist(rng());
 }
 
-/// Sample one integer in the half-open range [0, max).
-int randint(int max) {
-  std::uniform_int_distribution<int> dist(0, max - 1);
+/// Sample one integer in the half-open range [min, max).
+int randint(int min, int max) {
+  std::uniform_int_distribution<int> dist(min, max - 1);
   return dist(rng());
 }
+
+/// Create one random parameter tensor with standard-normal entries.
+void init_randn(std::vector<float> &vector) {
+  for (auto &x : vector) {
+    x = randn();
+  }
+}
+
+/// Create one zero-initialized tensor with the requested size.
+void init_zeros(std::vector<float> &vector) { std::fill(vector.begin(), vector.end(), 0.0f); }
+
+/// Apply one SGD update to a parameter tensor.
+void update_parameter(std::vector<float> &param, const std::vector<float> &grad) {
+  for (size_t i = 0; i < param.size(); ++i) {
+    param[i] -= learning_rate * grad[i];
+  }
+}
+
+/// Hold the trainable tensors for the tiny language model.
+class Model {
+public:
+  std::vector<float> embeddings;
+  std::vector<float> hidden_weights;
+  std::vector<float> hidden_bias;
+  std::vector<float> output_weights;
+  std::vector<float> output_bias;
+
+  Model() {
+    embeddings.resize(vocab_size * embedding_dim);
+    hidden_weights.resize(context_len * embedding_dim * hidden_dim);
+    hidden_bias.resize(hidden_dim);
+    output_weights.resize(hidden_dim * vocab_size);
+    output_bias.resize(vocab_size);
+  }
+
+  /// Initialize one model with random weights and zero biases.
+  static Model init() {
+    Model model = Model();
+    init_randn(model.embeddings);
+    init_randn(model.hidden_weights);
+    init_zeros(model.hidden_bias);
+    init_randn(model.output_weights);
+    init_zeros(model.output_bias);
+    return model;
+  }
+
+  /// Compute one batch of hidden activations from token ids.
+  std::vector<float> compute_hidden(const std::vector<int> &ids) const {
+    std::vector<float> hidden(batch_size * hidden_dim);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < hidden_dim; ++i) {
+        hidden[b * hidden_dim + i] = hidden_bias[i];
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < hidden_dim; ++i) {
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            hidden[b * hidden_dim + i] +=
+                embeddings[ids[b * context_len + c] * embedding_dim + j] *
+                hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+          }
+        }
+      }
+    }
+
+    for (float &x : hidden) {
+      x = std::tanh(x);
+    }
+
+    return hidden;
+  }
+
+  /// Compute one batch of logits from hidden activations.
+  std::vector<float> compute_logits(const std::vector<float> &hidden) const {
+    std::vector<float> logits(batch_size * vocab_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        logits[b * vocab_size + i] = output_bias[i];
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        for (size_t j = 0; j < hidden_dim; ++j) {
+          logits[b * vocab_size + i] +=
+              hidden[b * hidden_dim + j] * output_weights[j * vocab_size + i];
+        }
+      }
+    }
+
+    return logits;
+  }
+
+  /// Run one full forward and backward pass for one training example.
+  std::pair<float, Model> forward_backward(const std::vector<int> &ids,
+                                           const std::vector<int> &targets) const {
+    const std::vector<float> hidden = compute_hidden(ids);
+    const std::vector<float> logits = compute_logits(hidden);
+
+    std::vector<float> max_logits(batch_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      max_logits[b] = logits[b * vocab_size];
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        max_logits[b] = std::max(max_logits[b], logits[b * vocab_size + i]);
+      }
+    }
+
+    std::vector<double> sums_exp(batch_size, 0.0);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        sums_exp[b] += std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b]));
+      }
+    }
+
+    float loss_sum = 0.0f;
+    for (size_t b = 0; b < batch_size; ++b) {
+      loss_sum += static_cast<float>(max_logits[b] + std::log(sums_exp[b]) -
+                                     logits[b * vocab_size + targets[b]]);
+    }
+
+    const float avg_loss = loss_sum / static_cast<float>(batch_size);
+
+    std::vector<float> d_logits(batch_size * vocab_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        d_logits[b * vocab_size + i] = static_cast<float>(
+            std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b])) /
+            sums_exp[b]);
+      }
+      d_logits[b * vocab_size + targets[b]] -= 1.0f;
+    }
+
+    std::vector<float> d_output_bias(vocab_size, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        d_output_bias[i] += d_logits[b * vocab_size + i];
+      }
+    }
+
+    std::vector<float> d_output_weights(hidden_dim * vocab_size, 0.0f);
+    std::vector<float> d_hidden(batch_size * hidden_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        for (size_t j = 0; j < hidden_dim; ++j) {
+          d_output_weights[j * vocab_size + i] +=
+              d_logits[b * vocab_size + i] * hidden[b * hidden_dim + j];
+          d_hidden[b * hidden_dim + j] +=
+              d_logits[b * vocab_size + i] * output_weights[j * vocab_size + i];
+        }
+      }
+    }
+
+    std::vector<float> d_z(batch_size * hidden_dim);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < hidden_dim; ++i) {
+        d_z[b * hidden_dim + i] = d_hidden[b * hidden_dim + i] *
+                                  (1.0f - hidden[b * hidden_dim + i] * hidden[b * hidden_dim + i]);
+      }
+    }
+
+    std::vector<float> d_hidden_bias(hidden_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < hidden_dim; ++i) {
+        d_hidden_bias[i] += d_z[b * hidden_dim + i];
+      }
+    }
+
+    std::vector<float> d_hidden_weights(context_len * embedding_dim * hidden_dim, 0.0f);
+    std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < hidden_dim; ++i) {
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            d_embeddings[ids[b * context_len + c] * embedding_dim + j] +=
+                d_z[b * hidden_dim + i] *
+                hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+            d_hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
+                d_z[b * hidden_dim + i] * embeddings[ids[b * context_len + c] * embedding_dim + j];
+          }
+        }
+      }
+    }
+
+    for (float &x : d_embeddings) {
+      x *= inv_batch_size;
+    }
+    for (float &x : d_hidden_weights) {
+      x *= inv_batch_size;
+    }
+    for (float &x : d_hidden_bias) {
+      x *= inv_batch_size;
+    }
+    for (float &x : d_output_weights) {
+      x *= inv_batch_size;
+    }
+    for (float &x : d_output_bias) {
+      x *= inv_batch_size;
+    }
+
+    Model gradient;
+    gradient.embeddings = d_embeddings;
+    gradient.hidden_weights = d_hidden_weights;
+    gradient.hidden_bias = d_hidden_bias;
+    gradient.output_weights = d_output_weights;
+    gradient.output_bias = d_output_bias;
+
+    return {avg_loss, gradient};
+  }
+
+  /// Compute the average loss for one batch without building gradients.
+  float forward_loss(const std::vector<int> &ids, const std::vector<int> &targets) const {
+    const std::vector<float> hidden = compute_hidden(ids);
+    const std::vector<float> logits = compute_logits(hidden);
+
+    std::vector<float> max_logits(batch_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      max_logits[b] = logits[b * vocab_size];
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        max_logits[b] = std::max(max_logits[b], logits[b * vocab_size + i]);
+      }
+    }
+
+    std::vector<double> sums_exp(batch_size, 0.0);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        sums_exp[b] += std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b]));
+      }
+    }
+
+    float loss_sum = 0.0f;
+    for (size_t b = 0; b < batch_size; ++b) {
+      loss_sum += static_cast<float>(max_logits[b] + std::log(sums_exp[b]) -
+                                     logits[b * vocab_size + targets[b]]);
+    }
+
+    return loss_sum * inv_batch_size;
+  }
+
+  /// Apply one SGD update from one gradient container.
+  void update(const Model &gradient) {
+    update_parameter(embeddings, gradient.embeddings);
+    update_parameter(hidden_weights, gradient.hidden_weights);
+    update_parameter(hidden_bias, gradient.hidden_bias);
+    update_parameter(output_weights, gradient.output_weights);
+    update_parameter(output_bias, gradient.output_bias);
+  }
+};
 
 /// Load the training text from disk.
 std::string load_corpus() {
@@ -78,121 +330,53 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
   return token_ids;
 }
 
-/// Run one full forward and backward pass for a single training example.
-ForwardBackwardResult forward_backward(const std::vector<float> &embeddings,
-                                       const std::vector<float> &weights,
-                                       const std::vector<float> &biases,
-                                       const std::vector<int> &ids,
-                                       int target) {
-  std::vector<float> logits(vocab_size, 0.0f);
-  for (size_t i = 0; i < vocab_size; ++i) {
-    logits[i] = biases[i];
-  }
-
-  for (size_t c = 0; c < context_len; ++c) {
-    for (size_t i = 0; i < vocab_size; ++i) {
-      for (size_t j = 0; j < embedding_dim; ++j) {
-        logits[i] += embeddings[ids[c] * embedding_dim + j] *
-                     weights[c * embedding_dim * vocab_size + j * vocab_size + i];
-      }
+/// Sample one batch of context windows and next-token targets.
+void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &targets,
+                    const std::vector<int> &token_ids) {
+  for (size_t b = 0; b < batch_size; ++b) {
+    const int index = randint(min, max);
+    for (size_t j = 0; j < context_len; ++j) {
+      ids[b * context_len + j] = token_ids[index + j];
     }
-  }
-
-  float max_logit = logits[0];
-  for (const float logit : logits) {
-    max_logit = std::max(max_logit, logit);
-  }
-
-  double sum_exp = 0.0;
-  for (const float logit : logits) {
-    sum_exp += std::exp(static_cast<double>(logit - max_logit));
-  }
-
-  const float loss = static_cast<float>(max_logit + std::log(sum_exp) - logits[target]);
-
-  std::vector<float> d_logits(vocab_size);
-  for (size_t i = 0; i < vocab_size; ++i) {
-    d_logits[i] =
-        static_cast<float>(std::exp(static_cast<double>(logits[i] - max_logit)) / sum_exp);
-  }
-  d_logits[target] -= 1.0f;
-
-  std::vector<float> d_biases = d_logits;
-  std::vector<float> d_weights(context_len * embedding_dim * vocab_size, 0.0f);
-  std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
-
-  for (size_t c = 0; c < context_len; ++c) {
-    for (size_t i = 0; i < vocab_size; ++i) {
-      for (size_t j = 0; j < embedding_dim; ++j) {
-        d_weights[c * embedding_dim * vocab_size + j * vocab_size + i] =
-            embeddings[ids[c] * embedding_dim + j] * d_logits[i];
-        d_embeddings[ids[c] * embedding_dim + j] +=
-            weights[c * embedding_dim * vocab_size + j * vocab_size + i] * d_logits[i];
-      }
-    }
-  }
-
-  return ForwardBackwardResult{
-      .loss = loss,
-      .d_biases = d_biases,
-      .d_weights = d_weights,
-      .d_embeddings = d_embeddings,
-  };
-}
-
-/// Apply one SGD update using the current single-example gradients.
-void apply_gradients(std::vector<float> &embeddings, std::vector<float> &weights,
-                     std::vector<float> &biases, const ForwardBackwardResult &result) {
-  for (size_t i = 0; i < biases.size(); ++i) {
-    biases[i] -= learning_rate * result.d_biases[i];
-  }
-
-  for (size_t i = 0; i < weights.size(); ++i) {
-    weights[i] -= learning_rate * result.d_weights[i];
-  }
-  for (size_t i = 0; i < embeddings.size(); ++i) {
-    embeddings[i] -= learning_rate * result.d_embeddings[i];
+    targets[b] = token_ids[index + context_len];
   }
 }
 
 /// Run the current single-file training loop.
-void run_training(std::vector<float> &embeddings, std::vector<float> &weights,
-                  std::vector<float> &biases, const std::vector<int> &token_ids) {
+void run_training(Model &model, const std::vector<int> &token_ids) {
+  const int split_index =
+      static_cast<int>(std::floor(token_ids.size() * (1.0f - validation_split)));
+
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
     const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
-    float loss = 0.0f;
-    std::vector<int> ids(context_len);
-    for (int step = 0; step < chunk_steps; ++step) {
-      const int index = randint(static_cast<int>(token_ids.size()) - context_len);
-      for (size_t i = 0; i < context_len; ++i) {
-        ids[i] = token_ids[index + i];
-      }
-      const int target = token_ids[index + context_len];
+    float train_loss = 0.0f;
+    float val_loss = 0.0f;
 
-      const ForwardBackwardResult result =
-          forward_backward(embeddings, weights, biases, ids, target);
-      apply_gradients(embeddings, weights, biases, result);
-      loss += result.loss;
+    std::vector<int> ids(batch_size * context_len);
+    std::vector<int> targets(batch_size);
+    for (int step = 0; step < chunk_steps; ++step) {
+      generate_batch(0, split_index - context_len, ids, targets, token_ids);
+
+      const auto [loss, gradient] = model.forward_backward(ids, targets);
+      train_loss += loss;
+
+      generate_batch(split_index, static_cast<int>(token_ids.size()) - context_len, ids, targets,
+                     token_ids);
+      val_loss += model.forward_loss(ids, targets);
+
+      model.update(gradient);
     }
 
-    std::cout << "step=" << start_step << " loss=" << loss / chunk_steps << "\n";
+    std::cout << "step=" << start_step << " train_loss=" << train_loss / chunk_steps
+              << " val_loss=" << val_loss / chunk_steps << "\n";
   }
 }
 
 /// Initialize the toy model and train it.
 int main() {
-  std::vector<float> embeddings(vocab_size * embedding_dim);
-  std::vector<float> weights(context_len * embedding_dim * vocab_size);
-  std::vector<float> biases(vocab_size, 0.0f);
-
-  for (float &x : embeddings) {
-    x = randn();
-  }
-  for (float &x : weights) {
-    x = randn();
-  }
+  Model model = Model::init();
 
   const std::string corpus = load_corpus();
   const std::vector<int> token_ids = prepare_vocab(corpus);
-  run_training(embeddings, weights, biases, token_ids);
+  run_training(model, token_ids);
 }
