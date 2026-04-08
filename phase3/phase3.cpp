@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <random>
@@ -20,6 +19,7 @@ const int hidden_dim = 64;
 const int steps = 10000;
 const int steps_per_chunk = 100;
 const int batch_size = 32;
+const float inv_batch_size = 1.0f / static_cast<float>(batch_size);
 const float learning_rate = 0.01f;
 const float validation_split = 0.1f;
 
@@ -77,6 +77,7 @@ public:
     output_bias.resize(vocab_size);
   }
 
+  /// Initialize one model with random weights and zero biases.
   static Model init() {
     Model model = Model();
     init_randn(model.embeddings);
@@ -219,19 +220,19 @@ public:
     }
 
     for (float &x : d_embeddings) {
-      x /= static_cast<float>(batch_size);
+      x *= inv_batch_size;
     }
     for (float &x : d_hidden_weights) {
-      x /= static_cast<float>(batch_size);
+      x *= inv_batch_size;
     }
     for (float &x : d_hidden_bias) {
-      x /= static_cast<float>(batch_size);
+      x *= inv_batch_size;
     }
     for (float &x : d_output_weights) {
-      x /= static_cast<float>(batch_size);
+      x *= inv_batch_size;
     }
     for (float &x : d_output_bias) {
-      x /= static_cast<float>(batch_size);
+      x *= inv_batch_size;
     }
 
     Model gradient;
@@ -242,6 +243,74 @@ public:
     gradient.output_bias = d_output_bias;
 
     return {avg_loss, gradient};
+  }
+
+  /// Compute the average loss for one batch without building gradients.
+  float forward_loss(const std::vector<int> &ids, const std::vector<int> &targets) const {
+    std::vector<float> hidden(batch_size * hidden_dim);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < hidden_dim; ++i) {
+        hidden[b * hidden_dim + i] = hidden_bias[i];
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < hidden_dim; ++i) {
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            hidden[b * hidden_dim + i] +=
+                embeddings[ids[b * context_len + c] * embedding_dim + j] *
+                hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+          }
+        }
+      }
+    }
+
+    for (float &x : hidden) {
+      x = std::tanh(x);
+    }
+
+    std::vector<float> logits(batch_size * vocab_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        logits[b * vocab_size + i] = output_bias[i];
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        for (size_t j = 0; j < hidden_dim; ++j) {
+          logits[b * vocab_size + i] +=
+              hidden[b * hidden_dim + j] * output_weights[j * vocab_size + i];
+        }
+      }
+    }
+
+    std::vector<float> max_logits(batch_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      max_logits[b] = logits[b * vocab_size];
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        max_logits[b] = std::max(max_logits[b], logits[b * vocab_size + i]);
+      }
+    }
+
+    std::vector<double> sums_exp(batch_size, 0.0);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        sums_exp[b] += std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b]));
+      }
+    }
+
+    float loss_sum = 0.0f;
+    for (size_t b = 0; b < batch_size; ++b) {
+      loss_sum += static_cast<float>(max_logits[b] + std::log(sums_exp[b]) -
+                                     logits[b * vocab_size + targets[b]]);
+    }
+
+    return loss_sum * inv_batch_size;
   }
 
   /// Apply one SGD update from one gradient container.
@@ -286,11 +355,12 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
   return token_ids;
 }
 
+/// Sample one batch of context windows and next-token targets.
 void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &targets,
                     const std::vector<int> &token_ids) {
-  for (size_t b = 0; b < batch_size; b++) {
-    int index = randint(min, max);
-    for (size_t j = 0; j < context_len; j++) {
+  for (size_t b = 0; b < batch_size; ++b) {
+    const int index = randint(min, max);
+    for (size_t j = 0; j < context_len; ++j) {
       ids[b * context_len + j] = token_ids[index + j];
     }
     targets[b] = token_ids[index + context_len];
@@ -317,7 +387,7 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
 
       generate_batch(split_index, static_cast<int>(token_ids.size()) - context_len, ids, targets,
                      token_ids);
-      val_loss += model.forward_backward(ids, targets).first;
+      val_loss += model.forward_loss(ids, targets);
 
       model.update(gradient);
     }
