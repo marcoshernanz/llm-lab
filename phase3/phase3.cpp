@@ -140,9 +140,11 @@ public:
       }
     }
 
-    double sum_exp = 0.0;
-    for (const float logit : logits) {
-      sum_exp += std::exp(static_cast<double>(logit - max_logit));
+    std::vector<double> sums_exp(batch_size, 0.0);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < vocab_size; ++i) {
+        sums_exp[b] += std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b]));
+      }
     }
 
     const float loss = static_cast<float>(max_logit + std::log(sum_exp) - logits[target]);
