@@ -281,7 +281,7 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
     for (int step = 0; step < chunk_steps; ++step) {
       generate_batch(0, split_index - context_len, ids, targets);
 
-      const auto [loss, gradient] = model.forward_backward(ids, target);
+      const auto [loss, gradient] = model.forward_backward(ids, targets);
       train_loss += loss;
 
       generate_batch(0, static_cast<int>(token_ids.size()) - context_len, ids, targets);
