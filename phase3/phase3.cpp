@@ -156,14 +156,13 @@ public:
 
     const float average_loss = loss_sum / static_cast<float>(batch_size);
 
-    std::vector<float> d_logits(batch_size * vocab_size);
+    std::vector<float> d_logits(vocab_size);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; ++i) {
-        d_logits[b * batch_size + i] =
-            static_cast<float>(
-                std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b])) /
-                sums_exp[b]) /
-            static_cast<float>(batch_size);
+        d_logits[i] += static_cast<float>(std::exp(static_cast<double>(logits[b * vocab_size + i] -
+                                                                       max_logits[b])) /
+                                          sums_exp[b]) /
+                       static_cast<float>(batch_size);
       }
       d_logits[targets[b]] -= 1.0f;
     }
