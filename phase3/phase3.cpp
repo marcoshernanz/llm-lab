@@ -278,7 +278,8 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
       const auto [loss, gradient] = model.forward_backward(ids, targets);
       train_loss += loss;
 
-      generate_batch(0, static_cast<int>(token_ids.size()) - context_len, ids, targets, token_ids);
+      generate_batch(split_index, static_cast<int>(token_ids.size()) - context_len, ids, targets,
+                     token_ids);
       val_loss += model.forward_backward(ids, targets).first;
 
       model.update(gradient);
