@@ -256,7 +256,7 @@ void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &t
     for (size_t j = 0; j < context_len; j++) {
       ids[b * context_len + j] = token_ids[index + j];
     }
-    targets[b] = context_len;
+    targets[b] = token_ids[context_len];
   }
 }
 
