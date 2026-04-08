@@ -172,11 +172,11 @@ public:
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; i++) {
         for (size_t j = 0; j < hidden_dim; j++) {
-          d_output_weights[b * hidden_dim * vocab_size j * vocab_size + i] +=
+          d_output_weights[b * hidden_dim * vocab_size + j * vocab_size + i] +=
               d_logits[b * vocab_size + i] * hidden[b * hidden_dim + j];
           d_hidden[b * hidden_dim + j] +=
               d_logits[b * vocab_size + i] *
-              output_weights[b * hidden_dim * vocab_size j * vocab_size + i];
+              output_weights[b * hidden_dim * vocab_size + j * vocab_size + i];
         }
       }
     }
