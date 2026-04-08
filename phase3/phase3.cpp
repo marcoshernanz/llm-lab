@@ -167,16 +167,15 @@ public:
     }
 
     std::vector<float> d_output_bias = d_logits;
-    std::vector<float> d_output_weights(batch_size * hidden_dim * vocab_size, 0.0f);
+    std::vector<float> d_output_weights(hidden_dim * vocab_size, 0.0f);
     std::vector<float> d_hidden(batch_size * hidden_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; i++) {
         for (size_t j = 0; j < hidden_dim; j++) {
-          d_output_weights[b * hidden_dim * vocab_size + j * vocab_size + i] +=
+          d_output_weights[j * vocab_size + i] +=
               d_logits[b * vocab_size + i] * hidden[b * hidden_dim + j];
           d_hidden[b * hidden_dim + j] +=
-              d_logits[b * vocab_size + i] *
-              output_weights[b * hidden_dim * vocab_size + j * vocab_size + i];
+              d_logits[b * vocab_size + i] * output_weights[j * vocab_size + i];
         }
       }
     }
@@ -193,13 +192,16 @@ public:
     std::vector<float> d_hidden_weights(context_len * embedding_dim * hidden_dim, 0.0f);
     std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
 
-    for (size_t c = 0; c < context_len; ++c) {
-      for (size_t i = 0; i < hidden_dim; ++i) {
-        for (size_t j = 0; j < embedding_dim; ++j) {
-          d_embeddings[ids[c] * embedding_dim + j] +=
-              d_z[i] * hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
-          d_hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
-              d_z[i] * embeddings[ids[c] * embedding_dim + j];
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < hidden_dim; ++i) {
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            d_embeddings[ids[b * context_len + c] * embedding_dim + j] +=
+                d_z[b * hidden_dim + i] *
+                hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+            d_hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
+                d_z[b * hidden_dim + i] * embeddings[ids[b * context_len + c] * embedding_dim + j];
+          }
         }
       }
     }
