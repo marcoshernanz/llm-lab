@@ -148,9 +148,13 @@ public:
     }
 
     std::vector<float> losses(batch_size);
+    float loss_sum = 0.0f;
     for (size_t b = 0; b < batch_size; ++b) {
       losses[b] = static_cast<float>(max_logits[b] + std::log(sums_exp[b]) - logits[targets[b]]);
+      loss_sum += losses[b];
     }
+
+    const float average_loss = loss_sum / static_cast<float>(batch_size);
 
     std::vector<float> d_logits(vocab_size);
     for (size_t i = 0; i < vocab_size; ++i) {
