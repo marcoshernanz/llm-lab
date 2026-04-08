@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <random>
@@ -87,16 +88,27 @@ public:
   }
 
   /// Run one full forward and backward pass for one training example.
-  std::pair<float, Model> forward_backward(const std::vector<int> &ids, const int target) const {
-    std::vector<float> hidden = hidden_bias;
-    for (size_t c = 0; c < context_len; ++c) {
-      for (size_t i = 0; i < hidden_dim; ++i) {
-        for (size_t j = 0; j < embedding_dim; ++j) {
-          hidden[i] += embeddings[ids[c] * embedding_dim + j] *
-                       hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+  std::pair<float, Model> forward_backward(const std::vector<int> &ids,
+                                           const std::vector<int> targets) const {
+    std::vector<float> hidden(batch_size * hidden_dim);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < hidden_dim; i++) {
+        hidden[b * hidden_dim + i] = hidden_bias[i];
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < hidden_dim; ++i) {
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            hidden[b * hidden_dim + i] +=
+                embeddings[ids[b * context_len + c] * embedding_dim + j] *
+                hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+          }
         }
       }
     }
+
     for (float &x : hidden) {
       x = std::tanh(x);
     }
@@ -216,6 +228,16 @@ void fill_context(std::vector<int> &ids, const std::vector<int> &token_ids, int 
   }
 }
 
+void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &targets) {
+  for (size_t i = 0; i < batch_size; i++) {
+    int index = randint(min, max);
+    for (size_t j = 0; j < context_len; j++) {
+      ids[i * context_len + j] = index + j;
+    }
+    targets[i] = context_len;
+  }
+}
+
 /// Run the current single-file training loop.
 void run_training(Model &model, const std::vector<int> &token_ids) {
   const int split_index =
@@ -226,11 +248,10 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
     float train_loss = 0.0f;
     float val_loss = 0.0f;
 
-    std::vector<int> ids(context_len);
+    std::vector<int> ids(batch_size * context_len);
+    std::vector<int> targets(batch_size);
     for (int step = 0; step < chunk_steps; ++step) {
-      const int train_index = randint(0, split_index - context_len);
-      fill_context(ids, token_ids, train_index);
-      const int target = token_ids[train_index + context_len];
+      generate_batch(0, split_index - context_len, ids, targets);
 
       const auto [loss, gradient] = model.forward_backward(ids, target);
       train_loss += loss;
