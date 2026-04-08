@@ -18,6 +18,7 @@ const int embedding_dim = 32;
 const int hidden_dim = 64;
 const int steps = 10000;
 const int steps_per_chunk = 100;
+const int batch_size = 32;
 const float learning_rate = 0.01f;
 const float validation_split = 0.1f;
 
