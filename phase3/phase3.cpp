@@ -181,9 +181,12 @@ public:
       }
     }
 
-    std::vector<float> d_z(hidden_dim);
-    for (size_t i = 0; i < hidden_dim; i++) {
-      d_z[i] = d_hidden[i] * (1.0f - hidden[i] * hidden[i]);
+    for (size_t b = 0; b < batch_size; ++b) {
+      std::vector<float> d_z(batch_size * hidden_dim);
+      for (size_t i = 0; i < hidden_dim; i++) {
+        d_z[b * hidden_dim + i] = d_hidden[b * hidden_dim + i] *
+                                  (1.0f - hidden[b * hidden_dim + i] * hidden[b * hidden_dim + i]);
+      }
     }
 
     std::vector<float> d_hidden_bias = d_z;
