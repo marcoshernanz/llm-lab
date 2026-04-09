@@ -233,52 +233,6 @@ public:
     output_bias.scale_grad(scale);
   }
 
-  /// Compute one batch of hidden activations from token ids.
-  std::vector<float> compute_hidden(const std::vector<int> &ids) const {
-    std::vector<float> hidden(batch_size * hidden_dim);
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t hidden_offset = b * hidden_dim;
-      const size_t ids_offset = b * context_len;
-      for (size_t i = 0; i < hidden_dim; ++i) {
-        hidden[hidden_offset + i] = hidden_bias.val[i];
-      }
-
-      for (size_t c = 0; c < context_len; ++c) {
-        for (size_t i = 0; i < hidden_dim; ++i) {
-          for (size_t j = 0; j < embedding_dim; ++j) {
-            hidden[hidden_offset + i] +=
-                embeddings.val[ids[ids_offset + c] * embedding_dim + j] *
-                hidden_weights.val[c * embedding_dim * hidden_dim + j * hidden_dim + i];
-          }
-        }
-      }
-    }
-
-    for (float &x : hidden) {
-      x = std::tanh(x);
-    }
-
-    return hidden;
-  }
-
-  /// Compute one batch of logits from hidden activations.
-  std::vector<float> compute_logits(const std::vector<float> &hidden) const {
-    std::vector<float> logits(batch_size * vocab_size);
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t hidden_offset = b * hidden_dim;
-      const size_t logits_offset = b * vocab_size;
-      for (size_t i = 0; i < vocab_size; ++i) {
-        logits[logits_offset + i] = output_bias.val[i];
-        for (size_t j = 0; j < hidden_dim; ++j) {
-          logits[logits_offset + i] +=
-              hidden[hidden_offset + j] * output_weights.val[j * vocab_size + i];
-        }
-      }
-    }
-
-    return logits;
-  }
-
   /// Run one full forward and backward pass for one batch.
   float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
     zero_grad();
@@ -393,9 +347,7 @@ public:
 
   /// Compute the average loss for one batch without building gradients.
   float forward_loss(const std::vector<int> &ids, const std::vector<int> &targets) const {
-    const std::vector<float> hidden = compute_hidden(ids);
-    const std::vector<float> logits = compute_logits(hidden);
-    return compute_loss_stats(logits, targets).avg_loss;
+    // TODO
   }
 
   /// Apply one optimizer step to every parameter tensor.
