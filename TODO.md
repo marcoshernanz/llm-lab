@@ -1,3 +1,5 @@
+- Add biases for q/k/v
+
 - Datasets in kaggle/colab
 
 - Tokenizer abstract class
