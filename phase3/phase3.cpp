@@ -294,12 +294,12 @@ public:
         for (size_t j = 0; j < context_len; ++j) {
           const size_t k_base = qk_base + j * hidden_dim;
 
-          float a = 0.0f;
-          for (size_t e = 0; e < hidden_dim; ++e) {
-            a += queries[q_base + e] * keys[k_base + e];
+          float score = 0.0f;
+          for (size_t k = 0; k < hidden_dim; ++k) {
+            score += queries[q_base + k] * keys[k_base + k];
           }
 
-          attention[a_base + i * context_len + j] = a / sqrt_hidden_dim;
+          attention[a_base + i * context_len + j] = score / sqrt_hidden_dim;
         }
       }
     }
