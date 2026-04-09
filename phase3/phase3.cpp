@@ -60,8 +60,14 @@ void init_zeros(std::vector<float> &vector) { std::fill(vector.begin(), vector.e
 
 class Adam {
 public:
-  float first_moment = 0;
-  float second_moment = 0;
+  std::vector<float> first_moment;
+  std::vector<float> second_moment;
+
+  Adam(size_t size) : first_moment(size), second_moment(size) {}
+
+  void update(std::vector<float> &param, const std::vector<float> grad) {
+    first_moment = beta1 * first_moment + (1 - beta1) * grad;
+  }
 };
 
 /// Apply one SGD update to a parameter tensor.
