@@ -128,7 +128,7 @@ public:
     std::vector<float> hidden(batch_size * hidden_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < hidden_dim; ++i) {
-        hidden[b * hidden_dim + i] = hidden_bias[i];
+        hidden[b * hidden_dim + i] = hidden_bias.val[i];
       }
     }
 
@@ -137,8 +137,8 @@ public:
         for (size_t i = 0; i < hidden_dim; ++i) {
           for (size_t j = 0; j < embedding_dim; ++j) {
             hidden[b * hidden_dim + i] +=
-                embeddings[ids[b * context_len + c] * embedding_dim + j] *
-                hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+                embeddings.val[ids[b * context_len + c] * embedding_dim + j] *
+                hidden_weights.val[c * embedding_dim * hidden_dim + j * hidden_dim + i];
           }
         }
       }
@@ -156,7 +156,7 @@ public:
     std::vector<float> logits(batch_size * vocab_size);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; ++i) {
-        logits[b * vocab_size + i] = output_bias[i];
+        logits[b * vocab_size + i] = output_bias.val[i];
       }
     }
 
@@ -164,7 +164,7 @@ public:
       for (size_t i = 0; i < vocab_size; ++i) {
         for (size_t j = 0; j < hidden_dim; ++j) {
           logits[b * vocab_size + i] +=
-              hidden[b * hidden_dim + j] * output_weights[j * vocab_size + i];
+              hidden[b * hidden_dim + j] * output_weights.val[j * vocab_size + i];
         }
       }
     }
