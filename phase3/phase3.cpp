@@ -26,7 +26,7 @@ const float validation_split = 0.1f;
 const float learning_rate = 0.01f;
 const float beta1 = 0.9f;
 const float beta2 = 0.999f;
-const float eps = 10e-8f;
+const float eps = 1e-8f;
 
 std::unordered_map<char, int> char_to_id;
 
