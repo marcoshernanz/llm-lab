@@ -67,7 +67,7 @@ public:
 
   Adam(size_t size) : size(size), first_moment(size), second_moment(size) {}
 
-  void update(std::vector<float> &param, const std::vector<float> grad) {
+  void update(std::vector<float> &param, const std::vector<float> &grad) {
     for (size_t i = 0; i < size; i++) {
       first_moment[i] = beta1 * first_moment[i] + (1.0f - beta1) * grad[i];
       second_moment[i] = beta2 * second_moment[i] + (1.0f - beta2) * grad[i] * grad[i];
