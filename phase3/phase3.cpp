@@ -314,7 +314,7 @@ public:
   }
 
   /// Apply one SGD update from one gradient container.
-  void update(const Model &gradient) {
+  void update() {
     embeddings.update();
     hidden_weights.update();
     hidden_bias.update();
@@ -382,14 +382,14 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
     for (int step = 0; step < chunk_steps; ++step) {
       generate_batch(0, split_index - context_len, ids, targets, token_ids);
 
-      const auto [loss, gradient] = model.forward_backward(ids, targets);
+      const auto loss = model.forward_backward(ids, targets);
       train_loss += loss;
 
       generate_batch(split_index, static_cast<int>(token_ids.size()) - context_len, ids, targets,
                      token_ids);
       val_loss += model.forward_loss(ids, targets);
 
-      model.update(gradient);
+      model.update();
     }
 
     std::cout << "step=" << start_step << " train_loss=" << train_loss / chunk_steps
