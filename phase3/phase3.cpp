@@ -100,13 +100,6 @@ public:
   }
 };
 
-/// Apply one SGD update to a parameter tensor.
-void update_parameter(std::vector<float> &param, const std::vector<float> &grad) {
-  for (size_t i = 0; i < param.size(); ++i) {
-    param[i] -= learning_rate * grad[i];
-  }
-}
-
 /// Hold the trainable tensors for the tiny language model.
 class Model {
 public:
@@ -322,11 +315,11 @@ public:
 
   /// Apply one SGD update from one gradient container.
   void update(const Model &gradient) {
-    update_parameter(embeddings, gradient.embeddings);
-    update_parameter(hidden_weights, gradient.hidden_weights);
-    update_parameter(hidden_bias, gradient.hidden_bias);
-    update_parameter(output_weights, gradient.output_weights);
-    update_parameter(output_bias, gradient.output_bias);
+    embeddings.update();
+    hidden_weights.update();
+    hidden_bias.update();
+    output_weights.update();
+    output_bias.update();
   }
 };
 
