@@ -60,7 +60,7 @@ void init_zeros(std::vector<float> &vector) { std::fill(vector.begin(), vector.e
 
 class Adam {
 public:
-  int step = 0;
+  int step = 1;
   size_t size;
   std::vector<float> first_moment;
   std::vector<float> second_moment;
