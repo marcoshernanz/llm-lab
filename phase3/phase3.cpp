@@ -78,8 +78,9 @@ public:
   size_t size;
   std::vector<float> val;
   std::vector<float> grad;
+  Adam optimizer;
 
-  Param(size_t size) : size(size), val(size), grad(size, 0.0f) {}
+  Param(size_t size) : size(size), val(size), grad(size, 0.0f), optimizer(size) {}
 
   /// Create one random parameter tensor with standard-normal entries.
   void init_randn() {
@@ -90,6 +91,13 @@ public:
 
   /// Create one zero-initialized tensor with the requested size.
   void init_zeros() { std::fill(val.begin(), val.end(), 0.0f); }
+
+  void update() {
+    optimizer.update(val, grad);
+    for (float &x : grad) {
+      x = 0.0f;
+    }
+  }
 };
 
 /// Apply one SGD update to a parameter tensor.
