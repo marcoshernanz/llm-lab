@@ -290,9 +290,9 @@ public:
         for (size_t j = 0; j < context_len; ++j) {
           float a = 0.0f;
 
-          for (size_t e = 0; e < embedding_dim; ++e) {
-            a += queries[b * context_len * embedding_dim + i * embedding_dim + e] *
-                 keys[b * embedding_dim * context_len + e * embedding_dim + j];
+          for (size_t k = 0; k < hidden_dim; ++k) {
+            a += queries[b * context_len * hidden_dim + i * hidden_dim + k] *
+                 keys[b * context_len * hidden_dim + j * hidden_dim + k];
           }
 
           attention[b * context_len * context_len + i * context_len + j] = a;
