@@ -68,15 +68,15 @@ public:
   Adam(size_t size) : size(size), first_moment(size), second_moment(size) {}
 
   void update(std::vector<float> &param, const std::vector<float> grad) {
-    std::vector<float> corrected_first_moment(size);
-    std::vector<float> corrected_second_moment(size);
-
     for (size_t i = 0; i < size; i++) {
-      first_moment[i] = beta1 * first_moment[i] + (1 - beta1) * grad[i];
-      second_moment[i] = beta2 * second_moment[i] + (1 - beta2) * grad[i] * grad[i];
+      first_moment[i] = beta1 * first_moment[i] + (1.0f - beta1) * grad[i];
+      second_moment[i] = beta2 * second_moment[i] + (1.0f - beta2) * grad[i] * grad[i];
 
-      corrected_first_moment[i] = first_moment[i] / (1 - std::pow(beta1, step));
-      corrected_second_moment[i] = second_moment[i] / (1 - std::pow(beta2, step));
+      float corrected_first_moment = first_moment[i] / (1.0f - std::pow(beta1, step));
+      float corrected_second_moment = second_moment[i] / (1.0f - std::pow(beta2, step));
+
+      param[i] = param[i] - learning_rate * corrected_first_moment /
+                                (std::sqrt(corrected_second_moment) + eps);
     }
 
     step++;
