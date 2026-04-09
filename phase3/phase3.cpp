@@ -84,6 +84,7 @@ public:
 };
 
 class Param {
+public:
   size_t size;
   std::vector<float> val;
 
@@ -100,19 +101,16 @@ void update_parameter(std::vector<float> &param, const std::vector<float> &grad)
 /// Hold the trainable tensors for the tiny language model.
 class Model {
 public:
-  std::vector<float> embeddings;
-  std::vector<float> hidden_weights;
-  std::vector<float> hidden_bias;
-  std::vector<float> output_weights;
-  std::vector<float> output_bias;
+  Param embeddings;
+  Param hidden_weights;
+  Param hidden_bias;
+  Param output_weights;
+  Param output_bias;
 
-  Model() {
-    embeddings.resize(vocab_size * embedding_dim);
-    hidden_weights.resize(context_len * embedding_dim * hidden_dim);
-    hidden_bias.resize(hidden_dim);
-    output_weights.resize(hidden_dim * vocab_size);
-    output_bias.resize(vocab_size);
-  }
+  Model()
+      : embeddings(vocab_size * embedding_dim),
+        hidden_weights(context_len * embedding_dim * hidden_dim), hidden_bias(hidden_dim),
+        output_weights(hidden_dim * vocab_size), output_bias(vocab_size) {}
 
   /// Initialize one model with random weights and zero biases.
   static Model init() {
