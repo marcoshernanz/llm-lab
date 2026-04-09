@@ -252,6 +252,21 @@ public:
       }
     }
 
+    std::vector<float> queries(batch_size * context_len * hidden_dim);
+    std::vector<float> keys(batch_size * context_len * hidden_dim);
+    std::vector<float> values(batch_size * context_len * hidden_dim);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < hidden_dim; ++i) {
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            queries[b * context_len + hidden_dim + c * hidden_dim + i] =
+                embeddings[b * context_len * embedding_dim + c * embedding_dim + j] *
+                query_weights.val[i * embedding_dim + j];
+          }
+        }
+      }
+    }
+
     // TODO
 
     std::vector<float> hidden(batch_size * hidden_dim);
