@@ -286,10 +286,16 @@ public:
     std::vector<float> attention(batch_size * context_len * context_len);
 
     for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < batch_size; ++i) {
-        for (size_t j = 0; j < batch_size; ++j) {
-          for (size_t e = 0; e < batch_size; ++e) {
+      for (size_t i = 0; i < context_len; ++i) {
+        for (size_t j = 0; j < context_len; ++j) {
+          float a = 0.0f;
+
+          for (size_t e = 0; e < embedding_dim; ++e) {
+            a += queries[b * context_len * embedding_dim + i * embedding_dim + e] *
+                 keys[b * embedding_dim * context_len + e * embedding_dim + j];
           }
+
+          attention[b * context_len * context_len + i * context_len + j] = a;
         }
       }
     }
