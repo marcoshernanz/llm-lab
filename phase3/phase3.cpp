@@ -252,9 +252,9 @@ public:
       }
     }
 
-    std::vector<float> queries(batch_size * context_len * hidden_dim);
-    std::vector<float> keys(batch_size * context_len * hidden_dim);
-    std::vector<float> values(batch_size * context_len * hidden_dim);
+    std::vector<float> queries(batch_size * context_len * hidden_dim, 0.0f);
+    std::vector<float> keys(batch_size * context_len * hidden_dim, 0.0f);
+    std::vector<float> values(batch_size * context_len * hidden_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         for (size_t i = 0; i < hidden_dim; ++i) {
