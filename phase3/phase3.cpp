@@ -16,12 +16,17 @@ const int vocab_size = 128;
 const int context_len = 4;
 const int embedding_dim = 32;
 const int hidden_dim = 64;
+
 const int steps = 10000;
 const int steps_per_chunk = 100;
 const int batch_size = 32;
 const float inv_batch_size = 1.0f / static_cast<float>(batch_size);
-const float learning_rate = 0.01f;
 const float validation_split = 0.1f;
+
+const float learning_rate = 0.01f;
+const float beta1 = 0.9f;
+const float beta2 = 0.999f;
+const float eps = 10e-8f;
 
 std::unordered_map<char, int> char_to_id;
 
