@@ -243,6 +243,8 @@ public:
         for (size_t i = 0; i < embedding_dim; ++i) {
           embeddings[b * context_len * embedding_dim + c * embedding_dim + i] +=
               token_embeddings.val[ids[c] * embedding_dim + i];
+          embeddings[b * context_len * embedding_dim + c * embedding_dim + i] +=
+              position_embeddings.val[c * embedding_dim + i];
         }
       }
     }
