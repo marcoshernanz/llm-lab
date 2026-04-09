@@ -253,9 +253,9 @@ public:
       }
     }
 
-    std::vector<float> queries(batch_size * context_len * hidden_dim, 0.0f);
-    std::vector<float> keys(batch_size * context_len * hidden_dim, 0.0f);
-    std::vector<float> values(batch_size * context_len * hidden_dim, 0.0f);
+    std::vector<float> queries(batch_size * context_len * hidden_dim);
+    std::vector<float> keys(batch_size * context_len * hidden_dim);
+    std::vector<float> values(batch_size * context_len * hidden_dim);
 
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
@@ -277,6 +277,19 @@ public:
           queries[out_base + i] = q;
           keys[out_base + i] = k;
           values[out_base + i] = v;
+        }
+      }
+    }
+
+    // A = Q x K^T
+    // A[b,i,j] = Q[b,i,e] * K[b,e,j]
+    std::vector<float> attention(batch_size * context_len * context_len);
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < batch_size; ++i) {
+        for (size_t j = 0; j < batch_size; ++j) {
+          for (size_t e = 0; e < batch_size; ++e) {
+          }
         }
       }
     }
