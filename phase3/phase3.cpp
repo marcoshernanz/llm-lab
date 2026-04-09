@@ -77,8 +77,9 @@ class Param {
 public:
   size_t size;
   std::vector<float> val;
+  std::vector<float> grad;
 
-  Param(size_t size) : size(size), val(size) {}
+  Param(size_t size) : size(size), val(size), grad(size, 0.0f) {}
 
   /// Create one random parameter tensor with standard-normal entries.
   void init_randn() {
