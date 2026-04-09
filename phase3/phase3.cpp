@@ -237,6 +237,18 @@ public:
   float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
     zero_grad();
 
+    std::vector<float> embeddings(batch_size * embedding_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          embeddings[b * context_len * embedding_dim + c * embedding_dim + i] +=
+              token_embeddings.val[ids[c] * embedding_dim + i];
+        }
+      }
+    }
+
+    // TODO
+
     std::vector<float> hidden(batch_size * hidden_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       const size_t hidden_offset = b * hidden_dim;
