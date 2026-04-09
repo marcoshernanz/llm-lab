@@ -83,6 +83,13 @@ public:
   }
 };
 
+class Param {
+  size_t size;
+  std::vector<float> val;
+
+  Param(size_t size) : size(size), val(size) {}
+};
+
 /// Apply one SGD update to a parameter tensor.
 void update_parameter(std::vector<float> &param, const std::vector<float> &grad) {
   for (size_t i = 0; i < param.size(); ++i) {
