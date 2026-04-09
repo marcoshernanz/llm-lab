@@ -58,6 +58,12 @@ void init_randn(std::vector<float> &vector) {
 /// Create one zero-initialized tensor with the requested size.
 void init_zeros(std::vector<float> &vector) { std::fill(vector.begin(), vector.end(), 0.0f); }
 
+class Adam {
+public:
+  float first_moment = 0;
+  float second_moment = 0;
+};
+
 /// Apply one SGD update to a parameter tensor.
 void update_parameter(std::vector<float> &param, const std::vector<float> &grad) {
   for (size_t i = 0; i < param.size(); ++i) {
