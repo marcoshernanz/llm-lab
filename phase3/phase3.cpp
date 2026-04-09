@@ -183,16 +183,19 @@ public:
 /// Hold the trainable tensors for the tiny language model.
 class Model {
 public:
-  Param embeddings;
-  Param hidden_weights;
-  Param hidden_bias;
+  Param token_embeddings;
+  Param position_embeddings;
+  Param query_weights;
+  Param key_weights;
+  Param value_weights;
   Param output_weights;
   Param output_bias;
 
   /// Construct one model with correctly sized parameter tensors.
   Model()
-      : embeddings(vocab_size * embedding_dim),
-        hidden_weights(context_len * embedding_dim * hidden_dim), hidden_bias(hidden_dim),
+      : token_embeddings(vocab_size * embedding_dim),
+        position_embeddings(context_len * embedding_dim), query_weights(embedding_dim * hidden_dim),
+        key_weights(embedding_dim * hidden_dim), value_weights(embedding_dim * hidden_dim),
         output_weights(hidden_dim * vocab_size), output_bias(vocab_size) {}
 
   /// Initialize one model with random weights and zero biases.
