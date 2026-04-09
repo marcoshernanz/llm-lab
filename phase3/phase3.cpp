@@ -213,18 +213,22 @@ public:
 
   /// Reset every parameter gradient buffer to zero.
   void zero_grad() {
-    embeddings.zero_grad();
-    hidden_weights.zero_grad();
-    hidden_bias.zero_grad();
+    token_embeddings.zero_grad();
+    position_embeddings.zero_grad();
+    query_weights.zero_grad();
+    key_weights.zero_grad();
+    value_weights.zero_grad();
     output_weights.zero_grad();
     output_bias.zero_grad();
   }
 
   /// Scale every parameter gradient buffer by one constant.
   void scale_grads(float scale) {
-    embeddings.scale_grad(scale);
-    hidden_weights.scale_grad(scale);
-    hidden_bias.scale_grad(scale);
+    token_embeddings.scale_grad(scale);
+    position_embeddings.scale_grad(scale);
+    query_weights.scale_grad(scale);
+    key_weights.scale_grad(scale);
+    value_weights.scale_grad(scale);
     output_weights.scale_grad(scale);
     output_bias.scale_grad(scale);
   }
@@ -279,8 +283,42 @@ public:
   float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
     zero_grad();
 
-    const std::vector<float> hidden = compute_hidden(ids);
-    const std::vector<float> logits = compute_logits(hidden);
+    std::vector<float> hidden(batch_size * hidden_dim);
+    for (size_t b = 0; b < batch_size; ++b) {
+      const size_t hidden_offset = b * hidden_dim;
+      const size_t ids_offset = b * context_len;
+      for (size_t i = 0; i < hidden_dim; ++i) {
+        hidden[hidden_offset + i] = hidden_bias.val[i];
+      }
+
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < hidden_dim; ++i) {
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            hidden[hidden_offset + i] +=
+                embeddings.val[ids[ids_offset + c] * embedding_dim + j] *
+                hidden_weights.val[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+          }
+        }
+      }
+    }
+
+    for (float &x : hidden) {
+      x = std::tanh(x);
+    }
+
+    std::vector<float> logits(batch_size * vocab_size);
+    for (size_t b = 0; b < batch_size; ++b) {
+      const size_t hidden_offset = b * hidden_dim;
+      const size_t logits_offset = b * vocab_size;
+      for (size_t i = 0; i < vocab_size; ++i) {
+        logits[logits_offset + i] = output_bias.val[i];
+        for (size_t j = 0; j < hidden_dim; ++j) {
+          logits[logits_offset + i] +=
+              hidden[hidden_offset + j] * output_weights.val[j * vocab_size + i];
+        }
+      }
+    }
+
     const LossStats loss_stats = compute_loss_stats(logits, targets);
 
     std::vector<float> d_logits(batch_size * vocab_size);
