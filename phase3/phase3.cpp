@@ -281,21 +281,24 @@ public:
       }
     }
 
-    // A = Q x K^T
-    // A[b,i,j] = Q[b,i,e] * K[b,e,j]
-    std::vector<float> attention(batch_size * context_len * context_len);
+    std::vector<float> attention(batch_size * context_len * context_len, 0.0f);
 
     for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < context_len; ++i) {
-        for (size_t j = 0; j < context_len; ++j) {
-          float a = 0.0f;
+      const size_t qk_base = b * context_len * hidden_dim;
+      const size_t a_base = b * context_len * context_len;
 
-          for (size_t k = 0; k < hidden_dim; ++k) {
-            a += queries[b * context_len * hidden_dim + i * hidden_dim + k] *
-                 keys[b * context_len * hidden_dim + j * hidden_dim + k];
+      for (size_t i = 0; i < context_len; ++i) {
+        const size_t q_base = qk_base + i * hidden_dim;
+
+        for (size_t j = 0; j < context_len; ++j) {
+          const size_t k_base = qk_base + j * hidden_dim;
+
+          float a = 0.0f;
+          for (size_t e = 0; e < hidden_dim; ++e) {
+            a += queries[q_base + e] * keys[k_base + e];
           }
 
-          attention[b * context_len * context_len + i * context_len + j] = a;
+          attention[a_base + i * context_len + j] = a;
         }
       }
     }
