@@ -229,7 +229,7 @@ public:
           d_output_weights[j * vocab_size + i] +=
               d_logits[b * vocab_size + i] * hidden[b * hidden_dim + j];
           d_hidden[b * hidden_dim + j] +=
-              d_logits[b * vocab_size + i] * output_weights[j * vocab_size + i];
+              d_logits[b * vocab_size + i] * output_weights.val[j * vocab_size + i];
         }
       }
     }
@@ -257,9 +257,10 @@ public:
           for (size_t j = 0; j < embedding_dim; ++j) {
             d_embeddings[ids[b * context_len + c] * embedding_dim + j] +=
                 d_z[b * hidden_dim + i] *
-                hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+                hidden_weights.val[c * embedding_dim * hidden_dim + j * hidden_dim + i];
             d_hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
-                d_z[b * hidden_dim + i] * embeddings[ids[b * context_len + c] * embedding_dim + j];
+                d_z[b * hidden_dim + i] *
+                embeddings.val[ids[b * context_len + c] * embedding_dim + j];
           }
         }
       }
