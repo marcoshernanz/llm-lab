@@ -259,13 +259,13 @@ public:
       for (size_t c = 0; c < context_len; ++c) {
         for (size_t i = 0; i < hidden_dim; ++i) {
           for (size_t j = 0; j < embedding_dim; ++j) {
-            queries[b * context_len + hidden_dim + c * hidden_dim + i] =
+            queries[b * context_len * hidden_dim + c * hidden_dim + i] =
                 embeddings[b * context_len * embedding_dim + c * embedding_dim + j] *
                 query_weights.val[i * embedding_dim + j];
-            keys[b * context_len + hidden_dim + c * hidden_dim + i] =
+            keys[b * context_len * hidden_dim + c * hidden_dim + i] =
                 embeddings[b * context_len * embedding_dim + c * embedding_dim + j] *
                 key_weights.val[i * embedding_dim + j];
-            values[b * context_len + hidden_dim + c * hidden_dim + i] =
+            values[b * context_len * hidden_dim + c * hidden_dim + i] =
                 embeddings[b * context_len * embedding_dim + c * embedding_dim + j] *
                 value_weights.val[i * embedding_dim + j];
           }
