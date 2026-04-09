@@ -115,11 +115,11 @@ public:
   /// Initialize one model with random weights and zero biases.
   static Model init() {
     Model model = Model();
-    init_randn(model.embeddings);
-    init_randn(model.hidden_weights);
-    init_zeros(model.hidden_bias);
-    init_randn(model.output_weights);
-    init_zeros(model.output_bias);
+    model.embeddings.init_randn();
+    model.hidden_weights.init_randn();
+    model.hidden_bias.init_zeros();
+    model.output_weights.init_randn();
+    model.output_bias.init_zeros();
     return model;
   }
 
