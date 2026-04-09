@@ -4,6 +4,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -299,7 +300,11 @@ public:
             score += queries[q_base + k] * keys[k_base + k];
           }
 
-          attention[a_base + i * context_len + j] = score / sqrt_hidden_dim;
+          if (j <= i) {
+            attention[a_base + i * context_len + j] = score / sqrt_hidden_dim;
+          } else {
+            attention[a_base + i * context_len + j] = -std::numeric_limits<float>::infinity();
+          }
         }
       }
     }
