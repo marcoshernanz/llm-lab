@@ -262,6 +262,12 @@ public:
             queries[b * context_len + hidden_dim + c * hidden_dim + i] =
                 embeddings[b * context_len * embedding_dim + c * embedding_dim + j] *
                 query_weights.val[i * embedding_dim + j];
+            keys[b * context_len + hidden_dim + c * hidden_dim + i] =
+                embeddings[b * context_len * embedding_dim + c * embedding_dim + j] *
+                key_weights.val[i * embedding_dim + j];
+            values[b * context_len + hidden_dim + c * hidden_dim + i] =
+                embeddings[b * context_len * embedding_dim + c * embedding_dim + j] *
+                value_weights.val[i * embedding_dim + j];
           }
         }
       }
