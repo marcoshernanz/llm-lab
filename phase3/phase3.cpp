@@ -174,8 +174,7 @@ public:
   }
 
   /// Run one full forward and backward pass for one training example.
-  std::pair<float, Model> forward_backward(const std::vector<int> &ids,
-                                           const std::vector<int> &targets) {
+  float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
     const std::vector<float> hidden = compute_hidden(ids);
     const std::vector<float> logits = compute_logits(hidden);
 
@@ -278,14 +277,7 @@ public:
       x *= inv_batch_size;
     }
 
-    Model gradient;
-    gradient.embeddings = embeddings.grad;
-    gradient.hidden_weights = hidden_weights.grad;
-    gradient.hidden_bias = hidden_bias.grad;
-    gradient.output_weights = output_weights.grad;
-    gradient.output_bias = output_bias.grad;
-
-    return {avg_loss, gradient};
+    return avg_loss;
   }
 
   /// Compute the average loss for one batch without building gradients.
