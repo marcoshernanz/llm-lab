@@ -340,8 +340,9 @@ public:
       for (size_t i = 0; i < context_len; ++i) {
         for (size_t j = 0; j < context_len; ++j) {
           attention[b * context_len * context_len + i * context_len + j] =
-              std::exp(attention[b * context_len * context_len + i * context_len + j -
-                                 max_logits[b * context_len + i]]) /
+              std::exp(static_cast<double>(
+                  attention[b * context_len * context_len + i * context_len + j] -
+                  max_logits[b * context_len + i])) /
               sums_exp[b * context_len + i];
         }
       }
