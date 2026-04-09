@@ -262,15 +262,21 @@ public:
         const size_t emb_base = b * context_len * embedding_dim + c * embedding_dim;
         const size_t out_base = b * context_len * hidden_dim + c * hidden_dim;
 
-        for (size_t j = 0; j < embedding_dim; ++j) {
-          const float x = embeddings[emb_base + j];
-          const size_t w_base = j * hidden_dim;
+        for (size_t i = 0; i < hidden_dim; ++i) {
+          float q = 0.0f;
+          float k = 0.0f;
+          float v = 0.0f;
 
-          for (size_t i = 0; i < hidden_dim; ++i) {
-            queries[out_base + i] += x * query_weights.val[w_base + i];
-            keys[out_base + i] += x * key_weights.val[w_base + i];
-            values[out_base + i] += x * value_weights.val[w_base + i];
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            const float x = embeddings[emb_base + j];
+            q += x * query_weights.val[j * hidden_dim + i];
+            k += x * key_weights.val[j * hidden_dim + i];
+            v += x * value_weights.val[j * hidden_dim + i];
           }
+
+          queries[out_base + i] = q;
+          keys[out_base + i] = k;
+          values[out_base + i] = v;
         }
       }
     }
