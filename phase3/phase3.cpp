@@ -120,7 +120,8 @@ LossStats compute_loss_stats(const std::vector<float> &logits, const std::vector
 /// Hold Adam state for one parameter tensor.
 class Adam {
 public:
-  int step = 0;
+  float beta1_pow = 1.0f;
+  float beta2_pow = 1.0f;
   std::vector<float> first_moment;
   std::vector<float> second_moment;
 
@@ -129,9 +130,10 @@ public:
 
   /// Apply one Adam update to a parameter tensor.
   void update(std::vector<float> &values, const std::vector<float> &gradients) {
-    ++step;
-    const float beta1_correction = 1.0f - std::pow(beta1, static_cast<float>(step));
-    const float beta2_correction = 1.0f - std::pow(beta2, static_cast<float>(step));
+    beta1_pow *= beta1;
+    beta2_pow *= beta2;
+    const float beta1_correction = 1.0f - beta1_pow;
+    const float beta2_correction = 1.0f - beta2_pow;
 
     for (size_t i = 0; i < values.size(); ++i) {
       first_moment[i] = beta1 * first_moment[i] + (1.0f - beta1) * gradients[i];
