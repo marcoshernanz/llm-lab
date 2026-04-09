@@ -175,7 +175,7 @@ public:
 
   /// Run one full forward and backward pass for one training example.
   std::pair<float, Model> forward_backward(const std::vector<int> &ids,
-                                           const std::vector<int> &targets) const {
+                                           const std::vector<int> &targets) {
     const std::vector<float> hidden = compute_hidden(ids);
     const std::vector<float> logits = compute_logits(hidden);
 
