@@ -48,16 +48,6 @@ int randint(int min, int max) {
   return dist(rng());
 }
 
-/// Create one random parameter tensor with standard-normal entries.
-void init_randn(std::vector<float> &vector) {
-  for (auto &x : vector) {
-    x = randn();
-  }
-}
-
-/// Create one zero-initialized tensor with the requested size.
-void init_zeros(std::vector<float> &vector) { std::fill(vector.begin(), vector.end(), 0.0f); }
-
 class Adam {
 public:
   int step = 1;
@@ -89,6 +79,16 @@ public:
   std::vector<float> val;
 
   Param(size_t size) : size(size), val(size) {}
+
+  /// Create one random parameter tensor with standard-normal entries.
+  void init_randn() {
+    for (auto &x : val) {
+      x = randn();
+    }
+  }
+
+  /// Create one zero-initialized tensor with the requested size.
+  void init_zeros() { std::fill(val.begin(), val.end(), 0.0f); }
 };
 
 /// Apply one SGD update to a parameter tensor.
