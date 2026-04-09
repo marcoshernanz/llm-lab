@@ -357,20 +357,25 @@ public:
       }
     }
 
-    std::vector<float> head(batch_size * context_len * head_dim);
+    std::vector<float> head(batch_size * context_len * head_dim, 0.0f);
 
-    // head[b,i,h] = sum_j a[b,i,j] * v[b,j,h]
     for (size_t b = 0; b < batch_size; ++b) {
+      const size_t a_base = b * context_len * context_len;
+      const size_t v_base = b * context_len * head_dim;
+      const size_t o_base = b * context_len * head_dim;
+
       for (size_t i = 0; i < context_len; ++i) {
+        const size_t att_row = a_base + i * context_len;
+        const size_t out_row = o_base + i * head_dim;
+
         for (size_t h = 0; h < head_dim; ++h) {
           float sum = 0.0f;
 
           for (size_t j = 0; j < context_len; ++j) {
-            sum += attention[b * context_len * context_len + i * context_len + j] *
-                   values[b * context_len * head_dim + j * head_dim + h];
+            sum += attention[att_row + j] * values[v_base + j * head_dim + h];
           }
 
-          head[b * context_len * head_dim + i * head_dim + h] = sum;
+          head[out_row + h] = sum;
         }
       }
     }
