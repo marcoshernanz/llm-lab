@@ -215,19 +215,17 @@ public:
       d_logits[b * vocab_size + targets[b]] -= 1.0f;
     }
 
-    std::vector<float> d_output_bias(vocab_size, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; ++i) {
-        d_output_bias[i] += d_logits[b * vocab_size + i];
+        output_bias.grad[i] += d_logits[b * vocab_size + i];
       }
     }
 
-    std::vector<float> d_output_weights(hidden_dim * vocab_size, 0.0f);
     std::vector<float> d_hidden(batch_size * hidden_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < vocab_size; ++i) {
         for (size_t j = 0; j < hidden_dim; ++j) {
-          d_output_weights[j * vocab_size + i] +=
+          output_weights.grad[j * vocab_size + i] +=
               d_logits[b * vocab_size + i] * hidden[b * hidden_dim + j];
           d_hidden[b * hidden_dim + j] +=
               d_logits[b * vocab_size + i] * output_weights.val[j * vocab_size + i];
@@ -243,23 +241,20 @@ public:
       }
     }
 
-    std::vector<float> d_hidden_bias(hidden_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t i = 0; i < hidden_dim; ++i) {
-        d_hidden_bias[i] += d_z[b * hidden_dim + i];
+        hidden_bias.grad[i] += d_z[b * hidden_dim + i];
       }
     }
 
-    std::vector<float> d_hidden_weights(context_len * embedding_dim * hidden_dim, 0.0f);
-    std::vector<float> d_embeddings(vocab_size * embedding_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         for (size_t i = 0; i < hidden_dim; ++i) {
           for (size_t j = 0; j < embedding_dim; ++j) {
-            d_embeddings[ids[b * context_len + c] * embedding_dim + j] +=
+            embeddings.grad[ids[b * context_len + c] * embedding_dim + j] +=
                 d_z[b * hidden_dim + i] *
                 hidden_weights.val[c * embedding_dim * hidden_dim + j * hidden_dim + i];
-            d_hidden_weights[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
+            hidden_weights.grad[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
                 d_z[b * hidden_dim + i] *
                 embeddings.val[ids[b * context_len + c] * embedding_dim + j];
           }
@@ -267,28 +262,28 @@ public:
       }
     }
 
-    for (float &x : d_embeddings) {
+    for (float &x : embeddings.grad) {
       x *= inv_batch_size;
     }
-    for (float &x : d_hidden_weights) {
+    for (float &x : hidden_weights.grad) {
       x *= inv_batch_size;
     }
-    for (float &x : d_hidden_bias) {
+    for (float &x : hidden_bias.grad) {
       x *= inv_batch_size;
     }
-    for (float &x : d_output_weights) {
+    for (float &x : output_weights.grad) {
       x *= inv_batch_size;
     }
-    for (float &x : d_output_bias) {
+    for (float &x : output_bias.grad) {
       x *= inv_batch_size;
     }
 
     Model gradient;
-    gradient.embeddings = d_embeddings;
-    gradient.hidden_weights = d_hidden_weights;
-    gradient.hidden_bias = d_hidden_bias;
-    gradient.output_weights = d_output_weights;
-    gradient.output_bias = d_output_bias;
+    gradient.embeddings = embeddings.grad;
+    gradient.hidden_weights = hidden_weights.grad;
+    gradient.hidden_bias = hidden_bias.grad;
+    gradient.output_weights = output_weights.grad;
+    gradient.output_bias = output_bias.grad;
 
     return {avg_loss, gradient};
   }
