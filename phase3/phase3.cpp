@@ -312,46 +312,49 @@ public:
     std::vector<float> max_logits(batch_size * context_len);
 
     for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < context_len; ++i) {
-        max_logits[b * context_len + i] =
-            attention[b * context_len * context_len + i * context_len];
+      const size_t a_base = b * context_len * context_len;
+      const size_t m_base = b * context_len;
 
+      for (size_t i = 0; i < context_len; ++i) {
+        const size_t row_base = a_base + i * context_len;
+        float max_val = attention[row_base];
         for (size_t j = 1; j < context_len; ++j) {
-          max_logits[b * context_len + i] =
-              std::max(max_logits[b * context_len + i],
-                       attention[b * context_len * context_len + i * context_len + j]);
+          max_val = std::max(max_val, attention[row_base + j]);
         }
+        max_logits[m_base + i] = max_val;
       }
     }
 
     std::vector<double> sums_exp(batch_size * context_len, 0.0);
 
     for (size_t b = 0; b < batch_size; ++b) {
+      const size_t a_base = b * context_len * context_len;
+      const size_t m_base = b * context_len;
+
       for (size_t i = 0; i < context_len; ++i) {
+        const size_t row_base = a_base + i * context_len;
+        const float max_val = max_logits[m_base + i];
+
         for (size_t j = 0; j < context_len; ++j) {
-          sums_exp[b * context_len + i] += std::exp(
-              static_cast<double>(attention[b * context_len * context_len + i * context_len + j] -
-                                  max_logits[b * context_len + i]));
+          sums_exp[m_base + i] += std::exp(static_cast<double>(attention[row_base + j] - max_val));
         }
       }
     }
 
     for (size_t b = 0; b < batch_size; ++b) {
+      const size_t a_base = b * context_len * context_len;
+      const size_t m_base = b * context_len;
+
       for (size_t i = 0; i < context_len; ++i) {
+        const size_t row_base = a_base + i * context_len;
+        const float max_val = max_logits[m_base + i];
+        const double denom = sums_exp[m_base + i];
+
         for (size_t j = 0; j < context_len; ++j) {
-          attention[b * context_len * context_len + i * context_len + j] =
-              std::exp(static_cast<double>(
-                  attention[b * context_len * context_len + i * context_len + j] -
-                  max_logits[b * context_len + i])) /
-              sums_exp[b * context_len + i];
+          attention[row_base + j] = static_cast<float>(
+              std::exp(static_cast<double>(attention[row_base + j] - max_val)) / denom);
         }
       }
-    }
-
-    float loss_sum = 0.0f;
-    for (size_t b = 0; b < batch_size; ++b) {
-      loss_sum += static_cast<float>(max_logits[b] + std::log(sums_exp[b]) -
-                                     logits[b * vocab_size + targets[b]]);
     }
 
     // TODO
