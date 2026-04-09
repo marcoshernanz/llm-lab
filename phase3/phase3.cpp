@@ -282,6 +282,7 @@ public:
     }
 
     std::vector<float> attention(batch_size * context_len * context_len, 0.0f);
+    float sqrt_hidden_dim = std::sqrt(hidden_dim);
 
     for (size_t b = 0; b < batch_size; ++b) {
       const size_t qk_base = b * context_len * hidden_dim;
@@ -298,7 +299,7 @@ public:
             a += queries[q_base + e] * keys[k_base + e];
           }
 
-          attention[a_base + i * context_len + j] = a;
+          attention[a_base + i * context_len + j] = a / sqrt_hidden_dim;
         }
       }
     }
