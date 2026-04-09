@@ -296,8 +296,8 @@ public:
           const size_t k_base = qk_base + j * head_dim;
 
           float score = 0.0f;
-          for (size_t k = 0; k < head_dim; ++k) {
-            score += queries[q_base + k] * keys[k_base + k];
+          for (size_t h = 0; h < head_dim; ++h) {
+            score += queries[q_base + h] * keys[k_base + h];
           }
 
           if (j <= i) {
@@ -353,6 +353,24 @@ public:
         for (size_t j = 0; j < context_len; ++j) {
           attention[row_base + j] = static_cast<float>(
               std::exp(static_cast<double>(attention[row_base + j] - max_val)) / denom);
+        }
+      }
+    }
+
+    std::vector<float> head(batch_size * context_len * head_dim);
+
+    // head[b,i,h] = sum_j a[b,i,j] * v[b,j,h]
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t i = 0; i < context_len; ++i) {
+        for (size_t h = 0; h < head_dim; ++h) {
+          float sum = 0.0f;
+
+          for (size_t j = 0; j < context_len; ++j) {
+            sum += attention[b * context_len * context_len + i * context_len + j] *
+                   values[b * context_len * head_dim + j * head_dim + h];
+          }
+
+          head[b * context_len * head_dim + i * head_dim + h] = sum;
         }
       }
     }
