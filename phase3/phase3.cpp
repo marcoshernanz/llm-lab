@@ -60,13 +60,26 @@ void init_zeros(std::vector<float> &vector) { std::fill(vector.begin(), vector.e
 
 class Adam {
 public:
+  int step = 0;
+  size_t size;
   std::vector<float> first_moment;
   std::vector<float> second_moment;
 
-  Adam(size_t size) : first_moment(size), second_moment(size) {}
+  Adam(size_t size) : size(size), first_moment(size), second_moment(size) {}
 
   void update(std::vector<float> &param, const std::vector<float> grad) {
-    first_moment = beta1 * first_moment + (1 - beta1) * grad;
+    std::vector<float> corrected_first_moment(size);
+    std::vector<float> corrected_second_moment(size);
+
+    for (size_t i = 0; i < size; i++) {
+      first_moment[i] = beta1 * first_moment[i] + (1 - beta1) * grad[i];
+      second_moment[i] = beta2 * second_moment[i] + (1 - beta2) * grad[i] * grad[i];
+
+      corrected_first_moment[i] = first_moment[i] / (1 - std::pow(beta1, step));
+      corrected_second_moment[i] = second_moment[i] / (1 - std::pow(beta2, step));
+    }
+
+    step++;
   }
 };
 
