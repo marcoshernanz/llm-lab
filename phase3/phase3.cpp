@@ -201,9 +201,11 @@ public:
   /// Initialize one model with random weights and zero biases.
   static Model init() {
     Model model;
-    model.embeddings.init_randn();
-    model.hidden_weights.init_randn();
-    model.hidden_bias.init_zeros();
+    model.token_embeddings.init_randn();
+    model.position_embeddings.init_randn();
+    model.query_weights.init_randn();
+    model.key_weights.init_randn();
+    model.value_weights.init_randn();
     model.output_weights.init_randn();
     model.output_bias.init_zeros();
     return model;
