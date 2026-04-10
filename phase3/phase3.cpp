@@ -390,7 +390,7 @@ public:
           for (size_t j = 0; j < head_dim; ++j) {
             out[b * context_len * vocab_size + c * vocab_size + i] +=
                 head[b * context_len * head_dim + c * head_dim + j] *
-                output_weights.val[b * head_dim * vocab_size + j * vocab_size + i];
+                output_weights.val[j * vocab_size + i];
           }
         }
       }
