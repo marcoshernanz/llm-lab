@@ -380,6 +380,22 @@ public:
       }
     }
 
+    std::vector<float> out(batch_size * context_len * vocab_size);
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < vocab_size; ++i) {
+          out[b * context_len * vocab_size + c * vocab_size + i] = output_bias.val[i];
+
+          for (size_t j = 0; j < head_dim; ++j) {
+            out[b * context_len * vocab_size + c * vocab_size + i] +=
+                head[b * context_len * head_dim + c * head_dim + j] *
+                output_weights.val[b * head_dim * vocab_size + j * vocab_size + i];
+          }
+        }
+      }
+    }
+
     // TODO
 
     std::vector<float> hidden(batch_size * head_dim);
