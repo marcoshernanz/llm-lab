@@ -9,7 +9,9 @@
 inline constexpr int vocab_size = 128;
 inline constexpr int context_len = 4;
 inline constexpr int embedding_dim = 32;
-inline constexpr int head_dim = 64;
+inline constexpr int num_heads = 4;
+inline constexpr int head_dim = 16;
+inline constexpr int attention_dim = num_heads * head_dim;
 inline constexpr int feed_forward_dim = 128;
 
 inline constexpr int steps = 10000;

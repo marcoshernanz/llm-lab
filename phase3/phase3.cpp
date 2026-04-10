@@ -105,10 +105,10 @@ public:
   Model()
       : token_embedding_table(vocab_size * embedding_dim),
         position_embedding_table(context_len * embedding_dim),
-        attention_query_weights(embedding_dim * head_dim),
-        attention_key_weights(embedding_dim * head_dim),
-        attention_value_weights(embedding_dim * head_dim),
-        attention_output_projection_weights(head_dim * embedding_dim),
+        attention_query_weights(embedding_dim * attention_dim),
+        attention_key_weights(embedding_dim * attention_dim),
+        attention_value_weights(embedding_dim * attention_dim),
+        attention_output_projection_weights(attention_dim * embedding_dim),
         attention_norm_gain(embedding_dim), attention_norm_bias(embedding_dim),
         feed_forward_in_weights(embedding_dim * feed_forward_dim),
         feed_forward_in_bias(feed_forward_dim),
@@ -125,7 +125,7 @@ public:
     model.attention_query_weights.init_normal(fan_in_stddev(embedding_dim));
     model.attention_key_weights.init_normal(fan_in_stddev(embedding_dim));
     model.attention_value_weights.init_normal(fan_in_stddev(embedding_dim));
-    model.attention_output_projection_weights.init_normal(fan_in_stddev(head_dim));
+    model.attention_output_projection_weights.init_normal(fan_in_stddev(attention_dim));
     model.attention_norm_gain.init_ones();
     model.attention_norm_bias.init_zeros();
     model.feed_forward_in_weights.init_normal(fan_in_stddev(embedding_dim));
