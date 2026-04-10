@@ -398,26 +398,30 @@ public:
     }
 
     std::vector<float> max_out_logits(batch_size * context_len);
+
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
-        max_out_logits[b * context_len + c] =
-            out_logits[b * context_len * vocab_size + c * vocab_size];
+        const size_t row_base = b * context_len * vocab_size + c * vocab_size;
+        const size_t idx = b * context_len + c;
 
-        for (size_t i = 0; i < vocab_size; ++i) {
-          max_out_logits[b * context_len + c] =
-              std::max(max_out_logits[b * context_len + c],
-                       out_logits[b * context_len * vocab_size + c * vocab_size + i]);
+        float max_val = out_logits[row_base];
+        for (size_t i = 1; i < vocab_size; ++i) {
+          max_val = std::max(max_val, out_logits[row_base + i]);
         }
+        max_out_logits[idx] = max_val;
       }
     }
 
     std::vector<double> out_sums_exp(batch_size * context_len, 0.0);
+
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
+        const size_t row_base = b * context_len * vocab_size + c * vocab_size;
+        const size_t idx = b * context_len + c;
+        const float max_val = max_out_logits[idx];
+
         for (size_t i = 0; i < vocab_size; ++i) {
-          out_sums_exp[b * context_len + c] += std::exp(
-              static_cast<double>(out_logits[b * context_len * vocab_size + c * vocab_size + i] -
-                                  max_out_logits[b * context_len + c]));
+          out_sums_exp[idx] += std::exp(static_cast<double>(out_logits[row_base + i] - max_val));
         }
       }
     }
@@ -425,12 +429,15 @@ public:
     float loss = 0.0f;
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
-        loss += static_cast<float>(max_out_logits[b * context_len + c] +
-                                   std::log(out_sums_exp[b * context_len + c]) -
-                                   out_logits[b * context_len * vocab_size + c * vocab_size +
-                                              targets[b * context_len + c]]);
+        const size_t row_base = b * context_len * vocab_size + c * vocab_size;
+        const size_t idx = b * context_len + c;
+        const size_t target = targets[idx];
+
+        loss += static_cast<float>(max_out_logits[idx] + std::log(out_sums_exp[idx]) -
+                                   out_logits[row_base + target]);
       }
     }
+
     loss /= static_cast<float>(batch_size * context_len);
 
     // TODO
