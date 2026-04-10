@@ -8,15 +8,16 @@ namespace attention {
 
 /// Run the full single-head attention sublayer with its skip connection.
 Cache forward(const std::vector<float> &inputs, const Param &query_weights,
-              const Param &key_weights, const Param &value_weights, const Param &output_weights) {
+              const Param &key_weights, const Param &value_weights,
+              const Param &output_projection_weights) {
   Cache cache;
   cache.queries.resize(batch_size * context_len * head_dim);
   cache.keys.resize(batch_size * context_len * head_dim);
   cache.values.resize(batch_size * context_len * head_dim);
-  cache.weights.resize(batch_size * context_len * context_len);
+  cache.attention_weights.resize(batch_size * context_len * context_len);
   cache.head.assign(batch_size * context_len * head_dim, 0.0f);
-  cache.projected.assign(batch_size * context_len * embedding_dim, 0.0f);
-  cache.residual.resize(batch_size * context_len * embedding_dim);
+  cache.projected_output.assign(batch_size * context_len * embedding_dim, 0.0f);
+  cache.residual_output.resize(batch_size * context_len * embedding_dim);
 
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t c = 0; c < context_len; ++c) {
@@ -49,37 +50,38 @@ Cache forward(const std::vector<float> &inputs, const Param &query_weights,
 
     for (size_t i = 0; i < context_len; ++i) {
       const size_t q_base = qk_base + i * head_dim;
-      const size_t row_base = w_base + i * context_len;
+        const size_t row_base = w_base + i * context_len;
 
-      for (size_t j = 0; j < context_len; ++j) {
-        if (j > i) {
-          cache.weights[row_base + j] = -std::numeric_limits<float>::infinity();
-          continue;
-        }
+        for (size_t j = 0; j < context_len; ++j) {
+          if (j > i) {
+            cache.attention_weights[row_base + j] = -std::numeric_limits<float>::infinity();
+            continue;
+          }
 
         const size_t k_base = qk_base + j * head_dim;
         float score = 0.0f;
-        for (size_t h = 0; h < head_dim; ++h) {
-          score += cache.queries[q_base + h] * cache.keys[k_base + h];
+          for (size_t h = 0; h < head_dim; ++h) {
+            score += cache.queries[q_base + h] * cache.keys[k_base + h];
+          }
+          cache.attention_weights[row_base + j] = score * inv_sqrt_head_dim;
         }
-        cache.weights[row_base + j] = score * inv_sqrt_head_dim;
-      }
 
-      float max_score = cache.weights[row_base];
-      for (size_t j = 1; j < context_len; ++j) {
-        max_score = std::max(max_score, cache.weights[row_base + j]);
-      }
+        float max_score = cache.attention_weights[row_base];
+        for (size_t j = 1; j < context_len; ++j) {
+          max_score = std::max(max_score, cache.attention_weights[row_base + j]);
+        }
 
-      double sum_exp = 0.0;
-      for (size_t j = 0; j < context_len; ++j) {
-        sum_exp += std::exp(static_cast<double>(cache.weights[row_base + j] - max_score));
-      }
+        double sum_exp = 0.0;
+        for (size_t j = 0; j < context_len; ++j) {
+          sum_exp += std::exp(static_cast<double>(cache.attention_weights[row_base + j] - max_score));
+        }
 
-      for (size_t j = 0; j < context_len; ++j) {
-        cache.weights[row_base + j] = static_cast<float>(
-            std::exp(static_cast<double>(cache.weights[row_base + j] - max_score)) / sum_exp);
+        for (size_t j = 0; j < context_len; ++j) {
+          cache.attention_weights[row_base + j] = static_cast<float>(
+              std::exp(static_cast<double>(cache.attention_weights[row_base + j] - max_score)) /
+              sum_exp);
+        }
       }
-    }
   }
 
   for (size_t b = 0; b < batch_size; ++b) {
@@ -94,7 +96,7 @@ Cache forward(const std::vector<float> &inputs, const Param &query_weights,
       for (size_t h = 0; h < head_dim; ++h) {
         for (size_t j = 0; j < context_len; ++j) {
           cache.head[head_base + h] +=
-              cache.weights[row_base + j] * cache.values[v_base + j * head_dim + h];
+              cache.attention_weights[row_base + j] * cache.values[v_base + j * head_dim + h];
         }
       }
     }
@@ -107,10 +109,10 @@ Cache forward(const std::vector<float> &inputs, const Param &query_weights,
 
       for (size_t i = 0; i < embedding_dim; ++i) {
         for (size_t j = 0; j < head_dim; ++j) {
-          cache.projected[out_base + i] +=
-              cache.head[head_base + j] * output_weights.val[j * embedding_dim + i];
+          cache.projected_output[out_base + i] +=
+              cache.head[head_base + j] * output_projection_weights.val[j * embedding_dim + i];
         }
-        cache.residual[out_base + i] = inputs[out_base + i] + cache.projected[out_base + i];
+        cache.residual_output[out_base + i] = inputs[out_base + i] + cache.projected_output[out_base + i];
       }
     }
   }
@@ -121,7 +123,8 @@ Cache forward(const std::vector<float> &inputs, const Param &query_weights,
 /// Backpropagate through the full single-head attention sublayer.
 std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache,
                             const std::vector<float> &d_residual, Param &query_weights,
-                            Param &key_weights, Param &value_weights, Param &output_weights) {
+                            Param &key_weights, Param &value_weights,
+                            Param &output_projection_weights) {
   std::vector<float> d_inputs = d_residual;
   std::vector<float> d_head(batch_size * context_len * head_dim, 0.0f);
 
@@ -133,8 +136,9 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       for (size_t i = 0; i < embedding_dim; ++i) {
         const float grad = d_residual[out_base + i];
         for (size_t j = 0; j < head_dim; ++j) {
-          output_weights.grad[j * embedding_dim + i] += cache.head[head_base + j] * grad;
-          d_head[head_base + j] += grad * output_weights.val[j * embedding_dim + i];
+          output_projection_weights.grad[j * embedding_dim + i] +=
+              cache.head[head_base + j] * grad;
+          d_head[head_base + j] += grad * output_projection_weights.val[j * embedding_dim + i];
         }
       }
     }
@@ -150,14 +154,14 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       const size_t row_base = w_base + i * context_len;
       const size_t head_base = b * context_len * head_dim + i * head_dim;
 
-      for (size_t h = 0; h < head_dim; ++h) {
-        const float grad = d_head[head_base + h];
-        for (size_t j = 0; j < context_len; ++j) {
-          d_weights[row_base + j] += grad * cache.values[v_base + j * head_dim + h];
-          d_values[v_base + j * head_dim + h] += cache.weights[row_base + j] * grad;
+        for (size_t h = 0; h < head_dim; ++h) {
+          const float grad = d_head[head_base + h];
+          for (size_t j = 0; j < context_len; ++j) {
+            d_weights[row_base + j] += grad * cache.values[v_base + j * head_dim + h];
+            d_values[v_base + j * head_dim + h] += cache.attention_weights[row_base + j] * grad;
+          }
         }
       }
-    }
   }
 
   std::vector<float> d_scores(batch_size * context_len * context_len, 0.0f);
@@ -168,10 +172,11 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       const size_t row_base = w_base + i * context_len;
       float dot = 0.0f;
       for (size_t j = 0; j < context_len; ++j) {
-        dot += d_weights[row_base + j] * cache.weights[row_base + j];
+        dot += d_weights[row_base + j] * cache.attention_weights[row_base + j];
       }
       for (size_t j = 0; j < context_len; ++j) {
-        d_scores[row_base + j] = cache.weights[row_base + j] * (d_weights[row_base + j] - dot);
+        d_scores[row_base + j] =
+            cache.attention_weights[row_base + j] * (d_weights[row_base + j] - dot);
       }
     }
   }

@@ -7,8 +7,8 @@ namespace layer_norm {
 /// Run one LayerNorm over the embedding dimension.
 Cache forward(const std::vector<float> &inputs, const Param &scale, const Param &shift) {
   Cache cache;
-  cache.normalized.resize(batch_size * context_len * embedding_dim);
-  cache.output.resize(batch_size * context_len * embedding_dim);
+  cache.normalized_input.resize(batch_size * context_len * embedding_dim);
+  cache.layer_norm_output.resize(batch_size * context_len * embedding_dim);
   cache.inv_std.resize(batch_size * context_len);
 
   for (size_t b = 0; b < batch_size; ++b) {
@@ -34,8 +34,8 @@ Cache forward(const std::vector<float> &inputs, const Param &scale, const Param 
 
       for (size_t i = 0; i < embedding_dim; ++i) {
         const float normalized = (inputs[row_base + i] - mean) * inv_std;
-        cache.normalized[row_base + i] = normalized;
-        cache.output[row_base + i] = scale.val[i] * normalized + shift.val[i];
+        cache.normalized_input[row_base + i] = normalized;
+        cache.layer_norm_output[row_base + i] = scale.val[i] * normalized + shift.val[i];
       }
     }
   }
@@ -59,8 +59,8 @@ std::vector<float> backward(const std::vector<float> &d_output, const Cache &cac
       for (size_t i = 0; i < embedding_dim; ++i) {
         const float dxhat = d_output[row_base + i] * scale.val[i];
         sum_dxhat += dxhat;
-        sum_dxhat_xhat += dxhat * cache.normalized[row_base + i];
-        scale.grad[i] += d_output[row_base + i] * cache.normalized[row_base + i];
+        sum_dxhat_xhat += dxhat * cache.normalized_input[row_base + i];
+        scale.grad[i] += d_output[row_base + i] * cache.normalized_input[row_base + i];
         shift.grad[i] += d_output[row_base + i];
       }
 
@@ -68,7 +68,7 @@ std::vector<float> backward(const std::vector<float> &d_output, const Cache &cac
         const float dxhat = d_output[row_base + i] * scale.val[i];
         d_inputs[row_base + i] = inv_std *
                                  (static_cast<float>(embedding_dim) * dxhat - sum_dxhat -
-                                  cache.normalized[row_base + i] * sum_dxhat_xhat) /
+                                  cache.normalized_input[row_base + i] * sum_dxhat_xhat) /
                                  static_cast<float>(embedding_dim);
       }
     }

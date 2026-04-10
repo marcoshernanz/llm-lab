@@ -71,11 +71,11 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
 
 /// Hold the intermediate tensors from one full block forward pass.
 struct ForwardCache {
-  std::vector<float> embeddings;
+  std::vector<float> input_embeddings;
   attention::Cache attention;
-  layer_norm::Cache attention_norm;
+  layer_norm::Cache attention_layer_norm;
   feed_forward::Cache feed_forward;
-  layer_norm::Cache feed_forward_norm;
+  layer_norm::Cache feed_forward_layer_norm;
   std::vector<float> logits;
   std::vector<float> probs;
   float avg_loss = 0.0f;
@@ -84,114 +84,117 @@ struct ForwardCache {
 /// Hold the trainable tensors for the tiny language model.
 class Model {
 public:
-  Param token_embeddings;
-  Param position_embeddings;
-  Param query_weights;
-  Param key_weights;
-  Param value_weights;
-  Param attention_output_weights;
-  Param attention_norm_scale;
-  Param attention_norm_shift;
-  Param feed_forward_hidden_weights;
-  Param feed_forward_hidden_bias;
-  Param feed_forward_output_weights;
-  Param feed_forward_output_bias;
-  Param feed_forward_norm_scale;
-  Param feed_forward_norm_shift;
-  Param logit_weights;
-  Param output_bias;
+  Param token_embedding_table;
+  Param position_embedding_table;
+  Param attention_query_weights;
+  Param attention_key_weights;
+  Param attention_value_weights;
+  Param attention_output_projection_weights;
+  Param attention_norm_gain;
+  Param attention_norm_bias;
+  Param feed_forward_in_weights;
+  Param feed_forward_in_bias;
+  Param feed_forward_out_weights;
+  Param feed_forward_out_bias;
+  Param feed_forward_norm_gain;
+  Param feed_forward_norm_bias;
+  Param lm_head_weights;
+  Param lm_head_bias;
 
   /// Construct one model with correctly sized parameter tensors.
   Model()
-      : token_embeddings(vocab_size * embedding_dim),
-        position_embeddings(context_len * embedding_dim), query_weights(embedding_dim * head_dim),
-        key_weights(embedding_dim * head_dim), value_weights(embedding_dim * head_dim),
-        attention_output_weights(head_dim * embedding_dim), attention_norm_scale(embedding_dim),
-        attention_norm_shift(embedding_dim),
-        feed_forward_hidden_weights(embedding_dim * feed_forward_dim),
-        feed_forward_hidden_bias(feed_forward_dim),
-        feed_forward_output_weights(feed_forward_dim * embedding_dim),
-        feed_forward_output_bias(embedding_dim), feed_forward_norm_scale(embedding_dim),
-        feed_forward_norm_shift(embedding_dim), logit_weights(embedding_dim * vocab_size),
-        output_bias(vocab_size) {}
+      : token_embedding_table(vocab_size * embedding_dim),
+        position_embedding_table(context_len * embedding_dim),
+        attention_query_weights(embedding_dim * head_dim),
+        attention_key_weights(embedding_dim * head_dim),
+        attention_value_weights(embedding_dim * head_dim),
+        attention_output_projection_weights(head_dim * embedding_dim),
+        attention_norm_gain(embedding_dim), attention_norm_bias(embedding_dim),
+        feed_forward_in_weights(embedding_dim * feed_forward_dim),
+        feed_forward_in_bias(feed_forward_dim),
+        feed_forward_out_weights(feed_forward_dim * embedding_dim),
+        feed_forward_out_bias(embedding_dim), feed_forward_norm_gain(embedding_dim),
+        feed_forward_norm_bias(embedding_dim), lm_head_weights(embedding_dim * vocab_size),
+        lm_head_bias(vocab_size) {}
 
   /// Initialize one model with random weights and zero biases.
   static Model init() {
     Model model;
-    model.token_embeddings.init_randn();
-    model.position_embeddings.init_randn();
-    model.query_weights.init_randn();
-    model.key_weights.init_randn();
-    model.value_weights.init_randn();
-    model.attention_output_weights.init_randn();
-    model.attention_norm_scale.init_ones();
-    model.attention_norm_shift.init_zeros();
-    model.feed_forward_hidden_weights.init_randn();
-    model.feed_forward_hidden_bias.init_zeros();
-    model.feed_forward_output_weights.init_randn();
-    model.feed_forward_output_bias.init_zeros();
-    model.feed_forward_norm_scale.init_ones();
-    model.feed_forward_norm_shift.init_zeros();
-    model.logit_weights.init_randn();
-    model.output_bias.init_zeros();
+    model.token_embedding_table.init_normal(0.1f);
+    model.position_embedding_table.init_normal(0.1f);
+    model.attention_query_weights.init_normal(fan_in_stddev(embedding_dim));
+    model.attention_key_weights.init_normal(fan_in_stddev(embedding_dim));
+    model.attention_value_weights.init_normal(fan_in_stddev(embedding_dim));
+    model.attention_output_projection_weights.init_normal(fan_in_stddev(head_dim));
+    model.attention_norm_gain.init_ones();
+    model.attention_norm_bias.init_zeros();
+    model.feed_forward_in_weights.init_normal(fan_in_stddev(embedding_dim));
+    model.feed_forward_in_bias.init_zeros();
+    model.feed_forward_out_weights.init_normal(fan_in_stddev(feed_forward_dim));
+    model.feed_forward_out_bias.init_zeros();
+    model.feed_forward_norm_gain.init_ones();
+    model.feed_forward_norm_bias.init_zeros();
+    model.lm_head_weights.init_normal(fan_in_stddev(embedding_dim));
+    model.lm_head_bias.init_zeros();
     return model;
   }
 
   /// Reset every parameter gradient buffer to zero.
   void zero_grad() {
-    token_embeddings.zero_grad();
-    position_embeddings.zero_grad();
-    query_weights.zero_grad();
-    key_weights.zero_grad();
-    value_weights.zero_grad();
-    attention_output_weights.zero_grad();
-    attention_norm_scale.zero_grad();
-    attention_norm_shift.zero_grad();
-    feed_forward_hidden_weights.zero_grad();
-    feed_forward_hidden_bias.zero_grad();
-    feed_forward_output_weights.zero_grad();
-    feed_forward_output_bias.zero_grad();
-    feed_forward_norm_scale.zero_grad();
-    feed_forward_norm_shift.zero_grad();
-    logit_weights.zero_grad();
-    output_bias.zero_grad();
+    token_embedding_table.zero_grad();
+    position_embedding_table.zero_grad();
+    attention_query_weights.zero_grad();
+    attention_key_weights.zero_grad();
+    attention_value_weights.zero_grad();
+    attention_output_projection_weights.zero_grad();
+    attention_norm_gain.zero_grad();
+    attention_norm_bias.zero_grad();
+    feed_forward_in_weights.zero_grad();
+    feed_forward_in_bias.zero_grad();
+    feed_forward_out_weights.zero_grad();
+    feed_forward_out_bias.zero_grad();
+    feed_forward_norm_gain.zero_grad();
+    feed_forward_norm_bias.zero_grad();
+    lm_head_weights.zero_grad();
+    lm_head_bias.zero_grad();
   }
 
   /// Scale every parameter gradient buffer by one constant.
   void scale_grads(float scale) {
-    token_embeddings.scale_grad(scale);
-    position_embeddings.scale_grad(scale);
-    query_weights.scale_grad(scale);
-    key_weights.scale_grad(scale);
-    value_weights.scale_grad(scale);
-    attention_output_weights.scale_grad(scale);
-    attention_norm_scale.scale_grad(scale);
-    attention_norm_shift.scale_grad(scale);
-    feed_forward_hidden_weights.scale_grad(scale);
-    feed_forward_hidden_bias.scale_grad(scale);
-    feed_forward_output_weights.scale_grad(scale);
-    feed_forward_output_bias.scale_grad(scale);
-    feed_forward_norm_scale.scale_grad(scale);
-    feed_forward_norm_shift.scale_grad(scale);
-    logit_weights.scale_grad(scale);
-    output_bias.scale_grad(scale);
+    token_embedding_table.scale_grad(scale);
+    position_embedding_table.scale_grad(scale);
+    attention_query_weights.scale_grad(scale);
+    attention_key_weights.scale_grad(scale);
+    attention_value_weights.scale_grad(scale);
+    attention_output_projection_weights.scale_grad(scale);
+    attention_norm_gain.scale_grad(scale);
+    attention_norm_bias.scale_grad(scale);
+    feed_forward_in_weights.scale_grad(scale);
+    feed_forward_in_bias.scale_grad(scale);
+    feed_forward_out_weights.scale_grad(scale);
+    feed_forward_out_bias.scale_grad(scale);
+    feed_forward_norm_gain.scale_grad(scale);
+    feed_forward_norm_bias.scale_grad(scale);
+    lm_head_weights.scale_grad(scale);
+    lm_head_bias.scale_grad(scale);
   }
 
   /// Run one full forward pass and keep the tensors needed for backprop.
   ForwardCache forward(const std::vector<int> &ids, const std::vector<int> &targets) const {
     ForwardCache cache;
-    cache.embeddings = compute_embeddings(ids);
-    cache.attention = attention::forward(cache.embeddings, query_weights, key_weights,
-                                         value_weights, attention_output_weights);
-    cache.attention_norm =
-        layer_norm::forward(cache.attention.residual, attention_norm_scale, attention_norm_shift);
+    cache.input_embeddings = compute_input_embeddings(ids);
+    cache.attention = attention::forward(cache.input_embeddings, attention_query_weights,
+                                         attention_key_weights, attention_value_weights,
+                                         attention_output_projection_weights);
+    cache.attention_layer_norm = layer_norm::forward(cache.attention.residual_output,
+                                                     attention_norm_gain, attention_norm_bias);
     cache.feed_forward = feed_forward::forward(
-        cache.attention_norm.output, feed_forward_hidden_weights, feed_forward_hidden_bias,
-        feed_forward_output_weights, feed_forward_output_bias);
-    cache.feed_forward_norm = layer_norm::forward(cache.feed_forward.residual,
-                                                  feed_forward_norm_scale, feed_forward_norm_shift);
-    compute_logits_and_loss(cache.feed_forward_norm.output, targets, cache.logits, cache.probs,
-                            cache.avg_loss);
+        cache.attention_layer_norm.layer_norm_output, feed_forward_in_weights,
+        feed_forward_in_bias, feed_forward_out_weights, feed_forward_out_bias);
+    cache.feed_forward_layer_norm = layer_norm::forward(
+        cache.feed_forward.residual_output, feed_forward_norm_gain, feed_forward_norm_bias);
+    compute_logits_and_loss(cache.feed_forward_layer_norm.layer_norm_output, targets, cache.logits,
+                            cache.probs, cache.avg_loss);
     return cache;
   }
 
@@ -201,18 +204,20 @@ public:
 
     const ForwardCache cache = forward(ids, targets);
     const std::vector<float> d_block_output =
-        backward_logits(cache.feed_forward_norm.output, targets, cache.probs);
+        backward_logits(cache.feed_forward_layer_norm.layer_norm_output, targets, cache.probs);
     const std::vector<float> d_feed_forward_residual = layer_norm::backward(
-        d_block_output, cache.feed_forward_norm, feed_forward_norm_scale, feed_forward_norm_shift);
+        d_block_output, cache.feed_forward_layer_norm, feed_forward_norm_gain,
+        feed_forward_norm_bias);
     const std::vector<float> d_attention_norm_output = feed_forward::backward(
-        cache.attention_norm.output, cache.feed_forward, d_feed_forward_residual,
-        feed_forward_hidden_weights, feed_forward_hidden_bias, feed_forward_output_weights,
-        feed_forward_output_bias);
+        cache.attention_layer_norm.layer_norm_output, cache.feed_forward, d_feed_forward_residual,
+        feed_forward_in_weights, feed_forward_in_bias, feed_forward_out_weights,
+        feed_forward_out_bias);
     const std::vector<float> d_attention_residual = layer_norm::backward(
-        d_attention_norm_output, cache.attention_norm, attention_norm_scale, attention_norm_shift);
-    const std::vector<float> d_embeddings =
-        attention::backward(cache.embeddings, cache.attention, d_attention_residual, query_weights,
-                            key_weights, value_weights, attention_output_weights);
+        d_attention_norm_output, cache.attention_layer_norm, attention_norm_gain,
+        attention_norm_bias);
+    const std::vector<float> d_embeddings = attention::backward(
+        cache.input_embeddings, cache.attention, d_attention_residual, attention_query_weights,
+        attention_key_weights, attention_value_weights, attention_output_projection_weights);
     accumulate_embedding_grads(ids, d_embeddings);
 
     scale_grads(inv_token_count);
@@ -226,27 +231,27 @@ public:
 
   /// Apply one optimizer step to every parameter tensor.
   void update() {
-    token_embeddings.update();
-    position_embeddings.update();
-    query_weights.update();
-    key_weights.update();
-    value_weights.update();
-    attention_output_weights.update();
-    attention_norm_scale.update();
-    attention_norm_shift.update();
-    feed_forward_hidden_weights.update();
-    feed_forward_hidden_bias.update();
-    feed_forward_output_weights.update();
-    feed_forward_output_bias.update();
-    feed_forward_norm_scale.update();
-    feed_forward_norm_shift.update();
-    logit_weights.update();
-    output_bias.update();
+    token_embedding_table.update();
+    position_embedding_table.update();
+    attention_query_weights.update();
+    attention_key_weights.update();
+    attention_value_weights.update();
+    attention_output_projection_weights.update();
+    attention_norm_gain.update();
+    attention_norm_bias.update();
+    feed_forward_in_weights.update();
+    feed_forward_in_bias.update();
+    feed_forward_out_weights.update();
+    feed_forward_out_bias.update();
+    feed_forward_norm_gain.update();
+    feed_forward_norm_bias.update();
+    lm_head_weights.update();
+    lm_head_bias.update();
   }
 
 private:
   /// Build token-plus-position embeddings for one batch.
-  std::vector<float> compute_embeddings(const std::vector<int> &ids) const {
+  std::vector<float> compute_input_embeddings(const std::vector<int> &ids) const {
     std::vector<float> embeddings(batch_size * context_len * embedding_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
@@ -256,8 +261,8 @@ private:
         const size_t pos_base = c * embedding_dim;
 
         for (size_t i = 0; i < embedding_dim; ++i) {
-          embeddings[out_base + i] =
-              token_embeddings.val[tok_base + i] + position_embeddings.val[pos_base + i];
+          embeddings[out_base + i] = token_embedding_table.val[tok_base + i] +
+                                     position_embedding_table.val[pos_base + i];
         }
       }
     }
@@ -278,9 +283,9 @@ private:
         const size_t row_base = b * context_len * vocab_size + c * vocab_size;
 
         for (size_t i = 0; i < vocab_size; ++i) {
-          float logit = output_bias.val[i];
+          float logit = lm_head_bias.val[i];
           for (size_t j = 0; j < embedding_dim; ++j) {
-            logit += inputs[in_base + j] * logit_weights.val[j * vocab_size + i];
+            logit += inputs[in_base + j] * lm_head_weights.val[j * vocab_size + i];
           }
           logits[row_base + i] = logit;
         }
@@ -328,10 +333,10 @@ private:
 
         for (size_t i = 0; i < vocab_size; ++i) {
           const float grad = d_logits[row_base + i];
-          output_bias.grad[i] += grad;
+          lm_head_bias.grad[i] += grad;
           for (size_t j = 0; j < embedding_dim; ++j) {
-            logit_weights.grad[j * vocab_size + i] += inputs[in_base + j] * grad;
-            d_inputs[in_base + j] += grad * logit_weights.val[j * vocab_size + i];
+            lm_head_weights.grad[j * vocab_size + i] += inputs[in_base + j] * grad;
+            d_inputs[in_base + j] += grad * lm_head_weights.val[j * vocab_size + i];
           }
         }
       }
@@ -351,8 +356,8 @@ private:
         const size_t pos_base = c * embedding_dim;
 
         for (size_t i = 0; i < embedding_dim; ++i) {
-          token_embeddings.grad[tok_base + i] += d_embeddings[grad_base + i];
-          position_embeddings.grad[pos_base + i] += d_embeddings[grad_base + i];
+          token_embedding_table.grad[tok_base + i] += d_embeddings[grad_base + i];
+          position_embedding_table.grad[pos_base + i] += d_embeddings[grad_base + i];
         }
       }
     }

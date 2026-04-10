@@ -27,6 +27,11 @@ inline constexpr float layer_norm_eps = 1e-5f;
 /// Sample one normal random value for parameter initialization.
 float randn();
 
+/// Return the standard deviation used for fan-in scaled weights.
+inline float fan_in_stddev(int fan_in) {
+  return 1.0f / std::sqrt(static_cast<float>(fan_in));
+}
+
 /// Hold Adam state for one parameter tensor.
 class Adam {
 public:
@@ -66,10 +71,10 @@ public:
   /// Construct one parameter tensor with matching gradient and optimizer state.
   explicit Param(size_t size) : val(size), grad(size, 0.0f), optimizer(size) {}
 
-  /// Fill the parameter tensor with random values.
-  void init_randn() {
+  /// Fill the parameter tensor with normal values of one chosen scale.
+  void init_normal(float stddev) {
     for (float &x : val) {
-      x = randn();
+      x = randn() * stddev;
     }
   }
 

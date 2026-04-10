@@ -8,8 +8,8 @@ namespace layer_norm {
 
 /// Hold the intermediate tensors for one LayerNorm application.
 struct Cache {
-  std::vector<float> normalized;
-  std::vector<float> output;
+  std::vector<float> normalized_input;
+  std::vector<float> layer_norm_output;
   std::vector<float> inv_std;
 };
 
