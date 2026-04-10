@@ -426,92 +426,93 @@ public:
       }
     }
 
-    float loss = 0.0f;
+    float avg_loss = 0.0f;
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t row_base = b * context_len * vocab_size + c * vocab_size;
         const size_t idx = b * context_len + c;
         const size_t target = targets[idx];
 
-        loss += static_cast<float>(max_out_logits[idx] + std::log(out_sums_exp[idx]) -
-                                   out_logits[row_base + target]);
+        avg_loss += static_cast<float>(max_out_logits[idx] + std::log(out_sums_exp[idx]) -
+                                       out_logits[row_base + target]);
       }
     }
 
-    loss /= static_cast<float>(batch_size * context_len);
+    avg_loss /= static_cast<float>(batch_size * context_len);
+
+    std::vector<float> d_out_logits(batch_size * context_len * vocab_size);
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < vocab_size; ++i) {
+          d_out_logits[b * context_len * vocab_size + c * vocab_size + i] =
+              static_cast<float>(std::exp(static_cast<double>(
+                                     out_logits[b * context_len * vocab_size + c * vocab_size + i] -
+                                     max_out_logits[b * context_len + c])) /
+                                 out_sums_exp[b * context_len + c]);
+        }
+      }
+    }
 
     // TODO
 
-    const LossStats loss_stats = compute_loss_stats(logits, targets);
+    // for (size_t b = 0; b < batch_size; ++b) {
+    //   const size_t logits_offset = b * vocab_size;
+    //   for (size_t i = 0; i < vocab_size; ++i) {
+    //     output_bias.grad[i] += d_logits[logits_offset + i];
+    //   }
+    // }
 
-    std::vector<float> d_logits(batch_size * vocab_size);
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t logits_offset = b * vocab_size;
-      for (size_t i = 0; i < vocab_size; ++i) {
-        d_logits[logits_offset + i] = static_cast<float>(
-            std::exp(static_cast<double>(logits[logits_offset + i] - loss_stats.max_logits[b])) /
-            loss_stats.sums_exp[b]);
-      }
-      d_logits[logits_offset + targets[b]] -= 1.0f;
-    }
+    // std::vector<float> d_hidden(batch_size * head_dim, 0.0f);
+    // for (size_t b = 0; b < batch_size; ++b) {
+    //   const size_t hidden_offset = b * head_dim;
+    //   const size_t logits_offset = b * vocab_size;
+    //   for (size_t i = 0; i < vocab_size; ++i) {
+    //     for (size_t j = 0; j < head_dim; ++j) {
+    //       output_weights.grad[j * vocab_size + i] +=
+    //           d_logits[logits_offset + i] * hidden[hidden_offset + j];
+    //       d_hidden[hidden_offset + j] +=
+    //           d_logits[logits_offset + i] * output_weights.val[j * vocab_size + i];
+    //     }
+    //   }
+    // }
 
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t logits_offset = b * vocab_size;
-      for (size_t i = 0; i < vocab_size; ++i) {
-        output_bias.grad[i] += d_logits[logits_offset + i];
-      }
-    }
+    // std::vector<float> d_hidden_pre(batch_size * head_dim);
+    // for (size_t b = 0; b < batch_size; ++b) {
+    //   const size_t hidden_offset = b * head_dim;
+    //   for (size_t i = 0; i < head_dim; ++i) {
+    //     d_hidden_pre[hidden_offset + i] =
+    //         d_hidden[hidden_offset + i] *
+    //         (1.0f - hidden[hidden_offset + i] * hidden[hidden_offset + i]);
+    //   }
+    // }
 
-    std::vector<float> d_hidden(batch_size * head_dim, 0.0f);
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t hidden_offset = b * head_dim;
-      const size_t logits_offset = b * vocab_size;
-      for (size_t i = 0; i < vocab_size; ++i) {
-        for (size_t j = 0; j < head_dim; ++j) {
-          output_weights.grad[j * vocab_size + i] +=
-              d_logits[logits_offset + i] * hidden[hidden_offset + j];
-          d_hidden[hidden_offset + j] +=
-              d_logits[logits_offset + i] * output_weights.val[j * vocab_size + i];
-        }
-      }
-    }
+    // for (size_t b = 0; b < batch_size; ++b) {
+    //   const size_t hidden_offset = b * head_dim;
+    //   for (size_t i = 0; i < head_dim; ++i) {
+    //     head_dim.grad[i] += d_hidden_pre[hidden_offset + i];
+    //   }
+    // }
 
-    std::vector<float> d_hidden_pre(batch_size * head_dim);
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t hidden_offset = b * head_dim;
-      for (size_t i = 0; i < head_dim; ++i) {
-        d_hidden_pre[hidden_offset + i] =
-            d_hidden[hidden_offset + i] *
-            (1.0f - hidden[hidden_offset + i] * hidden[hidden_offset + i]);
-      }
-    }
-
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t hidden_offset = b * head_dim;
-      for (size_t i = 0; i < head_dim; ++i) {
-        head_dim.grad[i] += d_hidden_pre[hidden_offset + i];
-      }
-    }
-
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t hidden_offset = b * head_dim;
-      const size_t ids_offset = b * context_len;
-      for (size_t c = 0; c < context_len; ++c) {
-        for (size_t i = 0; i < head_dim; ++i) {
-          for (size_t j = 0; j < embedding_dim; ++j) {
-            const int token_id = ids[ids_offset + c];
-            embeddings.grad[token_id * embedding_dim + j] +=
-                d_hidden_pre[hidden_offset + i] *
-                hidden_weights.val[c * embedding_dim * hidden_dim + j * hidden_dim + i];
-            hidden_weights.grad[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
-                d_hidden_pre[hidden_offset + i] * embeddings.val[token_id * embedding_dim + j];
-          }
-        }
-      }
-    }
+    // for (size_t b = 0; b < batch_size; ++b) {
+    //   const size_t hidden_offset = b * head_dim;
+    //   const size_t ids_offset = b * context_len;
+    //   for (size_t c = 0; c < context_len; ++c) {
+    //     for (size_t i = 0; i < head_dim; ++i) {
+    //       for (size_t j = 0; j < embedding_dim; ++j) {
+    //         const int token_id = ids[ids_offset + c];
+    //         embeddings.grad[token_id * embedding_dim + j] +=
+    //             d_hidden_pre[hidden_offset + i] *
+    //             hidden_weights.val[c * embedding_dim * hidden_dim + j * hidden_dim + i];
+    //         hidden_weights.grad[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
+    //             d_hidden_pre[hidden_offset + i] * embeddings.val[token_id * embedding_dim + j];
+    //       }
+    //     }
+    //   }
+    // }
 
     scale_grads(inv_batch_size);
-    return loss_stats.avg_loss;
+    return avg_loss;
   }
 
   /// Compute the average loss for one batch without building gradients.
