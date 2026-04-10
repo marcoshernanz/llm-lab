@@ -28,6 +28,7 @@ const float learning_rate = 0.01f;
 const float beta1 = 0.9f;
 const float beta2 = 0.999f;
 const float eps = 1e-8f;
+const float layer_norm_eps = 1e-5f;
 
 std::unordered_map<char, int> char_to_id;
 
@@ -92,6 +93,9 @@ struct ForwardCache {
   std::vector<float> head;
   std::vector<float> projected_attention;
   std::vector<float> residual;
+  std::vector<float> normalized_residual;
+  std::vector<float> layer_norm_output;
+  std::vector<float> layer_norm_inv_std;
   std::vector<float> logits;
   std::vector<float> probs;
   float avg_loss;
@@ -146,6 +150,9 @@ public:
   /// Fill the parameter tensor with zeros.
   void init_zeros() { std::fill(val.begin(), val.end(), 0.0f); }
 
+  /// Fill the parameter tensor with ones.
+  void init_ones() { std::fill(val.begin(), val.end(), 1.0f); }
+
   /// Reset the gradient buffer to zero.
   void zero_grad() { std::fill(grad.begin(), grad.end(), 0.0f); }
 
@@ -169,6 +176,8 @@ public:
   Param key_weights;
   Param value_weights;
   Param attention_output_weights;
+  Param layer_norm_scale;
+  Param layer_norm_shift;
   Param logit_weights;
   Param output_bias;
 
@@ -177,7 +186,8 @@ public:
       : token_embeddings(vocab_size * embedding_dim),
         position_embeddings(context_len * embedding_dim), query_weights(embedding_dim * head_dim),
         key_weights(embedding_dim * head_dim), value_weights(embedding_dim * head_dim),
-        attention_output_weights(head_dim * embedding_dim), logit_weights(embedding_dim * vocab_size),
+        attention_output_weights(head_dim * embedding_dim), layer_norm_scale(embedding_dim),
+        layer_norm_shift(embedding_dim), logit_weights(embedding_dim * vocab_size),
         output_bias(vocab_size) {}
 
   /// Initialize one model with random weights and zero biases.
@@ -189,6 +199,8 @@ public:
     model.key_weights.init_randn();
     model.value_weights.init_randn();
     model.attention_output_weights.init_randn();
+    model.layer_norm_scale.init_ones();
+    model.layer_norm_shift.init_zeros();
     model.logit_weights.init_randn();
     model.output_bias.init_zeros();
     return model;
@@ -202,6 +214,8 @@ public:
     key_weights.zero_grad();
     value_weights.zero_grad();
     attention_output_weights.zero_grad();
+    layer_norm_scale.zero_grad();
+    layer_norm_shift.zero_grad();
     logit_weights.zero_grad();
     output_bias.zero_grad();
   }
@@ -214,6 +228,8 @@ public:
     key_weights.scale_grad(scale);
     value_weights.scale_grad(scale);
     attention_output_weights.scale_grad(scale);
+    layer_norm_scale.scale_grad(scale);
+    layer_norm_shift.scale_grad(scale);
     logit_weights.scale_grad(scale);
     output_bias.scale_grad(scale);
   }
@@ -229,6 +245,9 @@ public:
         .head = std::vector<float>(batch_size * context_len * head_dim, 0.0f),
         .projected_attention = std::vector<float>(batch_size * context_len * embedding_dim, 0.0f),
         .residual = std::vector<float>(batch_size * context_len * embedding_dim),
+        .normalized_residual = std::vector<float>(batch_size * context_len * embedding_dim),
+        .layer_norm_output = std::vector<float>(batch_size * context_len * embedding_dim),
+        .layer_norm_inv_std = std::vector<float>(batch_size * context_len),
         .logits = std::vector<float>(batch_size * context_len * vocab_size),
         .probs = std::vector<float>(batch_size * context_len * vocab_size),
         .avg_loss = 0.0f,
@@ -349,12 +368,42 @@ public:
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t residual_base = b * context_len * embedding_dim + c * embedding_dim;
+        const size_t norm_index = b * context_len + c;
+
+        float mean = 0.0f;
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          mean += cache.residual[residual_base + i];
+        }
+        mean /= static_cast<float>(embedding_dim);
+
+        float variance = 0.0f;
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float centered = cache.residual[residual_base + i] - mean;
+          variance += centered * centered;
+        }
+        variance /= static_cast<float>(embedding_dim);
+
+        const float inv_std = 1.0f / std::sqrt(variance + layer_norm_eps);
+        cache.layer_norm_inv_std[norm_index] = inv_std;
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float normalized = (cache.residual[residual_base + i] - mean) * inv_std;
+          cache.normalized_residual[residual_base + i] = normalized;
+          cache.layer_norm_output[residual_base + i] =
+              layer_norm_scale.val[i] * normalized + layer_norm_shift.val[i];
+        }
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t residual_base = b * context_len * embedding_dim + c * embedding_dim;
         const size_t out_base = b * context_len * vocab_size + c * vocab_size;
 
         for (size_t i = 0; i < vocab_size; ++i) {
           float logit = output_bias.val[i];
           for (size_t j = 0; j < embedding_dim; ++j) {
-            logit += cache.residual[residual_base + j] * logit_weights.val[j * vocab_size + i];
+            logit += cache.layer_norm_output[residual_base + j] * logit_weights.val[j * vocab_size + i];
           }
           cache.logits[out_base + i] = logit;
         }
@@ -403,7 +452,7 @@ public:
       }
     }
 
-    std::vector<float> d_residual(batch_size * context_len * embedding_dim, 0.0f);
+    std::vector<float> d_layer_norm_output(batch_size * context_len * embedding_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t residual_base = b * context_len * embedding_dim + c * embedding_dim;
@@ -413,9 +462,38 @@ public:
           const float grad = d_logits[logit_base + i];
           output_bias.grad[i] += grad;
           for (size_t j = 0; j < embedding_dim; ++j) {
-            logit_weights.grad[j * vocab_size + i] += cache.residual[residual_base + j] * grad;
-            d_residual[residual_base + j] += grad * logit_weights.val[j * vocab_size + i];
+            logit_weights.grad[j * vocab_size + i] += cache.layer_norm_output[residual_base + j] * grad;
+            d_layer_norm_output[residual_base + j] += grad * logit_weights.val[j * vocab_size + i];
           }
+        }
+      }
+    }
+
+    std::vector<float> d_residual(batch_size * context_len * embedding_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t residual_base = b * context_len * embedding_dim + c * embedding_dim;
+        const size_t norm_index = b * context_len + c;
+        const float inv_std = cache.layer_norm_inv_std[norm_index];
+
+        float sum_dxhat = 0.0f;
+        float sum_dxhat_xhat = 0.0f;
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float dxhat = d_layer_norm_output[residual_base + i] * layer_norm_scale.val[i];
+          sum_dxhat += dxhat;
+          sum_dxhat_xhat += dxhat * cache.normalized_residual[residual_base + i];
+          layer_norm_scale.grad[i] +=
+              d_layer_norm_output[residual_base + i] * cache.normalized_residual[residual_base + i];
+          layer_norm_shift.grad[i] += d_layer_norm_output[residual_base + i];
+        }
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float dxhat = d_layer_norm_output[residual_base + i] * layer_norm_scale.val[i];
+          d_residual[residual_base + i] =
+              inv_std *
+              (static_cast<float>(embedding_dim) * dxhat - sum_dxhat -
+               cache.normalized_residual[residual_base + i] * sum_dxhat_xhat) /
+              static_cast<float>(embedding_dim);
         }
       }
     }
@@ -560,6 +638,8 @@ public:
     key_weights.update();
     value_weights.update();
     attention_output_weights.update();
+    layer_norm_scale.update();
+    layer_norm_shift.update();
     logit_weights.update();
     output_bias.update();
   }
