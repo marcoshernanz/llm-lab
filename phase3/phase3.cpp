@@ -384,14 +384,15 @@ public:
 
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
-        for (size_t i = 0; i < vocab_size; ++i) {
-          out[b * context_len * vocab_size + c * vocab_size + i] = output_bias.val[i];
+        const size_t head_base = b * context_len * head_dim + c * head_dim;
+        const size_t out_base = b * context_len * vocab_size + c * vocab_size;
 
+        for (size_t i = 0; i < vocab_size; ++i) {
+          float logit = output_bias.val[i];
           for (size_t j = 0; j < head_dim; ++j) {
-            out[b * context_len * vocab_size + c * vocab_size + i] +=
-                head[b * context_len * head_dim + c * head_dim + j] *
-                output_weights.val[j * vocab_size + i];
+            logit += head[head_base + j] * output_weights.val[j * vocab_size + i];
           }
+          out[out_base + i] = logit;
         }
       }
     }
