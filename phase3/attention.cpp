@@ -26,7 +26,7 @@ size_t attended_index(size_t batch_index, size_t token_index, size_t head_index,
   return qkv_index(batch_index, token_index, head_index, channel_index);
 }
 
-/// Run the full multi-head attention sublayer with its skip connection.
+/// Run the full multi-head attention sublayer without the skip connection.
 Cache forward(const std::vector<float> &inputs, const Param &query_weights,
               const Param &key_weights, const Param &value_weights,
               const Param &output_projection_weights) {
@@ -37,7 +37,6 @@ Cache forward(const std::vector<float> &inputs, const Param &query_weights,
   cache.attention_weights.resize(batch_size * num_heads * context_len * context_len);
   cache.attended_values.assign(batch_size * context_len * attention_dim, 0.0f);
   cache.projected_output.assign(batch_size * context_len * embedding_dim, 0.0f);
-  cache.residual_output.resize(batch_size * context_len * embedding_dim);
 
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t t = 0; t < context_len; ++t) {
@@ -125,8 +124,6 @@ Cache forward(const std::vector<float> &inputs, const Param &query_weights,
           cache.projected_output[output_base + i] +=
               cache.attended_values[attended_base + j] * output_projection_weights.val[j * embedding_dim + i];
         }
-        cache.residual_output[output_base + i] =
-            inputs[output_base + i] + cache.projected_output[output_base + i];
       }
     }
   }
@@ -136,10 +133,10 @@ Cache forward(const std::vector<float> &inputs, const Param &query_weights,
 
 /// Backpropagate through the full multi-head attention sublayer.
 std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache,
-                            const std::vector<float> &d_residual, Param &query_weights,
+                            const std::vector<float> &d_projected_output, Param &query_weights,
                             Param &key_weights, Param &value_weights,
                             Param &output_projection_weights) {
-  std::vector<float> d_inputs = d_residual;
+  std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
   std::vector<float> d_attended_values(batch_size * context_len * attention_dim, 0.0f);
 
   for (size_t b = 0; b < batch_size; ++b) {
@@ -148,7 +145,7 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       const size_t output_base = b * context_len * embedding_dim + t * embedding_dim;
 
       for (size_t i = 0; i < embedding_dim; ++i) {
-        const float grad = d_residual[output_base + i];
+        const float grad = d_projected_output[output_base + i];
         for (size_t j = 0; j < attention_dim; ++j) {
           output_projection_weights.grad[j * embedding_dim + i] +=
               cache.attended_values[attended_base + j] * grad;

@@ -11,10 +11,12 @@ namespace decoder_block {
 /// Hold the intermediate tensors for one decoder block.
 struct Cache {
   std::vector<float> block_input;
-  attention::Cache attention;
   layer_norm::Cache attention_layer_norm;
-  feed_forward::Cache feed_forward;
+  attention::Cache attention;
+  std::vector<float> attention_residual;
   layer_norm::Cache feed_forward_layer_norm;
+  feed_forward::Cache feed_forward;
+  std::vector<float> block_output;
 };
 
 /// Hold one trainable decoder block.

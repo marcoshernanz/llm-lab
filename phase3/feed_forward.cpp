@@ -4,7 +4,7 @@
 
 namespace feed_forward {
 
-/// Run the feedforward sublayer with its skip connection.
+/// Run the feedforward sublayer without the skip connection.
 Cache forward(const std::vector<float> &inputs, const Param &hidden_weights,
               const Param &hidden_bias, const Param &output_projection_weights,
               const Param &output_projection_bias) {
@@ -12,7 +12,6 @@ Cache forward(const std::vector<float> &inputs, const Param &hidden_weights,
   cache.hidden_pre.resize(batch_size * context_len * feed_forward_dim);
   cache.hidden.resize(batch_size * context_len * feed_forward_dim);
   cache.projected_output.assign(batch_size * context_len * embedding_dim, 0.0f);
-  cache.residual_output.resize(batch_size * context_len * embedding_dim);
 
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t c = 0; c < context_len; ++c) {
@@ -42,7 +41,6 @@ Cache forward(const std::vector<float> &inputs, const Param &hidden_weights,
               cache.hidden[hidden_base + j] * output_projection_weights.val[j * embedding_dim + i];
         }
         cache.projected_output[out_base + i] = output;
-        cache.residual_output[out_base + i] = inputs[out_base + i] + output;
       }
     }
   }
@@ -52,10 +50,10 @@ Cache forward(const std::vector<float> &inputs, const Param &hidden_weights,
 
 /// Backpropagate through the feedforward sublayer and its skip path.
 std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache,
-                            const std::vector<float> &d_residual, Param &hidden_weights,
+                            const std::vector<float> &d_projected_output, Param &hidden_weights,
                             Param &hidden_bias, Param &output_projection_weights,
                             Param &output_projection_bias) {
-  std::vector<float> d_inputs = d_residual;
+  std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
   std::vector<float> d_hidden(batch_size * context_len * feed_forward_dim, 0.0f);
 
   for (size_t b = 0; b < batch_size; ++b) {
@@ -64,7 +62,7 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       const size_t out_base = b * context_len * embedding_dim + c * embedding_dim;
 
       for (size_t i = 0; i < embedding_dim; ++i) {
-        const float grad = d_residual[out_base + i];
+        const float grad = d_projected_output[out_base + i];
         output_projection_bias.grad[i] += grad;
         for (size_t j = 0; j < feed_forward_dim; ++j) {
           output_projection_weights.grad[j * embedding_dim + i] +=

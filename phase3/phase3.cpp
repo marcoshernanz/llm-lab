@@ -139,7 +139,7 @@ public:
     std::vector<float> block_input = cache.input_embeddings;
     for (const decoder_block::Block &block : decoder_blocks) {
       cache.decoder_blocks.push_back(block.forward(block_input));
-      block_input = cache.decoder_blocks.back().feed_forward_layer_norm.layer_norm_output;
+      block_input = cache.decoder_blocks.back().block_output;
     }
 
     compute_logits_and_loss(block_input, targets, cache.logits, cache.probs, cache.avg_loss);
@@ -152,8 +152,7 @@ public:
 
     const ForwardCache cache = forward(ids, targets);
     const std::vector<float> d_block_output =
-        backward_logits(cache.decoder_blocks.back().feed_forward_layer_norm.layer_norm_output,
-                        targets, cache.probs);
+        backward_logits(cache.decoder_blocks.back().block_output, targets, cache.probs);
     std::vector<float> d_embeddings = d_block_output;
     for (size_t i = decoder_blocks.size(); i-- > 0;) {
       d_embeddings = decoder_blocks[i].backward(cache.decoder_blocks[i], d_embeddings);
