@@ -235,7 +235,7 @@ public:
   }
 
   /// Run one full forward and backward pass for one batch.
-  float forward_backward(const std::vector<int> &ids) {
+  float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
     zero_grad();
 
     std::vector<float> embeddings(batch_size * context_len * embedding_dim, 0.0f);
@@ -428,7 +428,7 @@ public:
         loss += static_cast<float>(max_out_logits[b * context_len + c] +
                                    std::log(out_sums_exp[b * context_len + c]) -
                                    out_logits[b * context_len * vocab_size + c * vocab_size +
-                                              ids[b * context_len + c + 1]]);
+                                              targets[b * context_len + c]]);
       }
     }
     loss /= static_cast<float>(batch_size * context_len);
