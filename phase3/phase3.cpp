@@ -2,6 +2,7 @@
 
 #include "attention.h"
 #include "core.h"
+#include "decoder_block.h"
 #include "feed_forward.h"
 #include "layer_norm.h"
 
@@ -72,10 +73,7 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
 /// Hold the intermediate tensors from one full block forward pass.
 struct ForwardCache {
   std::vector<float> input_embeddings;
-  attention::Cache attention;
-  layer_norm::Cache attention_layer_norm;
-  feed_forward::Cache feed_forward;
-  layer_norm::Cache feed_forward_layer_norm;
+  std::vector<decoder_block::Cache> decoder_blocks;
   std::vector<float> logits;
   std::vector<float> probs;
   float avg_loss = 0.0f;
@@ -86,18 +84,7 @@ class Model {
 public:
   Param token_embedding_table;
   Param position_embedding_table;
-  Param attention_query_weights;
-  Param attention_key_weights;
-  Param attention_value_weights;
-  Param attention_output_projection_weights;
-  Param attention_norm_gain;
-  Param attention_norm_bias;
-  Param feed_forward_in_weights;
-  Param feed_forward_in_bias;
-  Param feed_forward_out_weights;
-  Param feed_forward_out_bias;
-  Param feed_forward_norm_gain;
-  Param feed_forward_norm_bias;
+  std::vector<decoder_block::Block> decoder_blocks;
   Param lm_head_weights;
   Param lm_head_bias;
 
@@ -105,16 +92,7 @@ public:
   Model()
       : token_embedding_table(vocab_size * embedding_dim),
         position_embedding_table(context_len * embedding_dim),
-        attention_query_weights(embedding_dim * attention_dim),
-        attention_key_weights(embedding_dim * attention_dim),
-        attention_value_weights(embedding_dim * attention_dim),
-        attention_output_projection_weights(attention_dim * embedding_dim),
-        attention_norm_gain(embedding_dim), attention_norm_bias(embedding_dim),
-        feed_forward_in_weights(embedding_dim * feed_forward_dim),
-        feed_forward_in_bias(feed_forward_dim),
-        feed_forward_out_weights(feed_forward_dim * embedding_dim),
-        feed_forward_out_bias(embedding_dim), feed_forward_norm_gain(embedding_dim),
-        feed_forward_norm_bias(embedding_dim), lm_head_weights(embedding_dim * vocab_size),
+        decoder_blocks(num_decoder_blocks), lm_head_weights(embedding_dim * vocab_size),
         lm_head_bias(vocab_size) {}
 
   /// Initialize one model with random weights and zero biases.
@@ -122,18 +100,9 @@ public:
     Model model;
     model.token_embedding_table.init_normal(0.1f);
     model.position_embedding_table.init_normal(0.1f);
-    model.attention_query_weights.init_normal(fan_in_stddev(embedding_dim));
-    model.attention_key_weights.init_normal(fan_in_stddev(embedding_dim));
-    model.attention_value_weights.init_normal(fan_in_stddev(embedding_dim));
-    model.attention_output_projection_weights.init_normal(fan_in_stddev(attention_dim));
-    model.attention_norm_gain.init_ones();
-    model.attention_norm_bias.init_zeros();
-    model.feed_forward_in_weights.init_normal(fan_in_stddev(embedding_dim));
-    model.feed_forward_in_bias.init_zeros();
-    model.feed_forward_out_weights.init_normal(fan_in_stddev(feed_forward_dim));
-    model.feed_forward_out_bias.init_zeros();
-    model.feed_forward_norm_gain.init_ones();
-    model.feed_forward_norm_bias.init_zeros();
+    for (decoder_block::Block &block : model.decoder_blocks) {
+      block.init();
+    }
     model.lm_head_weights.init_normal(fan_in_stddev(embedding_dim));
     model.lm_head_bias.init_zeros();
     return model;
@@ -143,18 +112,9 @@ public:
   void zero_grad() {
     token_embedding_table.zero_grad();
     position_embedding_table.zero_grad();
-    attention_query_weights.zero_grad();
-    attention_key_weights.zero_grad();
-    attention_value_weights.zero_grad();
-    attention_output_projection_weights.zero_grad();
-    attention_norm_gain.zero_grad();
-    attention_norm_bias.zero_grad();
-    feed_forward_in_weights.zero_grad();
-    feed_forward_in_bias.zero_grad();
-    feed_forward_out_weights.zero_grad();
-    feed_forward_out_bias.zero_grad();
-    feed_forward_norm_gain.zero_grad();
-    feed_forward_norm_bias.zero_grad();
+    for (decoder_block::Block &block : decoder_blocks) {
+      block.zero_grad();
+    }
     lm_head_weights.zero_grad();
     lm_head_bias.zero_grad();
   }
@@ -163,18 +123,9 @@ public:
   void scale_grads(float scale) {
     token_embedding_table.scale_grad(scale);
     position_embedding_table.scale_grad(scale);
-    attention_query_weights.scale_grad(scale);
-    attention_key_weights.scale_grad(scale);
-    attention_value_weights.scale_grad(scale);
-    attention_output_projection_weights.scale_grad(scale);
-    attention_norm_gain.scale_grad(scale);
-    attention_norm_bias.scale_grad(scale);
-    feed_forward_in_weights.scale_grad(scale);
-    feed_forward_in_bias.scale_grad(scale);
-    feed_forward_out_weights.scale_grad(scale);
-    feed_forward_out_bias.scale_grad(scale);
-    feed_forward_norm_gain.scale_grad(scale);
-    feed_forward_norm_bias.scale_grad(scale);
+    for (decoder_block::Block &block : decoder_blocks) {
+      block.scale_grads(scale);
+    }
     lm_head_weights.scale_grad(scale);
     lm_head_bias.scale_grad(scale);
   }
@@ -183,18 +134,15 @@ public:
   ForwardCache forward(const std::vector<int> &ids, const std::vector<int> &targets) const {
     ForwardCache cache;
     cache.input_embeddings = compute_input_embeddings(ids);
-    cache.attention = attention::forward(cache.input_embeddings, attention_query_weights,
-                                         attention_key_weights, attention_value_weights,
-                                         attention_output_projection_weights);
-    cache.attention_layer_norm = layer_norm::forward(cache.attention.residual_output,
-                                                     attention_norm_gain, attention_norm_bias);
-    cache.feed_forward = feed_forward::forward(
-        cache.attention_layer_norm.layer_norm_output, feed_forward_in_weights,
-        feed_forward_in_bias, feed_forward_out_weights, feed_forward_out_bias);
-    cache.feed_forward_layer_norm = layer_norm::forward(
-        cache.feed_forward.residual_output, feed_forward_norm_gain, feed_forward_norm_bias);
-    compute_logits_and_loss(cache.feed_forward_layer_norm.layer_norm_output, targets, cache.logits,
-                            cache.probs, cache.avg_loss);
+    cache.decoder_blocks.reserve(num_decoder_blocks);
+
+    std::vector<float> block_input = cache.input_embeddings;
+    for (const decoder_block::Block &block : decoder_blocks) {
+      cache.decoder_blocks.push_back(block.forward(block_input));
+      block_input = cache.decoder_blocks.back().feed_forward_layer_norm.layer_norm_output;
+    }
+
+    compute_logits_and_loss(block_input, targets, cache.logits, cache.probs, cache.avg_loss);
     return cache;
   }
 
@@ -204,20 +152,12 @@ public:
 
     const ForwardCache cache = forward(ids, targets);
     const std::vector<float> d_block_output =
-        backward_logits(cache.feed_forward_layer_norm.layer_norm_output, targets, cache.probs);
-    const std::vector<float> d_feed_forward_residual = layer_norm::backward(
-        d_block_output, cache.feed_forward_layer_norm, feed_forward_norm_gain,
-        feed_forward_norm_bias);
-    const std::vector<float> d_attention_norm_output = feed_forward::backward(
-        cache.attention_layer_norm.layer_norm_output, cache.feed_forward, d_feed_forward_residual,
-        feed_forward_in_weights, feed_forward_in_bias, feed_forward_out_weights,
-        feed_forward_out_bias);
-    const std::vector<float> d_attention_residual = layer_norm::backward(
-        d_attention_norm_output, cache.attention_layer_norm, attention_norm_gain,
-        attention_norm_bias);
-    const std::vector<float> d_embeddings = attention::backward(
-        cache.input_embeddings, cache.attention, d_attention_residual, attention_query_weights,
-        attention_key_weights, attention_value_weights, attention_output_projection_weights);
+        backward_logits(cache.decoder_blocks.back().feed_forward_layer_norm.layer_norm_output,
+                        targets, cache.probs);
+    std::vector<float> d_embeddings = d_block_output;
+    for (size_t i = decoder_blocks.size(); i-- > 0;) {
+      d_embeddings = decoder_blocks[i].backward(cache.decoder_blocks[i], d_embeddings);
+    }
     accumulate_embedding_grads(ids, d_embeddings);
 
     scale_grads(inv_token_count);
@@ -233,18 +173,9 @@ public:
   void update() {
     token_embedding_table.update();
     position_embedding_table.update();
-    attention_query_weights.update();
-    attention_key_weights.update();
-    attention_value_weights.update();
-    attention_output_projection_weights.update();
-    attention_norm_gain.update();
-    attention_norm_bias.update();
-    feed_forward_in_weights.update();
-    feed_forward_in_bias.update();
-    feed_forward_out_weights.update();
-    feed_forward_out_bias.update();
-    feed_forward_norm_gain.update();
-    feed_forward_norm_bias.update();
+    for (decoder_block::Block &block : decoder_blocks) {
+      block.update();
+    }
     lm_head_weights.update();
     lm_head_bias.update();
   }
