@@ -1,10 +1,7 @@
 /// Minimal phase-3 script for learning manual language-model gradients.
 
-#include "attention.h"
 #include "core.h"
 #include "decoder_block.h"
-#include "feed_forward.h"
-#include "rms_norm.h"
 
 #include <algorithm>
 #include <fstream>
@@ -85,14 +82,12 @@ public:
   Param token_embedding_table;
   Param position_embedding_table;
   std::vector<decoder_block::Block> decoder_blocks;
-  Param lm_head_weights;
   Param lm_head_bias;
 
   /// Construct one model with correctly sized parameter tensors.
   Model()
       : token_embedding_table(vocab_size * embedding_dim),
-        position_embedding_table(context_len * embedding_dim),
-        decoder_blocks(num_decoder_blocks), lm_head_weights(embedding_dim * vocab_size),
+        position_embedding_table(context_len * embedding_dim), decoder_blocks(num_decoder_blocks),
         lm_head_bias(vocab_size) {}
 
   /// Initialize one model with random weights and zero biases.
@@ -103,7 +98,6 @@ public:
     for (decoder_block::Block &block : model.decoder_blocks) {
       block.init();
     }
-    model.lm_head_weights.init_normal(fan_in_stddev(embedding_dim));
     model.lm_head_bias.init_zeros();
     return model;
   }
@@ -115,7 +109,6 @@ public:
     for (decoder_block::Block &block : decoder_blocks) {
       block.zero_grad();
     }
-    lm_head_weights.zero_grad();
     lm_head_bias.zero_grad();
   }
 
@@ -126,7 +119,6 @@ public:
     for (decoder_block::Block &block : decoder_blocks) {
       block.scale_grads(scale);
     }
-    lm_head_weights.scale_grad(scale);
     lm_head_bias.scale_grad(scale);
   }
 
@@ -175,7 +167,6 @@ public:
     for (decoder_block::Block &block : decoder_blocks) {
       block.update();
     }
-    lm_head_weights.update();
     lm_head_bias.update();
   }
 
@@ -191,8 +182,8 @@ private:
         const size_t pos_base = c * embedding_dim;
 
         for (size_t i = 0; i < embedding_dim; ++i) {
-          embeddings[out_base + i] = token_embedding_table.val[tok_base + i] +
-                                     position_embedding_table.val[pos_base + i];
+          embeddings[out_base + i] =
+              token_embedding_table.val[tok_base + i] + position_embedding_table.val[pos_base + i];
         }
       }
     }
@@ -215,7 +206,7 @@ private:
         for (size_t i = 0; i < vocab_size; ++i) {
           float logit = lm_head_bias.val[i];
           for (size_t j = 0; j < embedding_dim; ++j) {
-            logit += inputs[in_base + j] * lm_head_weights.val[j * vocab_size + i];
+            logit += inputs[in_base + j] * token_embedding_table.val[i * embedding_dim + j];
           }
           logits[row_base + i] = logit;
         }
@@ -265,8 +256,8 @@ private:
           const float grad = d_logits[row_base + i];
           lm_head_bias.grad[i] += grad;
           for (size_t j = 0; j < embedding_dim; ++j) {
-            lm_head_weights.grad[j * vocab_size + i] += inputs[in_base + j] * grad;
-            d_inputs[in_base + j] += grad * lm_head_weights.val[j * vocab_size + i];
+            token_embedding_table.grad[i * embedding_dim + j] += inputs[in_base + j] * grad;
+            d_inputs[in_base + j] += grad * token_embedding_table.val[i * embedding_dim + j];
           }
         }
       }
