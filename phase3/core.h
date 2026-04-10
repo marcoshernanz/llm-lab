@@ -25,7 +25,7 @@ inline constexpr float learning_rate = 0.01f;
 inline constexpr float beta1 = 0.9f;
 inline constexpr float beta2 = 0.999f;
 inline constexpr float eps = 1e-8f;
-inline constexpr float layer_norm_eps = 1e-5f;
+inline constexpr float rms_norm_eps = 1e-5f;
 
 /// Sample one normal random value for parameter initialization.
 float randn();

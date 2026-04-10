@@ -22,7 +22,7 @@ Cache forward(const std::vector<float> &inputs, const Param &gain) {
       }
       mean_square /= static_cast<float>(embedding_dim);
 
-      const float inv_rms_value = 1.0f / std::sqrt(mean_square + layer_norm_eps);
+      const float inv_rms_value = 1.0f / std::sqrt(mean_square + rms_norm_eps);
       cache.inv_rms[norm_index] = inv_rms_value;
 
       for (size_t i = 0; i < embedding_dim; ++i) {

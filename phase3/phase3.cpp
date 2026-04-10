@@ -1,7 +1,7 @@
 /// Minimal phase-3 script for learning manual language-model gradients.
 
 #include "core.h"
-#include "decoder_block.h"
+#include "decoder.h"
 
 #include <algorithm>
 #include <fstream>
@@ -70,7 +70,7 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
 /// Hold the intermediate tensors from one full block forward pass.
 struct ForwardCache {
   std::vector<float> input_embeddings;
-  std::vector<decoder_block::Cache> decoder_blocks;
+  decoder::Cache decoder_cache;
   std::vector<float> logits;
   std::vector<float> probs;
   float avg_loss = 0.0f;
@@ -81,23 +81,20 @@ class Model {
 public:
   Param token_embedding_table;
   Param position_embedding_table;
-  std::vector<decoder_block::Block> decoder_blocks;
+  decoder::Stack decoder_stack;
   Param lm_head_bias;
 
   /// Construct one model with correctly sized parameter tensors.
   Model()
       : token_embedding_table(vocab_size * embedding_dim),
-        position_embedding_table(context_len * embedding_dim), decoder_blocks(num_decoder_blocks),
-        lm_head_bias(vocab_size) {}
+        position_embedding_table(context_len * embedding_dim), decoder_stack(), lm_head_bias(vocab_size) {}
 
   /// Initialize one model with random weights and zero biases.
   static Model init() {
     Model model;
     model.token_embedding_table.init_normal(0.1f);
     model.position_embedding_table.init_normal(0.1f);
-    for (decoder_block::Block &block : model.decoder_blocks) {
-      block.init();
-    }
+    model.decoder_stack.init();
     model.lm_head_bias.init_zeros();
     return model;
   }
@@ -106,9 +103,7 @@ public:
   void zero_grad() {
     token_embedding_table.zero_grad();
     position_embedding_table.zero_grad();
-    for (decoder_block::Block &block : decoder_blocks) {
-      block.zero_grad();
-    }
+    decoder_stack.zero_grad();
     lm_head_bias.zero_grad();
   }
 
@@ -116,9 +111,7 @@ public:
   void scale_grads(float scale) {
     token_embedding_table.scale_grad(scale);
     position_embedding_table.scale_grad(scale);
-    for (decoder_block::Block &block : decoder_blocks) {
-      block.scale_grads(scale);
-    }
+    decoder_stack.scale_grads(scale);
     lm_head_bias.scale_grad(scale);
   }
 
@@ -126,15 +119,9 @@ public:
   ForwardCache forward(const std::vector<int> &ids, const std::vector<int> &targets) const {
     ForwardCache cache;
     cache.input_embeddings = compute_input_embeddings(ids);
-    cache.decoder_blocks.reserve(num_decoder_blocks);
-
-    std::vector<float> block_input = cache.input_embeddings;
-    for (const decoder_block::Block &block : decoder_blocks) {
-      cache.decoder_blocks.push_back(block.forward(block_input));
-      block_input = cache.decoder_blocks.back().block_output;
-    }
-
-    compute_logits_and_loss(block_input, targets, cache.logits, cache.probs, cache.avg_loss);
+    cache.decoder_cache = decoder_stack.forward(cache.input_embeddings);
+    compute_logits_and_loss(cache.decoder_cache.decoder_output, targets, cache.logits, cache.probs,
+                            cache.avg_loss);
     return cache;
   }
 
@@ -144,11 +131,8 @@ public:
 
     const ForwardCache cache = forward(ids, targets);
     const std::vector<float> d_block_output =
-        backward_logits(cache.decoder_blocks.back().block_output, targets, cache.probs);
-    std::vector<float> d_embeddings = d_block_output;
-    for (size_t i = decoder_blocks.size(); i-- > 0;) {
-      d_embeddings = decoder_blocks[i].backward(cache.decoder_blocks[i], d_embeddings);
-    }
+        backward_logits(cache.decoder_cache.decoder_output, targets, cache.probs);
+    const std::vector<float> d_embeddings = decoder_stack.backward(cache.decoder_cache, d_block_output);
     accumulate_embedding_grads(ids, d_embeddings);
 
     scale_grads(inv_token_count);
@@ -164,9 +148,7 @@ public:
   void update() {
     token_embedding_table.update();
     position_embedding_table.update();
-    for (decoder_block::Block &block : decoder_blocks) {
-      block.update();
-    }
+    decoder_stack.update();
     lm_head_bias.update();
   }
 
