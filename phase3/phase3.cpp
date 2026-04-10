@@ -4,7 +4,7 @@
 #include "core.h"
 #include "decoder_block.h"
 #include "feed_forward.h"
-#include "layer_norm.h"
+#include "rms_norm.h"
 
 #include <algorithm>
 #include <fstream>

@@ -4,17 +4,17 @@
 
 #include "attention.h"
 #include "feed_forward.h"
-#include "layer_norm.h"
+#include "rms_norm.h"
 
 namespace decoder_block {
 
 /// Hold the intermediate tensors for one decoder block.
 struct Cache {
   std::vector<float> block_input;
-  layer_norm::Cache attention_layer_norm;
+  rms_norm::Cache attention_rms_norm;
   attention::Cache attention;
   std::vector<float> attention_residual;
-  layer_norm::Cache feed_forward_layer_norm;
+  rms_norm::Cache feed_forward_rms_norm;
   feed_forward::Cache feed_forward;
   std::vector<float> block_output;
 };
@@ -26,14 +26,12 @@ public:
   Param attention_key_weights;
   Param attention_value_weights;
   Param attention_output_projection_weights;
-  Param attention_norm_gain;
-  Param attention_norm_bias;
+  Param attention_rms_gain;
   Param feed_forward_in_weights;
   Param feed_forward_in_bias;
   Param feed_forward_out_weights;
   Param feed_forward_out_bias;
-  Param feed_forward_norm_gain;
-  Param feed_forward_norm_bias;
+  Param feed_forward_rms_gain;
 
   /// Construct one decoder block with correctly sized parameter tensors.
   Block();
