@@ -428,7 +428,7 @@ public:
         loss += static_cast<float>(max_out_logits[b * context_len + c] +
                                    std::log(out_sums_exp[b * context_len + c]) -
                                    out_logits[b * context_len * vocab_size + c * vocab_size +
-                                              ids[b * batch_size + c + 1]]);
+                                              ids[b * context_len + c + 1]]);
       }
     }
     loss /= static_cast<float>(batch_size * context_len);
