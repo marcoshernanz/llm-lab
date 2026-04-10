@@ -17,6 +17,7 @@ const int vocab_size = 128;
 const int context_len = 4;
 const int embedding_dim = 32;
 const int head_dim = 64;
+const int feed_forward_dim = 128;
 
 const int steps = 10000;
 const int steps_per_chunk = 100;
@@ -96,6 +97,13 @@ struct ForwardCache {
   std::vector<float> normalized_residual;
   std::vector<float> layer_norm_output;
   std::vector<float> layer_norm_inv_std;
+  std::vector<float> feed_forward_hidden_pre;
+  std::vector<float> feed_forward_hidden;
+  std::vector<float> feed_forward_output;
+  std::vector<float> transformer;
+  std::vector<float> normalized_transformer;
+  std::vector<float> transformer_output;
+  std::vector<float> transformer_inv_std;
   std::vector<float> logits;
   std::vector<float> probs;
   float avg_loss;
@@ -178,6 +186,12 @@ public:
   Param attention_output_weights;
   Param layer_norm_scale;
   Param layer_norm_shift;
+  Param feed_forward_hidden_weights;
+  Param feed_forward_hidden_bias;
+  Param feed_forward_output_weights;
+  Param feed_forward_output_bias;
+  Param feed_forward_norm_scale;
+  Param feed_forward_norm_shift;
   Param logit_weights;
   Param output_bias;
 
@@ -187,7 +201,11 @@ public:
         position_embeddings(context_len * embedding_dim), query_weights(embedding_dim * head_dim),
         key_weights(embedding_dim * head_dim), value_weights(embedding_dim * head_dim),
         attention_output_weights(head_dim * embedding_dim), layer_norm_scale(embedding_dim),
-        layer_norm_shift(embedding_dim), logit_weights(embedding_dim * vocab_size),
+        layer_norm_shift(embedding_dim), feed_forward_hidden_weights(embedding_dim * feed_forward_dim),
+        feed_forward_hidden_bias(feed_forward_dim),
+        feed_forward_output_weights(feed_forward_dim * embedding_dim),
+        feed_forward_output_bias(embedding_dim), feed_forward_norm_scale(embedding_dim),
+        feed_forward_norm_shift(embedding_dim), logit_weights(embedding_dim * vocab_size),
         output_bias(vocab_size) {}
 
   /// Initialize one model with random weights and zero biases.
@@ -201,6 +219,12 @@ public:
     model.attention_output_weights.init_randn();
     model.layer_norm_scale.init_ones();
     model.layer_norm_shift.init_zeros();
+    model.feed_forward_hidden_weights.init_randn();
+    model.feed_forward_hidden_bias.init_zeros();
+    model.feed_forward_output_weights.init_randn();
+    model.feed_forward_output_bias.init_zeros();
+    model.feed_forward_norm_scale.init_ones();
+    model.feed_forward_norm_shift.init_zeros();
     model.logit_weights.init_randn();
     model.output_bias.init_zeros();
     return model;
@@ -216,6 +240,12 @@ public:
     attention_output_weights.zero_grad();
     layer_norm_scale.zero_grad();
     layer_norm_shift.zero_grad();
+    feed_forward_hidden_weights.zero_grad();
+    feed_forward_hidden_bias.zero_grad();
+    feed_forward_output_weights.zero_grad();
+    feed_forward_output_bias.zero_grad();
+    feed_forward_norm_scale.zero_grad();
+    feed_forward_norm_shift.zero_grad();
     logit_weights.zero_grad();
     output_bias.zero_grad();
   }
@@ -230,6 +260,12 @@ public:
     attention_output_weights.scale_grad(scale);
     layer_norm_scale.scale_grad(scale);
     layer_norm_shift.scale_grad(scale);
+    feed_forward_hidden_weights.scale_grad(scale);
+    feed_forward_hidden_bias.scale_grad(scale);
+    feed_forward_output_weights.scale_grad(scale);
+    feed_forward_output_bias.scale_grad(scale);
+    feed_forward_norm_scale.scale_grad(scale);
+    feed_forward_norm_shift.scale_grad(scale);
     logit_weights.scale_grad(scale);
     output_bias.scale_grad(scale);
   }
@@ -248,6 +284,14 @@ public:
         .normalized_residual = std::vector<float>(batch_size * context_len * embedding_dim),
         .layer_norm_output = std::vector<float>(batch_size * context_len * embedding_dim),
         .layer_norm_inv_std = std::vector<float>(batch_size * context_len),
+        .feed_forward_hidden_pre =
+            std::vector<float>(batch_size * context_len * feed_forward_dim),
+        .feed_forward_hidden = std::vector<float>(batch_size * context_len * feed_forward_dim),
+        .feed_forward_output = std::vector<float>(batch_size * context_len * embedding_dim),
+        .transformer = std::vector<float>(batch_size * context_len * embedding_dim),
+        .normalized_transformer = std::vector<float>(batch_size * context_len * embedding_dim),
+        .transformer_output = std::vector<float>(batch_size * context_len * embedding_dim),
+        .transformer_inv_std = std::vector<float>(batch_size * context_len),
         .logits = std::vector<float>(batch_size * context_len * vocab_size),
         .probs = std::vector<float>(batch_size * context_len * vocab_size),
         .avg_loss = 0.0f,
@@ -397,13 +441,77 @@ public:
 
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
+        const size_t emb_base = b * context_len * embedding_dim + c * embedding_dim;
+        const size_t hidden_base = b * context_len * feed_forward_dim + c * feed_forward_dim;
+
+        for (size_t i = 0; i < feed_forward_dim; ++i) {
+          float hidden = feed_forward_hidden_bias.val[i];
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            hidden += cache.layer_norm_output[emb_base + j] *
+                      feed_forward_hidden_weights.val[j * feed_forward_dim + i];
+          }
+          cache.feed_forward_hidden_pre[hidden_base + i] = hidden;
+          cache.feed_forward_hidden[hidden_base + i] = std::tanh(hidden);
+        }
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t hidden_base = b * context_len * feed_forward_dim + c * feed_forward_dim;
+        const size_t emb_base = b * context_len * embedding_dim + c * embedding_dim;
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          float output = feed_forward_output_bias.val[i];
+          for (size_t j = 0; j < feed_forward_dim; ++j) {
+            output += cache.feed_forward_hidden[hidden_base + j] *
+                      feed_forward_output_weights.val[j * embedding_dim + i];
+          }
+          cache.feed_forward_output[emb_base + i] = output;
+          cache.transformer[emb_base + i] = cache.layer_norm_output[emb_base + i] + output;
+        }
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t transformer_base = b * context_len * embedding_dim + c * embedding_dim;
+        const size_t norm_index = b * context_len + c;
+
+        float mean = 0.0f;
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          mean += cache.transformer[transformer_base + i];
+        }
+        mean /= static_cast<float>(embedding_dim);
+
+        float variance = 0.0f;
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float centered = cache.transformer[transformer_base + i] - mean;
+          variance += centered * centered;
+        }
+        variance /= static_cast<float>(embedding_dim);
+
+        const float inv_std = 1.0f / std::sqrt(variance + layer_norm_eps);
+        cache.transformer_inv_std[norm_index] = inv_std;
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float normalized = (cache.transformer[transformer_base + i] - mean) * inv_std;
+          cache.normalized_transformer[transformer_base + i] = normalized;
+          cache.transformer_output[transformer_base + i] =
+              feed_forward_norm_scale.val[i] * normalized + feed_forward_norm_shift.val[i];
+        }
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
         const size_t residual_base = b * context_len * embedding_dim + c * embedding_dim;
         const size_t out_base = b * context_len * vocab_size + c * vocab_size;
 
         for (size_t i = 0; i < vocab_size; ++i) {
           float logit = output_bias.val[i];
           for (size_t j = 0; j < embedding_dim; ++j) {
-            logit += cache.layer_norm_output[residual_base + j] * logit_weights.val[j * vocab_size + i];
+            logit += cache.transformer_output[residual_base + j] * logit_weights.val[j * vocab_size + i];
           }
           cache.logits[out_base + i] = logit;
         }
@@ -452,7 +560,7 @@ public:
       }
     }
 
-    std::vector<float> d_layer_norm_output(batch_size * context_len * embedding_dim, 0.0f);
+    std::vector<float> d_transformer_output(batch_size * context_len * embedding_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t residual_base = b * context_len * embedding_dim + c * embedding_dim;
@@ -462,8 +570,90 @@ public:
           const float grad = d_logits[logit_base + i];
           output_bias.grad[i] += grad;
           for (size_t j = 0; j < embedding_dim; ++j) {
-            logit_weights.grad[j * vocab_size + i] += cache.layer_norm_output[residual_base + j] * grad;
-            d_layer_norm_output[residual_base + j] += grad * logit_weights.val[j * vocab_size + i];
+            logit_weights.grad[j * vocab_size + i] += cache.transformer_output[residual_base + j] * grad;
+            d_transformer_output[residual_base + j] += grad * logit_weights.val[j * vocab_size + i];
+          }
+        }
+      }
+    }
+
+    std::vector<float> d_transformer(batch_size * context_len * embedding_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t transformer_base = b * context_len * embedding_dim + c * embedding_dim;
+        const size_t norm_index = b * context_len + c;
+        const float inv_std = cache.transformer_inv_std[norm_index];
+
+        float sum_dxhat = 0.0f;
+        float sum_dxhat_xhat = 0.0f;
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float dxhat = d_transformer_output[transformer_base + i] * feed_forward_norm_scale.val[i];
+          sum_dxhat += dxhat;
+          sum_dxhat_xhat += dxhat * cache.normalized_transformer[transformer_base + i];
+          feed_forward_norm_scale.grad[i] +=
+              d_transformer_output[transformer_base + i] * cache.normalized_transformer[transformer_base + i];
+          feed_forward_norm_shift.grad[i] += d_transformer_output[transformer_base + i];
+        }
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float dxhat = d_transformer_output[transformer_base + i] * feed_forward_norm_scale.val[i];
+          d_transformer[transformer_base + i] =
+              inv_std *
+              (static_cast<float>(embedding_dim) * dxhat - sum_dxhat -
+               cache.normalized_transformer[transformer_base + i] * sum_dxhat_xhat) /
+              static_cast<float>(embedding_dim);
+        }
+      }
+    }
+
+    std::vector<float> d_layer_norm_output(batch_size * context_len * embedding_dim, 0.0f);
+    for (size_t i = 0; i < d_layer_norm_output.size(); ++i) {
+      d_layer_norm_output[i] = d_transformer[i];
+    }
+
+    std::vector<float> d_feed_forward_output(batch_size * context_len * embedding_dim, 0.0f);
+    for (size_t i = 0; i < d_feed_forward_output.size(); ++i) {
+      d_feed_forward_output[i] = d_transformer[i];
+    }
+
+    std::vector<float> d_feed_forward_hidden(batch_size * context_len * feed_forward_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t hidden_base = b * context_len * feed_forward_dim + c * feed_forward_dim;
+        const size_t emb_base = b * context_len * embedding_dim + c * embedding_dim;
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float grad = d_feed_forward_output[emb_base + i];
+          feed_forward_output_bias.grad[i] += grad;
+          for (size_t j = 0; j < feed_forward_dim; ++j) {
+            feed_forward_output_weights.grad[j * embedding_dim + i] +=
+                cache.feed_forward_hidden[hidden_base + j] * grad;
+            d_feed_forward_hidden[hidden_base + j] +=
+                grad * feed_forward_output_weights.val[j * embedding_dim + i];
+          }
+        }
+      }
+    }
+
+    std::vector<float> d_feed_forward_hidden_pre(batch_size * context_len * feed_forward_dim, 0.0f);
+    for (size_t i = 0; i < d_feed_forward_hidden_pre.size(); ++i) {
+      d_feed_forward_hidden_pre[i] = d_feed_forward_hidden[i] *
+                                     (1.0f - cache.feed_forward_hidden[i] * cache.feed_forward_hidden[i]);
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t hidden_base = b * context_len * feed_forward_dim + c * feed_forward_dim;
+        const size_t emb_base = b * context_len * embedding_dim + c * embedding_dim;
+
+        for (size_t i = 0; i < feed_forward_dim; ++i) {
+          const float grad = d_feed_forward_hidden_pre[hidden_base + i];
+          feed_forward_hidden_bias.grad[i] += grad;
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            feed_forward_hidden_weights.grad[j * feed_forward_dim + i] +=
+                cache.layer_norm_output[emb_base + j] * grad;
+            d_layer_norm_output[emb_base + j] +=
+                grad * feed_forward_hidden_weights.val[j * feed_forward_dim + i];
           }
         }
       }
@@ -640,6 +830,12 @@ public:
     attention_output_weights.update();
     layer_norm_scale.update();
     layer_norm_shift.update();
+    feed_forward_hidden_weights.update();
+    feed_forward_hidden_bias.update();
+    feed_forward_output_weights.update();
+    feed_forward_output_bias.update();
+    feed_forward_norm_scale.update();
+    feed_forward_norm_shift.update();
     logit_weights.update();
     output_bias.update();
   }
