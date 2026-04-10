@@ -1,5 +1,15 @@
 - Add biases for q/k/v
 
+- Pre-norm block structure.
+- RMSNorm instead of LayerNorm.
+- SwiGLU FFN instead of tanh.
+- Tie token embeddings and LM head.
+- AdamW.
+
+- RoPE.
+
+- Activation functions
+
 - Datasets in kaggle/colab
 
 - Tokenizer abstract class
