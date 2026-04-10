@@ -21,7 +21,7 @@ const int head_dim = 64;
 const int steps = 10000;
 const int steps_per_chunk = 100;
 const int batch_size = 32;
-const float inv_batch_size = 1.0f / static_cast<float>(batch_size);
+const float inv_token_count = 1.0f / static_cast<float>(batch_size * context_len);
 const float validation_split = 0.1f;
 
 const float learning_rate = 0.01f;
@@ -30,13 +30,6 @@ const float beta2 = 0.999f;
 const float eps = 1e-8f;
 
 std::unordered_map<char, int> char_to_id;
-
-/// Hold the numerically stable loss terms for one batch.
-struct LossStats {
-  std::vector<float> max_logits;
-  std::vector<double> sums_exp;
-  float avg_loss;
-};
 
 /// Return the shared random generator for reproducible experiments.
 std::mt19937 &rng() {
@@ -88,35 +81,19 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
   return token_ids;
 }
 
-/// Compute the stable softmax-loss terms for one batch of logits.
-LossStats compute_loss_stats(const std::vector<float> &logits, const std::vector<int> &targets) {
-  std::vector<float> max_logits(batch_size);
-  for (size_t b = 0; b < batch_size; ++b) {
-    max_logits[b] = logits[b * vocab_size];
-    for (size_t i = 0; i < vocab_size; ++i) {
-      max_logits[b] = std::max(max_logits[b], logits[b * vocab_size + i]);
-    }
-  }
 
-  std::vector<double> sums_exp(batch_size, 0.0);
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t i = 0; i < vocab_size; ++i) {
-      sums_exp[b] += std::exp(static_cast<double>(logits[b * vocab_size + i] - max_logits[b]));
-    }
-  }
-
-  float loss_sum = 0.0f;
-  for (size_t b = 0; b < batch_size; ++b) {
-    loss_sum += static_cast<float>(max_logits[b] + std::log(sums_exp[b]) -
-                                   logits[b * vocab_size + targets[b]]);
-  }
-
-  return LossStats{
-      .max_logits = max_logits,
-      .sums_exp = sums_exp,
-      .avg_loss = loss_sum * inv_batch_size,
-  };
-}
+/// Hold the intermediate tensors from one forward pass.
+struct ForwardCache {
+  std::vector<float> embeddings;
+  std::vector<float> queries;
+  std::vector<float> keys;
+  std::vector<float> values;
+  std::vector<float> attention;
+  std::vector<float> head;
+  std::vector<float> logits;
+  std::vector<float> probs;
+  float avg_loss;
+};
 
 /// Hold Adam state for one parameter tensor.
 class Adam {
@@ -234,11 +211,19 @@ public:
     output_bias.scale_grad(scale);
   }
 
-  /// Run one full forward and backward pass for one batch.
-  float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
-    zero_grad();
-
-    std::vector<float> embeddings(batch_size * context_len * embedding_dim, 0.0f);
+  /// Run one full forward pass and keep the tensors needed for backprop.
+  ForwardCache forward(const std::vector<int> &ids, const std::vector<int> &targets) const {
+    ForwardCache cache{
+        .embeddings = std::vector<float>(batch_size * context_len * embedding_dim),
+        .queries = std::vector<float>(batch_size * context_len * head_dim),
+        .keys = std::vector<float>(batch_size * context_len * head_dim),
+        .values = std::vector<float>(batch_size * context_len * head_dim),
+        .attention = std::vector<float>(batch_size * context_len * context_len),
+        .head = std::vector<float>(batch_size * context_len * head_dim, 0.0f),
+        .logits = std::vector<float>(batch_size * context_len * vocab_size),
+        .probs = std::vector<float>(batch_size * context_len * vocab_size),
+        .avg_loss = 0.0f,
+    };
 
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
@@ -248,15 +233,11 @@ public:
         const size_t pos_base = c * embedding_dim;
 
         for (size_t i = 0; i < embedding_dim; ++i) {
-          embeddings[out_base + i] =
+          cache.embeddings[out_base + i] =
               token_embeddings.val[tok_base + i] + position_embeddings.val[pos_base + i];
         }
       }
     }
-
-    std::vector<float> queries(batch_size * context_len * head_dim);
-    std::vector<float> keys(batch_size * context_len * head_dim);
-    std::vector<float> values(batch_size * context_len * head_dim);
 
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
@@ -269,118 +250,76 @@ public:
           float v = 0.0f;
 
           for (size_t j = 0; j < embedding_dim; ++j) {
-            const float x = embeddings[emb_base + j];
+            const float x = cache.embeddings[emb_base + j];
             q += x * query_weights.val[j * head_dim + i];
             k += x * key_weights.val[j * head_dim + i];
             v += x * value_weights.val[j * head_dim + i];
           }
 
-          queries[out_base + i] = q;
-          keys[out_base + i] = k;
-          values[out_base + i] = v;
+          cache.queries[out_base + i] = q;
+          cache.keys[out_base + i] = k;
+          cache.values[out_base + i] = v;
         }
       }
     }
 
-    std::vector<float> attention(batch_size * context_len * context_len);
-    const float sqrt_hidden_dim = std::sqrt(static_cast<float>(head_dim));
-
+    const float inv_sqrt_head_dim = 1.0f / std::sqrt(static_cast<float>(head_dim));
     for (size_t b = 0; b < batch_size; ++b) {
       const size_t qk_base = b * context_len * head_dim;
       const size_t a_base = b * context_len * context_len;
 
       for (size_t i = 0; i < context_len; ++i) {
         const size_t q_base = qk_base + i * head_dim;
+        const size_t row_base = a_base + i * context_len;
 
         for (size_t j = 0; j < context_len; ++j) {
-          const size_t k_base = qk_base + j * head_dim;
+          if (j > i) {
+            cache.attention[row_base + j] = -std::numeric_limits<float>::infinity();
+            continue;
+          }
 
+          const size_t k_base = qk_base + j * head_dim;
           float score = 0.0f;
           for (size_t h = 0; h < head_dim; ++h) {
-            score += queries[q_base + h] * keys[k_base + h];
+            score += cache.queries[q_base + h] * cache.keys[k_base + h];
           }
-
-          if (j <= i) {
-            attention[a_base + i * context_len + j] = score / sqrt_hidden_dim;
-          } else {
-            attention[a_base + i * context_len + j] = -std::numeric_limits<float>::infinity();
-          }
+          cache.attention[row_base + j] = score * inv_sqrt_head_dim;
         }
-      }
-    }
 
-    std::vector<float> max_logits(batch_size * context_len);
-
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t a_base = b * context_len * context_len;
-      const size_t m_base = b * context_len;
-
-      for (size_t i = 0; i < context_len; ++i) {
-        const size_t row_base = a_base + i * context_len;
-        float max_val = attention[row_base];
+        float max_score = cache.attention[row_base];
         for (size_t j = 1; j < context_len; ++j) {
-          max_val = std::max(max_val, attention[row_base + j]);
+          max_score = std::max(max_score, cache.attention[row_base + j]);
         }
-        max_logits[m_base + i] = max_val;
-      }
-    }
 
-    std::vector<double> sums_exp(batch_size * context_len, 0.0);
-
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t a_base = b * context_len * context_len;
-      const size_t m_base = b * context_len;
-
-      for (size_t i = 0; i < context_len; ++i) {
-        const size_t row_base = a_base + i * context_len;
-        const float max_val = max_logits[m_base + i];
+        double sum_exp = 0.0;
+        for (size_t j = 0; j < context_len; ++j) {
+          sum_exp += std::exp(static_cast<double>(cache.attention[row_base + j] - max_score));
+        }
 
         for (size_t j = 0; j < context_len; ++j) {
-          sums_exp[m_base + i] += std::exp(static_cast<double>(attention[row_base + j] - max_val));
+          cache.attention[row_base + j] = static_cast<float>(
+              std::exp(static_cast<double>(cache.attention[row_base + j] - max_score)) / sum_exp);
         }
       }
     }
-
-    for (size_t b = 0; b < batch_size; ++b) {
-      const size_t a_base = b * context_len * context_len;
-      const size_t m_base = b * context_len;
-
-      for (size_t i = 0; i < context_len; ++i) {
-        const size_t row_base = a_base + i * context_len;
-        const float max_val = max_logits[m_base + i];
-        const double denom = sums_exp[m_base + i];
-
-        for (size_t j = 0; j < context_len; ++j) {
-          attention[row_base + j] = static_cast<float>(
-              std::exp(static_cast<double>(attention[row_base + j] - max_val)) / denom);
-        }
-      }
-    }
-
-    std::vector<float> head(batch_size * context_len * head_dim, 0.0f);
 
     for (size_t b = 0; b < batch_size; ++b) {
       const size_t a_base = b * context_len * context_len;
       const size_t v_base = b * context_len * head_dim;
-      const size_t o_base = b * context_len * head_dim;
+      const size_t h_base = b * context_len * head_dim;
 
       for (size_t i = 0; i < context_len; ++i) {
         const size_t att_row = a_base + i * context_len;
-        const size_t out_row = o_base + i * head_dim;
+        const size_t head_row = h_base + i * head_dim;
 
         for (size_t h = 0; h < head_dim; ++h) {
-          float sum = 0.0f;
-
           for (size_t j = 0; j < context_len; ++j) {
-            sum += attention[att_row + j] * values[v_base + j * head_dim + h];
+            cache.head[head_row + h] +=
+                cache.attention[att_row + j] * cache.values[v_base + j * head_dim + h];
           }
-
-          head[out_row + h] = sum;
         }
       }
     }
-
-    std::vector<float> out_logits(batch_size * context_len * vocab_size);
 
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
@@ -390,141 +329,191 @@ public:
         for (size_t i = 0; i < vocab_size; ++i) {
           float logit = output_bias.val[i];
           for (size_t j = 0; j < head_dim; ++j) {
-            logit += head[head_base + j] * output_weights.val[j * vocab_size + i];
+            logit += cache.head[head_base + j] * output_weights.val[j * vocab_size + i];
           }
-          out_logits[out_base + i] = logit;
+          cache.logits[out_base + i] = logit;
         }
       }
     }
 
-    std::vector<float> max_out_logits(batch_size * context_len);
-
+    float loss_sum = 0.0f;
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t row_base = b * context_len * vocab_size + c * vocab_size;
-        const size_t idx = b * context_len + c;
+        const size_t target = targets[b * context_len + c];
 
-        float max_val = out_logits[row_base];
+        float max_logit = cache.logits[row_base];
         for (size_t i = 1; i < vocab_size; ++i) {
-          max_val = std::max(max_val, out_logits[row_base + i]);
+          max_logit = std::max(max_logit, cache.logits[row_base + i]);
         }
-        max_out_logits[idx] = max_val;
-      }
-    }
 
-    std::vector<double> out_sums_exp(batch_size * context_len, 0.0);
-
-    for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t c = 0; c < context_len; ++c) {
-        const size_t row_base = b * context_len * vocab_size + c * vocab_size;
-        const size_t idx = b * context_len + c;
-        const float max_val = max_out_logits[idx];
+        double sum_exp = 0.0;
+        for (size_t i = 0; i < vocab_size; ++i) {
+          sum_exp += std::exp(static_cast<double>(cache.logits[row_base + i] - max_logit));
+        }
 
         for (size_t i = 0; i < vocab_size; ++i) {
-          out_sums_exp[idx] += std::exp(static_cast<double>(out_logits[row_base + i] - max_val));
+          cache.probs[row_base + i] = static_cast<float>(
+              std::exp(static_cast<double>(cache.logits[row_base + i] - max_logit)) / sum_exp);
         }
+
+        loss_sum += static_cast<float>(max_logit + std::log(sum_exp) - cache.logits[row_base + target]);
       }
     }
 
-    float avg_loss = 0.0f;
+    cache.avg_loss = loss_sum * inv_token_count;
+    return cache;
+  }
+
+  /// Run one full forward and backward pass for one batch.
+  float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
+    zero_grad();
+
+    const ForwardCache cache = forward(ids, targets);
+
+    std::vector<float> d_logits = cache.probs;
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
-        const size_t row_base = b * context_len * vocab_size + c * vocab_size;
-        const size_t idx = b * context_len + c;
-        const size_t target = targets[idx];
-
-        avg_loss += static_cast<float>(max_out_logits[idx] + std::log(out_sums_exp[idx]) -
-                                       out_logits[row_base + target]);
+        d_logits[b * context_len * vocab_size + c * vocab_size + targets[b * context_len + c]] -= 1.0f;
       }
     }
 
-    avg_loss /= static_cast<float>(batch_size * context_len);
-
-    std::vector<float> d_out_logits(batch_size * context_len * vocab_size);
-
+    std::vector<float> d_head(batch_size * context_len * head_dim, 0.0f);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
+        const size_t head_base = b * context_len * head_dim + c * head_dim;
+        const size_t logit_base = b * context_len * vocab_size + c * vocab_size;
+
         for (size_t i = 0; i < vocab_size; ++i) {
-          d_out_logits[b * context_len * vocab_size + c * vocab_size + i] =
-              static_cast<float>(std::exp(static_cast<double>(
-                                     out_logits[b * context_len * vocab_size + c * vocab_size + i] -
-                                     max_out_logits[b * context_len + c])) /
-                                 out_sums_exp[b * context_len + c]);
+          const float grad = d_logits[logit_base + i];
+          output_bias.grad[i] += grad;
+          for (size_t j = 0; j < head_dim; ++j) {
+            output_weights.grad[j * vocab_size + i] += cache.head[head_base + j] * grad;
+            d_head[head_base + j] += grad * output_weights.val[j * vocab_size + i];
+          }
         }
       }
     }
 
-    // TODO
+    std::vector<float> d_attention(batch_size * context_len * context_len, 0.0f);
+    std::vector<float> d_values(batch_size * context_len * head_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      const size_t a_base = b * context_len * context_len;
+      const size_t v_base = b * context_len * head_dim;
 
-    // for (size_t b = 0; b < batch_size; ++b) {
-    //   const size_t logits_offset = b * vocab_size;
-    //   for (size_t i = 0; i < vocab_size; ++i) {
-    //     output_bias.grad[i] += d_logits[logits_offset + i];
-    //   }
-    // }
+      for (size_t i = 0; i < context_len; ++i) {
+        const size_t att_row = a_base + i * context_len;
+        const size_t head_row = b * context_len * head_dim + i * head_dim;
 
-    // std::vector<float> d_hidden(batch_size * head_dim, 0.0f);
-    // for (size_t b = 0; b < batch_size; ++b) {
-    //   const size_t hidden_offset = b * head_dim;
-    //   const size_t logits_offset = b * vocab_size;
-    //   for (size_t i = 0; i < vocab_size; ++i) {
-    //     for (size_t j = 0; j < head_dim; ++j) {
-    //       output_weights.grad[j * vocab_size + i] +=
-    //           d_logits[logits_offset + i] * hidden[hidden_offset + j];
-    //       d_hidden[hidden_offset + j] +=
-    //           d_logits[logits_offset + i] * output_weights.val[j * vocab_size + i];
-    //     }
-    //   }
-    // }
+        for (size_t h = 0; h < head_dim; ++h) {
+          const float grad = d_head[head_row + h];
+          for (size_t j = 0; j < context_len; ++j) {
+            d_attention[att_row + j] += grad * cache.values[v_base + j * head_dim + h];
+            d_values[v_base + j * head_dim + h] += cache.attention[att_row + j] * grad;
+          }
+        }
+      }
+    }
 
-    // std::vector<float> d_hidden_pre(batch_size * head_dim);
-    // for (size_t b = 0; b < batch_size; ++b) {
-    //   const size_t hidden_offset = b * head_dim;
-    //   for (size_t i = 0; i < head_dim; ++i) {
-    //     d_hidden_pre[hidden_offset + i] =
-    //         d_hidden[hidden_offset + i] *
-    //         (1.0f - hidden[hidden_offset + i] * hidden[hidden_offset + i]);
-    //   }
-    // }
+    std::vector<float> d_scores(batch_size * context_len * context_len, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      const size_t a_base = b * context_len * context_len;
 
-    // for (size_t b = 0; b < batch_size; ++b) {
-    //   const size_t hidden_offset = b * head_dim;
-    //   for (size_t i = 0; i < head_dim; ++i) {
-    //     head_dim.grad[i] += d_hidden_pre[hidden_offset + i];
-    //   }
-    // }
+      for (size_t i = 0; i < context_len; ++i) {
+        const size_t row_base = a_base + i * context_len;
+        float dot = 0.0f;
+        for (size_t j = 0; j < context_len; ++j) {
+          dot += d_attention[row_base + j] * cache.attention[row_base + j];
+        }
+        for (size_t j = 0; j < context_len; ++j) {
+          d_scores[row_base + j] =
+              cache.attention[row_base + j] * (d_attention[row_base + j] - dot);
+        }
+      }
+    }
 
-    // for (size_t b = 0; b < batch_size; ++b) {
-    //   const size_t hidden_offset = b * head_dim;
-    //   const size_t ids_offset = b * context_len;
-    //   for (size_t c = 0; c < context_len; ++c) {
-    //     for (size_t i = 0; i < head_dim; ++i) {
-    //       for (size_t j = 0; j < embedding_dim; ++j) {
-    //         const int token_id = ids[ids_offset + c];
-    //         embeddings.grad[token_id * embedding_dim + j] +=
-    //             d_hidden_pre[hidden_offset + i] *
-    //             hidden_weights.val[c * embedding_dim * hidden_dim + j * hidden_dim + i];
-    //         hidden_weights.grad[c * embedding_dim * hidden_dim + j * hidden_dim + i] +=
-    //             d_hidden_pre[hidden_offset + i] * embeddings.val[token_id * embedding_dim + j];
-    //       }
-    //     }
-    //   }
-    // }
+    std::vector<float> d_queries(batch_size * context_len * head_dim, 0.0f);
+    std::vector<float> d_keys(batch_size * context_len * head_dim, 0.0f);
+    const float inv_sqrt_head_dim = 1.0f / std::sqrt(static_cast<float>(head_dim));
+    for (size_t b = 0; b < batch_size; ++b) {
+      const size_t qk_base = b * context_len * head_dim;
+      const size_t s_base = b * context_len * context_len;
 
-    scale_grads(inv_batch_size);
-    return avg_loss;
+      for (size_t i = 0; i < context_len; ++i) {
+        const size_t q_base = qk_base + i * head_dim;
+        const size_t row_base = s_base + i * context_len;
+
+        for (size_t j = 0; j <= i; ++j) {
+          const float grad = d_scores[row_base + j] * inv_sqrt_head_dim;
+          const size_t k_base = qk_base + j * head_dim;
+
+          for (size_t h = 0; h < head_dim; ++h) {
+            d_queries[q_base + h] += grad * cache.keys[k_base + h];
+            d_keys[k_base + h] += grad * cache.queries[q_base + h];
+          }
+        }
+      }
+    }
+
+    std::vector<float> d_embeddings(batch_size * context_len * embedding_dim, 0.0f);
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t emb_base = b * context_len * embedding_dim + c * embedding_dim;
+        const size_t qkv_base = b * context_len * head_dim + c * head_dim;
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float x = cache.embeddings[emb_base + i];
+          float grad = 0.0f;
+
+          for (size_t j = 0; j < head_dim; ++j) {
+            const float dq = d_queries[qkv_base + j];
+            const float dk = d_keys[qkv_base + j];
+            const float dv = d_values[qkv_base + j];
+
+            query_weights.grad[i * head_dim + j] += x * dq;
+            key_weights.grad[i * head_dim + j] += x * dk;
+            value_weights.grad[i * head_dim + j] += x * dv;
+
+            grad += dq * query_weights.val[i * head_dim + j];
+            grad += dk * key_weights.val[i * head_dim + j];
+            grad += dv * value_weights.val[i * head_dim + j];
+          }
+
+          d_embeddings[emb_base + i] = grad;
+        }
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t c = 0; c < context_len; ++c) {
+        const size_t emb_base = b * context_len * embedding_dim + c * embedding_dim;
+        const size_t token_id = ids[b * context_len + c];
+        const size_t tok_base = token_id * embedding_dim;
+        const size_t pos_base = c * embedding_dim;
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          token_embeddings.grad[tok_base + i] += d_embeddings[emb_base + i];
+          position_embeddings.grad[pos_base + i] += d_embeddings[emb_base + i];
+        }
+      }
+    }
+
+    scale_grads(inv_token_count);
+    return cache.avg_loss;
   }
 
   /// Compute the average loss for one batch without building gradients.
   float forward_loss(const std::vector<int> &ids, const std::vector<int> &targets) const {
-    // TODO
+    return forward(ids, targets).avg_loss;
   }
 
   /// Apply one optimizer step to every parameter tensor.
   void update() {
-    embeddings.update();
-    hidden_weights.update();
-    head_dim.update();
+    token_embeddings.update();
+    position_embeddings.update();
+    query_weights.update();
+    key_weights.update();
+    value_weights.update();
     output_weights.update();
     output_bias.update();
   }
@@ -537,8 +526,8 @@ void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &t
     const int index = randint(min, max);
     for (size_t j = 0; j < context_len; ++j) {
       ids[b * context_len + j] = token_ids[index + j];
+      targets[b * context_len + j] = token_ids[index + j + 1];
     }
-    targets[b] = token_ids[index + context_len];
   }
 }
 
@@ -548,7 +537,7 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
       static_cast<int>(std::floor(token_ids.size() * (1.0f - validation_split)));
 
   std::vector<int> ids(batch_size * context_len);
-  std::vector<int> targets(batch_size);
+  std::vector<int> targets(batch_size * context_len);
 
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
     const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
