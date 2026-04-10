@@ -235,7 +235,7 @@ public:
   }
 
   /// Run one full forward and backward pass for one batch.
-  float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
+  float forward_backward(const std::vector<int> &ids) {
     zero_grad();
 
     std::vector<float> embeddings(batch_size * context_len * embedding_dim, 0.0f);
@@ -397,28 +397,41 @@ public:
       }
     }
 
-    std::vector<float> max_out_logits(batch_size);
+    std::vector<float> max_out_logits(batch_size * context_len);
     for (size_t b = 0; b < batch_size; ++b) {
-      max_out_logits[b] = out_logits[b * vocab_size];
-      for (size_t i = 0; i < vocab_size; ++i) {
-        max_out_logits[b] = std::max(max_out_logits[b], out_logits[b * vocab_size + i]);
+      for (size_t c = 0; c < context_len; ++c) {
+        max_out_logits[b * context_len + c] =
+            out_logits[b * context_len * vocab_size + c * vocab_size];
+
+        for (size_t i = 0; i < vocab_size; ++i) {
+          max_out_logits[b * context_len + c] =
+              std::max(max_out_logits[b * context_len + c],
+                       out_logits[b * context_len * vocab_size + c * vocab_size + i]);
+        }
       }
     }
 
-    std::vector<double> out_sums_exp(batch_size, 0.0);
+    std::vector<double> out_sums_exp(batch_size * context_len, 0.0);
     for (size_t b = 0; b < batch_size; ++b) {
-      for (size_t i = 0; i < vocab_size; ++i) {
-        out_sums_exp[b] +=
-            std::exp(static_cast<double>(out_logits[b * vocab_size + i] - max_out_logits[b]));
+      for (size_t c = 0; c < context_len; ++c) {
+        for (size_t i = 0; i < vocab_size; ++i) {
+          out_sums_exp[b * context_len + c] += std::exp(
+              static_cast<double>(out_logits[b * context_len * vocab_size + c * vocab_size + i] -
+                                  max_out_logits[b * context_len + c]));
+        }
       }
     }
 
     float loss = 0.0f;
     for (size_t b = 0; b < batch_size; ++b) {
-      loss += static_cast<float>(max_out_logits[b] + std::log(out_sums_exp[b]) -
-                                 out_logits[b * vocab_size + targets[b]]);
+      for (size_t c = 0; c < context_len; ++c) {
+        loss += static_cast<float>(max_out_logits[b * context_len + c] +
+                                   std::log(out_sums_exp[b * context_len + c]) -
+                                   out_logits[b * context_len * vocab_size + c * vocab_size +
+                                              ids[b * batch_size + c + 1]]);
+      }
     }
-    loss /= static_cast<float>(batch_size);
+    loss /= static_cast<float>(batch_size * context_len);
 
     // TODO
 
