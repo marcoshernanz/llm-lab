@@ -2,10 +2,10 @@
 
 - Pre-norm block structure.
 - RMSNorm instead of LayerNorm.
-- SwiGLU FFN instead of tanh.
 - Tie token embeddings and LM head.
-- AdamW.
 
+- AdamW.
+- SwiGLU FFN instead of tanh.
 - RoPE.
 
 - Activation functions
