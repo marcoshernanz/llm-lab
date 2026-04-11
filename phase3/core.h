@@ -17,7 +17,7 @@ inline constexpr int attention_dim = num_heads * head_dim;
 inline constexpr int num_decoder_blocks = 4;
 inline constexpr int feed_forward_dim = 128;
 
-inline constexpr int steps = 10000;
+inline constexpr int steps = 1000;
 inline constexpr int steps_per_chunk = 100;
 inline constexpr int batch_size = 32;
 inline constexpr float inv_token_count = 1.0f / static_cast<float>(batch_size * context_len);
