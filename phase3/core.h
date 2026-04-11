@@ -25,6 +25,7 @@ inline constexpr float learning_rate = 0.01f;
 inline constexpr float beta1 = 0.9f;
 inline constexpr float beta2 = 0.999f;
 inline constexpr float eps = 1e-8f;
+inline constexpr float weight_decay = 0.01f;
 inline constexpr float rms_norm_eps = 1e-5f;
 
 /// Sample one normal random value for parameter initialization.
@@ -35,18 +36,18 @@ inline float fan_in_stddev(int fan_in) {
   return 1.0f / std::sqrt(static_cast<float>(fan_in));
 }
 
-/// Hold Adam state for one parameter tensor.
-class Adam {
+/// Hold AdamW state for one parameter tensor.
+class AdamW {
 public:
   float beta1_pow = 1.0f;
   float beta2_pow = 1.0f;
   std::vector<float> first_moment;
   std::vector<float> second_moment;
 
-  /// Construct one Adam state object with zero moments.
-  explicit Adam(size_t size) : first_moment(size, 0.0f), second_moment(size, 0.0f) {}
+  /// Construct one AdamW state object with zero moments.
+  explicit AdamW(size_t size) : first_moment(size, 0.0f), second_moment(size, 0.0f) {}
 
-  /// Apply one Adam update to a parameter tensor.
+  /// Apply one AdamW update to a parameter tensor.
   void update(std::vector<float> &values, const std::vector<float> &gradients) {
     beta1_pow *= beta1;
     beta2_pow *= beta2;
@@ -59,7 +60,9 @@ public:
 
       const float corrected_first = first_moment[i] / beta1_correction;
       const float corrected_second = second_moment[i] / beta2_correction;
-      values[i] -= learning_rate * corrected_first / (std::sqrt(corrected_second) + eps);
+      values[i] =
+          (1.0f - learning_rate * weight_decay) * values[i] -
+          learning_rate * corrected_first / (std::sqrt(corrected_second) + eps);
     }
   }
 };
@@ -69,7 +72,7 @@ class Param {
 public:
   std::vector<float> val;
   std::vector<float> grad;
-  Adam optimizer;
+  AdamW optimizer;
 
   /// Construct one parameter tensor with matching gradient and optimizer state.
   explicit Param(size_t size) : val(size), grad(size, 0.0f), optimizer(size) {}
