@@ -1,6 +1,7 @@
 /// Feedforward forward and backward helpers for phase 3.
 
 #include "feed_forward.h"
+#include "profiler.h"
 
 namespace feed_forward {
 
@@ -8,6 +9,7 @@ namespace feed_forward {
 Cache forward(const std::vector<float> &inputs, const Param &hidden_weights,
               const Param &hidden_bias, const Param &output_projection_weights,
               const Param &output_projection_bias) {
+  const profiler::Scope scope("feed_forward.forward");
   Cache cache;
   cache.hidden_pre.resize(batch_size * context_len * feed_forward_dim);
   cache.hidden.resize(batch_size * context_len * feed_forward_dim);
@@ -53,6 +55,7 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
                             const std::vector<float> &d_projected_output, Param &hidden_weights,
                             Param &hidden_bias, Param &output_projection_weights,
                             Param &output_projection_bias) {
+  const profiler::Scope scope("feed_forward.backward");
   std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
   std::vector<float> d_hidden(batch_size * context_len * feed_forward_dim, 0.0f);
 

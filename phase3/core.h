@@ -6,6 +6,8 @@
 #include <cmath>
 #include <vector>
 
+#include "profiler.h"
+
 inline constexpr int vocab_size = 128;
 inline constexpr int context_len = 4;
 inline constexpr int embedding_dim = 32;
@@ -101,5 +103,8 @@ public:
   }
 
   /// Apply one optimizer step using the current gradient buffer.
-  void update() { optimizer.update(val, grad); }
+  void update() {
+    const profiler::Scope scope("param.update");
+    optimizer.update(val, grad);
+  }
 };

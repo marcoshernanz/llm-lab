@@ -1,6 +1,7 @@
 /// Multi-head attention forward and backward helpers for phase 3.
 
 #include "attention.h"
+#include "profiler.h"
 
 #include <limits>
 
@@ -30,6 +31,7 @@ size_t attended_index(size_t batch_index, size_t token_index, size_t head_index,
 Cache forward(const std::vector<float> &inputs, const Param &query_weights,
               const Param &key_weights, const Param &value_weights,
               const Param &output_projection_weights) {
+  const profiler::Scope scope("attention.forward");
   Cache cache;
   cache.queries.resize(batch_size * context_len * attention_dim);
   cache.keys.resize(batch_size * context_len * attention_dim);
@@ -136,6 +138,7 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
                             const std::vector<float> &d_projected_output, Param &query_weights,
                             Param &key_weights, Param &value_weights,
                             Param &output_projection_weights) {
+  const profiler::Scope scope("attention.backward");
   std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
   std::vector<float> d_attended_values(batch_size * context_len * attention_dim, 0.0f);
 

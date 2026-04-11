@@ -1,6 +1,7 @@
 /// Stacked decoder helpers for phase 3.
 
 #include "decoder.h"
+#include "profiler.h"
 
 namespace decoder {
 
@@ -37,6 +38,7 @@ void Stack::update() {
 
 /// Run one full decoder-stack forward pass.
 Cache Stack::forward(const std::vector<float> &decoder_input) const {
+  const profiler::Scope scope("decoder.forward");
   Cache cache;
   cache.blocks.reserve(blocks.size());
 
@@ -52,6 +54,7 @@ Cache Stack::forward(const std::vector<float> &decoder_input) const {
 
 /// Backpropagate through the full decoder stack.
 std::vector<float> Stack::backward(const Cache &cache, const std::vector<float> &d_decoder_output) {
+  const profiler::Scope scope("decoder.backward");
   std::vector<float> d_block_input = d_decoder_output;
   for (size_t i = blocks.size(); i-- > 0;) {
     d_block_input = blocks[i].backward(cache.blocks[i], d_block_input);

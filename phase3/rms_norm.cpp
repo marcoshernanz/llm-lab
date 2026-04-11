@@ -1,11 +1,13 @@
 /// RMSNorm forward and backward helpers for phase 3.
 
 #include "rms_norm.h"
+#include "profiler.h"
 
 namespace rms_norm {
 
 /// Run one RMSNorm over the embedding dimension.
 Cache forward(const std::vector<float> &inputs, const Param &gain) {
+  const profiler::Scope scope("rms_norm.forward");
   Cache cache;
   cache.normalized_input.resize(batch_size * context_len * embedding_dim);
   cache.rms_norm_output.resize(batch_size * context_len * embedding_dim);
@@ -39,6 +41,7 @@ Cache forward(const std::vector<float> &inputs, const Param &gain) {
 /// Backpropagate through one RMSNorm application.
 std::vector<float> backward(const std::vector<float> &d_output, const std::vector<float> &inputs,
                             const Cache &cache, Param &gain) {
+  const profiler::Scope scope("rms_norm.backward");
   std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
 
   for (size_t b = 0; b < batch_size; ++b) {

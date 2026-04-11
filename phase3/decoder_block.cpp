@@ -1,6 +1,7 @@
 /// Decoder block helpers for phase 3.
 
 #include "decoder_block.h"
+#include "profiler.h"
 
 namespace decoder_block {
 
@@ -73,6 +74,7 @@ void Block::update() {
 
 /// Run one full decoder-block forward pass.
 Cache Block::forward(const std::vector<float> &block_input) const {
+  const profiler::Scope scope("decoder_block.forward");
   Cache cache{.block_input = block_input,
               .attention_rms_norm = rms_norm::forward(block_input, attention_rms_gain),
               .attention = {},
@@ -99,6 +101,7 @@ Cache Block::forward(const std::vector<float> &block_input) const {
 
 /// Backpropagate through one full decoder block.
 std::vector<float> Block::backward(const Cache &cache, const std::vector<float> &d_block_output) {
+  const profiler::Scope scope("decoder_block.backward");
   std::vector<float> d_attention_residual = d_block_output;
   const std::vector<float> d_feed_forward_norm_output = feed_forward::backward(
       cache.feed_forward_rms_norm.rms_norm_output, cache.feed_forward, d_block_output,

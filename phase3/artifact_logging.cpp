@@ -33,6 +33,7 @@ ArtifactPaths create_artifact_paths() {
   paths.run_dir = artifacts_root / paths.run_id;
   paths.metrics_csv = paths.run_dir / "metrics.csv";
   paths.metadata_json = paths.run_dir / "run_metadata.json";
+  paths.profile_summary_csv = paths.run_dir / "profile_summary.csv";
 
   std::filesystem::create_directories(paths.run_dir);
   return paths;

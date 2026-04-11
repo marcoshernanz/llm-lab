@@ -13,6 +13,7 @@ struct ArtifactPaths {
   std::filesystem::path run_dir;
   std::filesystem::path metrics_csv;
   std::filesystem::path metadata_json;
+  std::filesystem::path profile_summary_csv;
 };
 
 /// Hold one minimal artifact logger for the fixed phase-3 trainer.

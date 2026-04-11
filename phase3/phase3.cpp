@@ -3,6 +3,7 @@
 #include "artifact_logging.h"
 #include "core.h"
 #include "decoder.h"
+#include "profiler.h"
 
 #include <algorithm>
 #include <chrono>
@@ -120,6 +121,7 @@ public:
 
   /// Run one full forward pass and keep the tensors needed for backprop.
   ForwardCache forward(const std::vector<int> &ids, const std::vector<int> &targets) const {
+    const profiler::Scope scope("model.forward");
     ForwardCache cache;
     cache.input_embeddings = compute_input_embeddings(ids);
     cache.decoder_cache = decoder_stack.forward(cache.input_embeddings);
@@ -130,6 +132,7 @@ public:
 
   /// Run one full forward and backward pass for one batch.
   float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
+    const profiler::Scope scope("model.forward_backward");
     zero_grad();
 
     const ForwardCache cache = forward(ids, targets);
@@ -144,11 +147,13 @@ public:
 
   /// Compute the average loss for one batch without building gradients.
   float forward_loss(const std::vector<int> &ids, const std::vector<int> &targets) const {
+    const profiler::Scope scope("model.forward_loss");
     return forward(ids, targets).avg_loss;
   }
 
   /// Apply one optimizer step to every parameter tensor.
   void update() {
+    const profiler::Scope scope("model.update");
     token_embedding_table.update();
     position_embedding_table.update();
     decoder_stack.update();
@@ -177,6 +182,7 @@ public:
 private:
   /// Build token-plus-position embeddings for one batch.
   std::vector<float> compute_input_embeddings(const std::vector<int> &ids) const {
+    const profiler::Scope scope("model.compute_input_embeddings");
     std::vector<float> embeddings(batch_size * context_len * embedding_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
@@ -198,6 +204,7 @@ private:
   void compute_logits_and_loss(const std::vector<float> &inputs, const std::vector<int> &targets,
                                std::vector<float> &logits, std::vector<float> &probs,
                                float &avg_loss) const {
+    const profiler::Scope scope("model.compute_logits_and_loss");
     logits.resize(batch_size * context_len * vocab_size);
     probs.resize(batch_size * context_len * vocab_size);
     float loss_sum = 0.0f;
@@ -242,6 +249,7 @@ private:
   std::vector<float> backward_logits(const std::vector<float> &inputs,
                                      const std::vector<int> &targets,
                                      const std::vector<float> &probs) {
+    const profiler::Scope scope("model.backward_logits");
     std::vector<float> d_logits = probs;
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
@@ -273,6 +281,7 @@ private:
   /// Accumulate token and position embedding gradients from one input gradient tensor.
   void accumulate_embedding_grads(const std::vector<int> &ids,
                                   const std::vector<float> &d_embeddings) {
+    const profiler::Scope scope("model.accumulate_embedding_grads");
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t grad_base = b * context_len * embedding_dim + c * embedding_dim;
@@ -292,6 +301,7 @@ private:
 /// Sample one batch of context windows and next-token targets.
 void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &targets,
                     const std::vector<int> &token_ids) {
+  const profiler::Scope scope("train.generate_batch");
   for (size_t b = 0; b < batch_size; ++b) {
     const int index = randint(min, max);
     for (size_t j = 0; j < context_len; ++j) {
@@ -303,9 +313,12 @@ void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &t
 
 /// Run the current single-file training loop.
 void run_training(Model &model, const std::vector<int> &token_ids) {
+  const profiler::Scope scope("train.run");
   const int split_index =
       static_cast<int>(std::floor(token_ids.size() * (1.0f - validation_split)));
   ArtifactLogger artifact_logger(corpus_path, model.parameter_count());
+  profiler::reset();
+  const auto training_start = std::chrono::steady_clock::now();
 
   std::vector<int> ids(batch_size * context_len);
   std::vector<int> targets(batch_size * context_len);
@@ -313,6 +326,7 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
   std::cout << "run_dir=" << artifact_logger.paths.run_dir.string() << "\n";
   std::cout << "metrics_csv=" << artifact_logger.paths.metrics_csv.string() << "\n";
   std::cout << "metadata_json=" << artifact_logger.paths.metadata_json.string() << "\n";
+  std::cout << "profile_summary_csv=" << artifact_logger.paths.profile_summary_csv.string() << "\n";
   std::cout << "parameter_count=" << model.parameter_count() << "\n";
 
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
@@ -322,14 +336,23 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
     const auto chunk_start = std::chrono::steady_clock::now();
 
     for (int step = 0; step < chunk_steps; ++step) {
-      generate_batch(0, split_index - context_len, ids, targets, token_ids);
-      train_loss += model.forward_backward(ids, targets);
+      {
+        const profiler::Scope training_step_scope("train.forward_backward_step");
+        generate_batch(0, split_index - context_len, ids, targets, token_ids);
+        train_loss += model.forward_backward(ids, targets);
+      }
 
-      generate_batch(split_index, static_cast<int>(token_ids.size()) - context_len, ids, targets,
-                     token_ids);
-      val_loss += model.forward_loss(ids, targets);
+      {
+        const profiler::Scope validation_step_scope("train.validation_step");
+        generate_batch(split_index, static_cast<int>(token_ids.size()) - context_len, ids, targets,
+                       token_ids);
+        val_loss += model.forward_loss(ids, targets);
+      }
 
-      model.update();
+      {
+        const profiler::Scope optimizer_step_scope("train.optimizer_step");
+        model.update();
+      }
     }
 
     const double chunk_seconds =
@@ -348,6 +371,13 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
               << " train_loss=" << avg_train_loss << " val_loss=" << avg_val_loss
               << " step_time_ms=" << step_time_ms << " tokens_per_second=" << tokens_per_second
               << "\n";
+  }
+
+  const double training_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - training_start).count();
+  if (profiler::has_samples()) {
+    profiler::write_summary_csv(artifact_logger.paths.profile_summary_csv, training_seconds);
+    profiler::print_summary(std::cout, training_seconds, 12);
   }
 }
 
