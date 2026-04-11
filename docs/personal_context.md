@@ -57,4 +57,4 @@ If a choice appears between:
 
 the second option is usually the right one.
 
-That is why phase 2 exists, and why the planned next phase is a narrow C++ systems rebuild rather than a broad library rewrite.
+That is why phase 2 existed, why phase 3 became a narrow handwritten systems reference, and why the active next phase is now a PyTorch-to-kernel path rather than more broad handwritten trainer work.
