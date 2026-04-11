@@ -2,6 +2,10 @@
 
 This document describes the smallest reasonable way to begin phase 3.
 
+Historical note:
+- phase 3 is no longer the active next phase of the repo,
+- but this bootstrap document remains useful as a record of how the handwritten CPU reference began.
+
 The goal is not to design the final C++ project now.
 The goal is to create one inspectable executable that can grow with the learning target.
 
