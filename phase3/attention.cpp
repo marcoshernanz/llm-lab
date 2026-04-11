@@ -39,91 +39,105 @@ void forward(const std::vector<float> &inputs, const Param &query_weights,
   resize_and_zero(cache.attended_values, batch_size * context_len * attention_dim);
   resize_and_zero(cache.projected_output, batch_size * context_len * embedding_dim);
 
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t t = 0; t < context_len; ++t) {
-      const size_t input_base = b * context_len * embedding_dim + t * embedding_dim;
-      const size_t qkv_base = b * context_len * attention_dim + t * attention_dim;
+  {
+    const profiler::Scope stage_scope("attention.forward.qkv_projection");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t t = 0; t < context_len; ++t) {
+        const size_t input_base = b * context_len * embedding_dim + t * embedding_dim;
+        const size_t qkv_base = b * context_len * attention_dim + t * attention_dim;
 
-      for (size_t i = 0; i < attention_dim; ++i) {
-        float q = 0.0f;
-        float k = 0.0f;
-        float v = 0.0f;
+        for (size_t i = 0; i < attention_dim; ++i) {
+          float q = 0.0f;
+          float k = 0.0f;
+          float v = 0.0f;
 
-        for (size_t j = 0; j < embedding_dim; ++j) {
-          const float x = inputs[input_base + j];
-          q += x * query_weights.val[j * attention_dim + i];
-          k += x * key_weights.val[j * attention_dim + i];
-          v += x * value_weights.val[j * attention_dim + i];
+          for (size_t j = 0; j < embedding_dim; ++j) {
+            const float x = inputs[input_base + j];
+            q += x * query_weights.val[j * attention_dim + i];
+            k += x * key_weights.val[j * attention_dim + i];
+            v += x * value_weights.val[j * attention_dim + i];
+          }
+
+          cache.queries[qkv_base + i] = q;
+          cache.keys[qkv_base + i] = k;
+          cache.values[qkv_base + i] = v;
         }
-
-        cache.queries[qkv_base + i] = q;
-        cache.keys[qkv_base + i] = k;
-        cache.values[qkv_base + i] = v;
       }
     }
   }
 
   const float inv_sqrt_head_dim = 1.0f / std::sqrt(static_cast<float>(head_dim));
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t h = 0; h < num_heads; ++h) {
-      for (size_t q = 0; q < context_len; ++q) {
-        const size_t row_base = weight_index(b, h, q, 0);
+  {
+    const profiler::Scope stage_scope("attention.forward.softmax");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t h = 0; h < num_heads; ++h) {
+        for (size_t q = 0; q < context_len; ++q) {
+          const size_t row_base = weight_index(b, h, q, 0);
 
-        for (size_t k = 0; k < context_len; ++k) {
-          if (k > q) {
-            cache.attention_weights[row_base + k] = -std::numeric_limits<float>::infinity();
-            continue;
-          }
-
-          float score = 0.0f;
-          for (size_t c = 0; c < head_dim; ++c) {
-            score += cache.queries[qkv_index(b, q, h, c)] * cache.keys[qkv_index(b, k, h, c)];
-          }
-          cache.attention_weights[row_base + k] = score * inv_sqrt_head_dim;
-        }
-
-        float max_score = cache.attention_weights[row_base];
-        for (size_t k = 1; k < context_len; ++k) {
-          max_score = std::max(max_score, cache.attention_weights[row_base + k]);
-        }
-
-        double sum_exp = 0.0;
-        for (size_t k = 0; k < context_len; ++k) {
-          sum_exp +=
-              std::exp(static_cast<double>(cache.attention_weights[row_base + k] - max_score));
-        }
-
-        for (size_t k = 0; k < context_len; ++k) {
-          cache.attention_weights[row_base + k] = static_cast<float>(
-              std::exp(static_cast<double>(cache.attention_weights[row_base + k] - max_score)) /
-              sum_exp);
-        }
-      }
-    }
-  }
-
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t h = 0; h < num_heads; ++h) {
-      for (size_t q = 0; q < context_len; ++q) {
-        for (size_t c = 0; c < head_dim; ++c) {
           for (size_t k = 0; k < context_len; ++k) {
-            cache.attended_values[attended_index(b, q, h, c)] +=
-                cache.attention_weights[weight_index(b, h, q, k)] * cache.values[qkv_index(b, k, h, c)];
+            if (k > q) {
+              cache.attention_weights[row_base + k] = -std::numeric_limits<float>::infinity();
+              continue;
+            }
+
+            float score = 0.0f;
+            for (size_t c = 0; c < head_dim; ++c) {
+              score += cache.queries[qkv_index(b, q, h, c)] * cache.keys[qkv_index(b, k, h, c)];
+            }
+            cache.attention_weights[row_base + k] = score * inv_sqrt_head_dim;
+          }
+
+          float max_score = cache.attention_weights[row_base];
+          for (size_t k = 1; k < context_len; ++k) {
+            max_score = std::max(max_score, cache.attention_weights[row_base + k]);
+          }
+
+          double sum_exp = 0.0;
+          for (size_t k = 0; k < context_len; ++k) {
+            sum_exp +=
+                std::exp(static_cast<double>(cache.attention_weights[row_base + k] - max_score));
+          }
+
+          for (size_t k = 0; k < context_len; ++k) {
+            cache.attention_weights[row_base + k] = static_cast<float>(
+                std::exp(static_cast<double>(cache.attention_weights[row_base + k] - max_score)) /
+                sum_exp);
           }
         }
       }
     }
   }
 
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t t = 0; t < context_len; ++t) {
-      const size_t attended_base = b * context_len * attention_dim + t * attention_dim;
-      const size_t output_base = b * context_len * embedding_dim + t * embedding_dim;
+  {
+    const profiler::Scope stage_scope("attention.forward.attention_mix");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t h = 0; h < num_heads; ++h) {
+        for (size_t q = 0; q < context_len; ++q) {
+          for (size_t c = 0; c < head_dim; ++c) {
+            for (size_t k = 0; k < context_len; ++k) {
+              cache.attended_values[attended_index(b, q, h, c)] +=
+                  cache.attention_weights[weight_index(b, h, q, k)] *
+                  cache.values[qkv_index(b, k, h, c)];
+            }
+          }
+        }
+      }
+    }
+  }
 
-      for (size_t i = 0; i < embedding_dim; ++i) {
-        for (size_t j = 0; j < attention_dim; ++j) {
-          cache.projected_output[output_base + i] +=
-              cache.attended_values[attended_base + j] * output_projection_weights.val[j * embedding_dim + i];
+  {
+    const profiler::Scope stage_scope("attention.forward.output_projection");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t t = 0; t < context_len; ++t) {
+        const size_t attended_base = b * context_len * attention_dim + t * attention_dim;
+        const size_t output_base = b * context_len * embedding_dim + t * embedding_dim;
+
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          for (size_t j = 0; j < attention_dim; ++j) {
+            cache.projected_output[output_base + i] +=
+                cache.attended_values[attended_base + j] *
+                output_projection_weights.val[j * embedding_dim + i];
+          }
         }
       }
     }
@@ -139,18 +153,21 @@ void backward(const std::vector<float> &inputs, Cache &cache,
   resize_and_zero(d_inputs, batch_size * context_len * embedding_dim);
   resize_and_zero(cache.d_attended_values, batch_size * context_len * attention_dim);
 
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t t = 0; t < context_len; ++t) {
-      const size_t attended_base = b * context_len * attention_dim + t * attention_dim;
-      const size_t output_base = b * context_len * embedding_dim + t * embedding_dim;
+  {
+    const profiler::Scope stage_scope("attention.backward.output_projection");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t t = 0; t < context_len; ++t) {
+        const size_t attended_base = b * context_len * attention_dim + t * attention_dim;
+        const size_t output_base = b * context_len * embedding_dim + t * embedding_dim;
 
         for (size_t i = 0; i < embedding_dim; ++i) {
           const float grad = d_projected_output[output_base + i];
           for (size_t j = 0; j < attention_dim; ++j) {
             output_projection_weights.grad[j * embedding_dim + i] +=
                 cache.attended_values[attended_base + j] * grad;
-          cache.d_attended_values[attended_base + j] +=
-              grad * output_projection_weights.val[j * embedding_dim + i];
+            cache.d_attended_values[attended_base + j] +=
+                grad * output_projection_weights.val[j * embedding_dim + i];
+          }
         }
       }
     }
@@ -158,16 +175,19 @@ void backward(const std::vector<float> &inputs, Cache &cache,
 
   resize_and_zero(cache.d_attention_weights, batch_size * num_heads * context_len * context_len);
   resize_and_zero(cache.d_values, batch_size * context_len * attention_dim);
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t h = 0; h < num_heads; ++h) {
-      for (size_t q = 0; q < context_len; ++q) {
-        for (size_t c = 0; c < head_dim; ++c) {
-          const float grad = cache.d_attended_values[attended_index(b, q, h, c)];
-          for (size_t k = 0; k < context_len; ++k) {
-            cache.d_attention_weights[weight_index(b, h, q, k)] +=
-                grad * cache.values[qkv_index(b, k, h, c)];
-            cache.d_values[qkv_index(b, k, h, c)] +=
-                cache.attention_weights[weight_index(b, h, q, k)] * grad;
+  {
+    const profiler::Scope stage_scope("attention.backward.attention_mix");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t h = 0; h < num_heads; ++h) {
+        for (size_t q = 0; q < context_len; ++q) {
+          for (size_t c = 0; c < head_dim; ++c) {
+            const float grad = cache.d_attended_values[attended_index(b, q, h, c)];
+            for (size_t k = 0; k < context_len; ++k) {
+              cache.d_attention_weights[weight_index(b, h, q, k)] +=
+                  grad * cache.values[qkv_index(b, k, h, c)];
+              cache.d_values[qkv_index(b, k, h, c)] +=
+                  cache.attention_weights[weight_index(b, h, q, k)] * grad;
+            }
           }
         }
       }
@@ -175,19 +195,22 @@ void backward(const std::vector<float> &inputs, Cache &cache,
   }
 
   resize_and_zero(cache.d_scores, batch_size * num_heads * context_len * context_len);
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t h = 0; h < num_heads; ++h) {
-      for (size_t q = 0; q < context_len; ++q) {
-        float dot = 0.0f;
-        for (size_t k = 0; k < context_len; ++k) {
-          dot += cache.d_attention_weights[weight_index(b, h, q, k)] *
-                 cache.attention_weights[weight_index(b, h, q, k)];
-        }
+  {
+    const profiler::Scope stage_scope("attention.backward.softmax");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t h = 0; h < num_heads; ++h) {
+        for (size_t q = 0; q < context_len; ++q) {
+          float dot = 0.0f;
+          for (size_t k = 0; k < context_len; ++k) {
+            dot += cache.d_attention_weights[weight_index(b, h, q, k)] *
+                   cache.attention_weights[weight_index(b, h, q, k)];
+          }
 
-        for (size_t k = 0; k < context_len; ++k) {
-          cache.d_scores[weight_index(b, h, q, k)] =
-              cache.attention_weights[weight_index(b, h, q, k)] *
-              (cache.d_attention_weights[weight_index(b, h, q, k)] - dot);
+          for (size_t k = 0; k < context_len; ++k) {
+            cache.d_scores[weight_index(b, h, q, k)] =
+                cache.attention_weights[weight_index(b, h, q, k)] *
+                (cache.d_attention_weights[weight_index(b, h, q, k)] - dot);
+          }
         }
       }
     }
@@ -196,39 +219,47 @@ void backward(const std::vector<float> &inputs, Cache &cache,
   resize_and_zero(cache.d_queries, batch_size * context_len * attention_dim);
   resize_and_zero(cache.d_keys, batch_size * context_len * attention_dim);
   const float inv_sqrt_head_dim = 1.0f / std::sqrt(static_cast<float>(head_dim));
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t h = 0; h < num_heads; ++h) {
-      for (size_t q = 0; q < context_len; ++q) {
-        for (size_t k = 0; k <= q; ++k) {
-          const float grad = cache.d_scores[weight_index(b, h, q, k)] * inv_sqrt_head_dim;
-          for (size_t c = 0; c < head_dim; ++c) {
-            cache.d_queries[qkv_index(b, q, h, c)] += grad * cache.keys[qkv_index(b, k, h, c)];
-            cache.d_keys[qkv_index(b, k, h, c)] += grad * cache.queries[qkv_index(b, q, h, c)];
+  {
+    const profiler::Scope stage_scope("attention.backward.qk_scores");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t h = 0; h < num_heads; ++h) {
+        for (size_t q = 0; q < context_len; ++q) {
+          for (size_t k = 0; k <= q; ++k) {
+            const float grad = cache.d_scores[weight_index(b, h, q, k)] * inv_sqrt_head_dim;
+            for (size_t c = 0; c < head_dim; ++c) {
+              cache.d_queries[qkv_index(b, q, h, c)] +=
+                  grad * cache.keys[qkv_index(b, k, h, c)];
+              cache.d_keys[qkv_index(b, k, h, c)] +=
+                  grad * cache.queries[qkv_index(b, q, h, c)];
+            }
           }
         }
       }
     }
   }
 
-  for (size_t b = 0; b < batch_size; ++b) {
-    for (size_t t = 0; t < context_len; ++t) {
-      const size_t input_base = b * context_len * embedding_dim + t * embedding_dim;
-      const size_t qkv_base = b * context_len * attention_dim + t * attention_dim;
+  {
+    const profiler::Scope stage_scope("attention.backward.qkv_projection");
+    for (size_t b = 0; b < batch_size; ++b) {
+      for (size_t t = 0; t < context_len; ++t) {
+        const size_t input_base = b * context_len * embedding_dim + t * embedding_dim;
+        const size_t qkv_base = b * context_len * attention_dim + t * attention_dim;
 
-      for (size_t i = 0; i < embedding_dim; ++i) {
-        const float x = inputs[input_base + i];
-        for (size_t j = 0; j < attention_dim; ++j) {
-          const float dq = cache.d_queries[qkv_base + j];
-          const float dk = cache.d_keys[qkv_base + j];
-          const float dv = cache.d_values[qkv_base + j];
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float x = inputs[input_base + i];
+          for (size_t j = 0; j < attention_dim; ++j) {
+            const float dq = cache.d_queries[qkv_base + j];
+            const float dk = cache.d_keys[qkv_base + j];
+            const float dv = cache.d_values[qkv_base + j];
 
-          query_weights.grad[i * attention_dim + j] += x * dq;
-          key_weights.grad[i * attention_dim + j] += x * dk;
-          value_weights.grad[i * attention_dim + j] += x * dv;
+            query_weights.grad[i * attention_dim + j] += x * dq;
+            key_weights.grad[i * attention_dim + j] += x * dk;
+            value_weights.grad[i * attention_dim + j] += x * dv;
 
-          d_inputs[input_base + i] += dq * query_weights.val[i * attention_dim + j];
-          d_inputs[input_base + i] += dk * key_weights.val[i * attention_dim + j];
-          d_inputs[input_base + i] += dv * value_weights.val[i * attention_dim + j];
+            d_inputs[input_base + i] += dq * query_weights.val[i * attention_dim + j];
+            d_inputs[input_base + i] += dk * key_weights.val[i * attention_dim + j];
+            d_inputs[input_base + i] += dv * value_weights.val[i * attention_dim + j];
+          }
         }
       }
     }
