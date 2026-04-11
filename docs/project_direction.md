@@ -46,9 +46,11 @@ Those are tempting goals, but they are too broad for the current learning stage.
 ## Current Phase Logic
 
 Phase 1 was about architecture semantics.
-Phase 2 is about scaling, data, hardware, optimizer behavior, and profiling.
+Phase 2 was about scaling, data, hardware, optimizer behavior, and profiling.
+Phase 3 became a narrow handwritten CPU systems reference.
+Phase 4 is now the active path and moves back toward the real modern workflow: PyTorch, real profiling, Triton, then raw CUDA/C++.
 
-The point of phase 2 is to freeze a real target that can later be rebuilt at a lower level.
+The point of phase 2 was to freeze a real target that later lower-level work could depend on.
 
 That means phase 2 should end only after the following are reasonably clear:
 
@@ -59,41 +61,40 @@ That means phase 2 should end only after the following are reasonably clear:
 - one stable training budget,
 - and at least one real profile of where the time goes.
 
-## Post-Phase-2 Direction
+## Current Direction
 
-After phase 2, the right move is not "rewrite everything."
-The right move is:
+The current best path is not "keep rebuilding trainers by hand forever."
+The better path is:
 
-1. freeze one exact target trainer,
-2. rebuild that trainer in C++ on CPU,
-3. get correctness and behavioral parity,
-4. profile that implementation,
-5. then add CUDA only where profiling justifies it.
+1. keep the small handwritten CPU trainer as a completed systems reference,
+2. rebuild the target simply in PyTorch,
+3. modernize it carefully,
+4. profile the real PyTorch workload with production-style tools,
+5. use Triton for the first custom-kernel layer,
+6. then write raw CUDA/C++ kernels for measured hotspots.
 
-That path preserves first-principles learning while keeping scope narrow enough to finish.
+That path stays aligned with the real modern workflow while still preserving the long-term kernel-learning goal.
 
-## Learning Order After Phase 2
+## Learning Order Now
 
-The high-level order should be:
+The high-level order should now be:
 
-1. freeze one real training target,
-2. rebuild that target on CPU in C++,
-3. learn and profile the real CPU bottlenecks,
-4. study GPU fundamentals,
-5. add CUDA for the measured hotspots,
-6. only then move into more advanced kernel and distributed topics.
+1. simple PyTorch semantic baseline,
+2. modest modern-transformer upgrades,
+3. production-style profiling,
+4. Triton,
+5. raw CUDA/C++,
+6. then later more advanced kernel and distributed topics.
 
-This matters because the repo should teach things in the order they become real bottlenecks, not in the order they seem exciting.
+This matters because the repo should teach not only how kernels work, but also where kernels actually fit in a real stack.
 
-In practical terms, the priority stack after phase 2 is:
+In practical terms, the priority stack now is:
 
-- CPU trainer correctness,
+- PyTorch baseline clarity,
 - profiling,
-- GPU fundamentals,
-- CUDA,
-- then later Triton, FlashAttention, and distributed training.
-
-Topics such as MoE, exotic kernel DSLs, or broad framework design should stay later because they add complexity before the dense single-trainer path is fully understood.
+- Triton,
+- raw CUDA/C++,
+- then later FlashAttention-style work, deeper kernel specialization, and distributed systems.
 
 ## Decision Rules
 
@@ -102,7 +103,7 @@ When deciding whether something belongs in this repo, ask:
 1. Does it increase semantic understanding of the training target?
 2. Does it freeze an interface or a workload that later low-level work will depend on?
 3. Is it narrow enough to reason about clearly?
-4. Would skipping it make later C++/CUDA work more confused?
+4. Would skipping it make later Triton/CUDA work more confused?
 
 If the answer is mostly no, it probably does not belong here.
 
@@ -145,5 +146,6 @@ This repo should produce:
 
 for the later low-level systems phase.
 
-That later phase is described in [docs/phase_3_systems.md](./phase_3_systems.md).
+The current active kernel-learning path is described in [docs/phase4.md](./phase4.md).
+The phase-3 handwritten systems reference remains documented in [docs/phase_3_systems.md](./phase_3_systems.md).
 Possible worthwhile later side projects are listed in [docs/future_projects.md](./future_projects.md).
