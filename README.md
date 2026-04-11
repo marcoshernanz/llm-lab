@@ -1,6 +1,6 @@
 # llm-lab
 
-From-scratch language model lab, scaled from toy models to a full-dataset TPU run.
+Learning-oriented language model lab, scaled from toy models to a full-dataset TPU run and now pivoting from framework training to kernel work.
 
 This repo is a compact record of building up modern LM training capability step by step:
 
@@ -8,6 +8,8 @@ This repo is a compact record of building up modern LM training capability step 
 - build RNNs, GRUs, attention, and decoder-only transformers
 - move onto tokenization, real web-scale data, TPU scaling, profiling, and multi-device training
 - finish Phase 2 with a full `sample-10BT` run on TPU `v5e-8`
+- use Phase 3 as a narrow handwritten CPU systems reference
+- begin Phase 4 with a very small PyTorch baseline, real profiling, Triton, and later raw CUDA/C++
 
 ## Showcase
 
@@ -45,6 +47,8 @@ Artifacts:
 | data           | tokenizer training, token shards, FineWeb-Edu pipeline     |
 | optimization   | SGD, momentum, Adam, AdamW                                 |
 | systems        | TPU bring-up, profiling, multi-device execution            |
+| systems ref    | handwritten CPU trainer, profiling, buffer reuse           |
+| current pivot  | PyTorch baseline, production profiling, Triton, CUDA/C++   |
 | final baseline | full-dataset long run on TPU `v5e-8`                       |
 
 ## Experiment Index
@@ -90,13 +94,15 @@ The two main documents are:
 
 - [`docs/phase_1_learning_log.md`](docs/phase_1_learning_log.md)
 - [`docs/phase_2_learning_log.md`](docs/phase_2_learning_log.md)
+- [`docs/phase_3_learning_log.md`](docs/phase_3_learning_log.md)
 
 They contain the actual run history, metrics, curves, and milestone conclusions.
 
-The project roadmap and handoff into the next systems phase are in:
+The completed and active roadmap documents are:
 
 - [`docs/phase_2_scaling.md`](docs/phase_2_scaling.md)
 - [`docs/phase_3_systems.md`](docs/phase_3_systems.md)
+- [`docs/phase4.md`](docs/phase4.md)
 - [`docs/project_direction.md`](docs/project_direction.md)
 
 ## Run It
