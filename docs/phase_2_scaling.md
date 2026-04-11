@@ -621,7 +621,9 @@ Tracks still exist, but they are secondary to milestones:
 - Scaling: `032`
 
 ## Next
-After `032`, the planned next phase is the systems rebuild described in [docs/phase_3_systems.md](./phase_3_systems.md).
+After `032`, the repo did complete a narrow handwritten systems reference in phase 3.
+The current active next phase is the PyTorch-to-kernel path described in [docs/phase4.md](./phase4.md).
+The phase-3 systems reference remains documented in [docs/phase_3_systems.md](./phase_3_systems.md).
 The broader project thesis and decision rules live in [docs/project_direction.md](./project_direction.md).
 The personal context behind those choices is summarized in [docs/personal_context.md](./personal_context.md).
 Later worthwhile side projects, such as a Rust tokenizer, are listed in [docs/future_projects.md](./future_projects.md).
