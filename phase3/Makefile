@@ -7,7 +7,7 @@ CXX := c++
 CXXFLAGS := -std=c++20 -O0 -g -Wall -Wextra -pedantic -MMD -MP
 BUILD_DIR := build
 TARGET := $(BUILD_DIR)/phase3
-SOURCES := phase3.cpp attention.cpp feed_forward.cpp rms_norm.cpp decoder_block.cpp decoder.cpp
+SOURCES := phase3.cpp artifact_logging.cpp attention.cpp feed_forward.cpp rms_norm.cpp decoder_block.cpp decoder.cpp
 OBJECTS := $(SOURCES:%.cpp=$(BUILD_DIR)/%.o)
 DEPFILES := $(OBJECTS:.o=.d)
 
