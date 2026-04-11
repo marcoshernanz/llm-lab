@@ -4,16 +4,22 @@
 #include "decoder.h"
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
+#include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <random>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 const std::string corpus_path = "../datasets/tinyshakespeare.txt";
+const std::filesystem::path artifacts_root = "../artifacts/phase3/cpu_reference";
 
 std::unordered_map<char, int> char_to_id;
 
@@ -65,6 +71,40 @@ std::vector<int> prepare_vocab(const std::string &corpus) {
   }
 
   return token_ids;
+}
+
+/// Hold the file paths for one phase-3 artifact run directory.
+struct ArtifactPaths {
+  std::string run_id;
+  std::filesystem::path run_dir;
+  std::filesystem::path metrics_csv;
+  std::filesystem::path metadata_json;
+};
+
+/// Return one timestamp-based run id for a new artifact directory.
+std::string build_run_id() {
+  const auto now = std::chrono::system_clock::now();
+  const std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+  const std::tm local_time = *std::localtime(&now_time);
+  const auto milliseconds =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
+
+  std::ostringstream run_id;
+  run_id << std::put_time(&local_time, "%Y%m%d_%H%M%S") << "_" << std::setw(3) << std::setfill('0')
+         << milliseconds;
+  return run_id.str();
+}
+
+/// Create one fresh run directory for the fixed phase-3 trainer.
+ArtifactPaths create_artifact_paths() {
+  ArtifactPaths paths;
+  paths.run_id = build_run_id();
+  paths.run_dir = artifacts_root / paths.run_id;
+  paths.metrics_csv = paths.run_dir / "metrics.csv";
+  paths.metadata_json = paths.run_dir / "run_metadata.json";
+
+  std::filesystem::create_directories(paths.run_dir);
+  return paths;
 }
 
 /// Hold the intermediate tensors from one full block forward pass.
@@ -150,6 +190,25 @@ public:
     position_embedding_table.update();
     decoder_stack.update();
     lm_head_bias.update();
+  }
+
+  /// Return the total number of trainable scalar parameters in the model.
+  size_t parameter_count() const {
+    size_t total = token_embedding_table.val.size() + position_embedding_table.val.size() +
+                   lm_head_bias.val.size();
+    for (const decoder_block::Block &block : decoder_stack.blocks) {
+      total += block.attention_query_weights.val.size();
+      total += block.attention_key_weights.val.size();
+      total += block.attention_value_weights.val.size();
+      total += block.attention_output_projection_weights.val.size();
+      total += block.attention_rms_gain.val.size();
+      total += block.feed_forward_in_weights.val.size();
+      total += block.feed_forward_in_bias.val.size();
+      total += block.feed_forward_out_weights.val.size();
+      total += block.feed_forward_out_bias.val.size();
+      total += block.feed_forward_rms_gain.val.size();
+    }
+    return total;
   }
 
 private:
@@ -267,6 +326,74 @@ private:
   }
 };
 
+/// Hold one minimal artifact logger for the fixed phase-3 trainer.
+class ArtifactLogger {
+public:
+  ArtifactPaths paths;
+  std::ofstream metrics_file;
+
+  /// Create the run directory, open the metrics CSV, and save fixed metadata.
+  explicit ArtifactLogger(const Model &model) : paths(create_artifact_paths()), metrics_file(paths.metrics_csv) {
+    if (!metrics_file) {
+      throw std::runtime_error("could not open metrics artifact file");
+    }
+    write_metrics_header();
+    write_metadata(model.parameter_count());
+  }
+
+  /// Append one chunk-level measurement row to the metrics CSV.
+  void log_chunk(int start_step, int chunk_steps, float train_loss, float val_loss,
+                 double chunk_seconds) {
+    const double step_time_ms = chunk_steps > 0 ? chunk_seconds * 1000.0 / static_cast<double>(chunk_steps)
+                                                : 0.0;
+    const double train_tokens =
+        static_cast<double>(chunk_steps) * static_cast<double>(batch_size * context_len);
+    const double tokens_per_second = chunk_seconds > 0.0 ? train_tokens / chunk_seconds : 0.0;
+
+    metrics_file << start_step << "," << train_loss << "," << val_loss << "," << step_time_ms << ","
+                 << tokens_per_second << "\n";
+    metrics_file.flush();
+  }
+
+private:
+  /// Write the fixed CSV header for chunk-level loss and throughput measurements.
+  void write_metrics_header() {
+    metrics_file << "step,train_loss,val_loss,step_time_ms,tokens_per_second\n";
+    metrics_file.flush();
+  }
+
+  /// Save the fixed run metadata needed to compare later phase-3 baselines.
+  void write_metadata(size_t parameter_count) const {
+    std::ofstream metadata_file(paths.metadata_json);
+    if (!metadata_file) {
+      throw std::runtime_error("could not open metadata artifact file");
+    }
+
+    metadata_file << "{\n";
+    metadata_file << "  \"run_id\": \"" << paths.run_id << "\",\n";
+    metadata_file << "  \"corpus_path\": \"" << corpus_path << "\",\n";
+    metadata_file << "  \"parameter_count\": " << parameter_count << ",\n";
+    metadata_file << "  \"steps\": " << steps << ",\n";
+    metadata_file << "  \"steps_per_chunk\": " << steps_per_chunk << ",\n";
+    metadata_file << "  \"batch_size\": " << batch_size << ",\n";
+    metadata_file << "  \"context_len\": " << context_len << ",\n";
+    metadata_file << "  \"train_tokens_per_step\": " << batch_size * context_len << ",\n";
+    metadata_file << "  \"validation_tokens_per_step\": " << batch_size * context_len << ",\n";
+    metadata_file << "  \"vocab_size\": " << vocab_size << ",\n";
+    metadata_file << "  \"embedding_dim\": " << embedding_dim << ",\n";
+    metadata_file << "  \"num_heads\": " << num_heads << ",\n";
+    metadata_file << "  \"head_dim\": " << head_dim << ",\n";
+    metadata_file << "  \"num_decoder_blocks\": " << num_decoder_blocks << ",\n";
+    metadata_file << "  \"feed_forward_dim\": " << feed_forward_dim << ",\n";
+    metadata_file << "  \"learning_rate\": " << learning_rate << ",\n";
+    metadata_file << "  \"beta1\": " << beta1 << ",\n";
+    metadata_file << "  \"beta2\": " << beta2 << ",\n";
+    metadata_file << "  \"eps\": " << eps << ",\n";
+    metadata_file << "  \"weight_decay\": " << weight_decay << "\n";
+    metadata_file << "}\n";
+  }
+};
+
 /// Sample one batch of context windows and next-token targets.
 void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &targets,
                     const std::vector<int> &token_ids) {
@@ -283,14 +410,21 @@ void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &t
 void run_training(Model &model, const std::vector<int> &token_ids) {
   const int split_index =
       static_cast<int>(std::floor(token_ids.size() * (1.0f - validation_split)));
+  ArtifactLogger artifact_logger(model);
 
   std::vector<int> ids(batch_size * context_len);
   std::vector<int> targets(batch_size * context_len);
+
+  std::cout << "run_dir=" << artifact_logger.paths.run_dir.string() << "\n";
+  std::cout << "metrics_csv=" << artifact_logger.paths.metrics_csv.string() << "\n";
+  std::cout << "metadata_json=" << artifact_logger.paths.metadata_json.string() << "\n";
+  std::cout << "parameter_count=" << model.parameter_count() << "\n";
 
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
     const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
     float train_loss = 0.0f;
     float val_loss = 0.0f;
+    const auto chunk_start = std::chrono::steady_clock::now();
 
     for (int step = 0; step < chunk_steps; ++step) {
       generate_batch(0, split_index - context_len, ids, targets, token_ids);
@@ -303,8 +437,22 @@ void run_training(Model &model, const std::vector<int> &token_ids) {
       model.update();
     }
 
-    std::cout << "step=" << start_step << " train_loss=" << train_loss / chunk_steps
-              << " val_loss=" << val_loss / chunk_steps << "\n";
+    const double chunk_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - chunk_start).count();
+    const double step_time_ms = chunk_seconds * 1000.0 / static_cast<double>(chunk_steps);
+    const double tokens_per_second =
+        chunk_seconds > 0.0
+            ? static_cast<double>(chunk_steps) * static_cast<double>(batch_size * context_len) /
+                  chunk_seconds
+            : 0.0;
+    const float avg_train_loss = train_loss / chunk_steps;
+    const float avg_val_loss = val_loss / chunk_steps;
+
+    artifact_logger.log_chunk(start_step, chunk_steps, avg_train_loss, avg_val_loss, chunk_seconds);
+    std::cout << std::fixed << std::setprecision(6) << "step=" << start_step
+              << " train_loss=" << avg_train_loss << " val_loss=" << avg_val_loss
+              << " step_time_ms=" << step_time_ms << " tokens_per_second=" << tokens_per_second
+              << "\n";
   }
 }
 
