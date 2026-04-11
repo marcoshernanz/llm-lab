@@ -33,10 +33,16 @@ public:
   void update();
 
   /// Run one full decoder-stack forward pass.
-  Cache forward(const std::vector<float> &decoder_input) const;
+  void forward(const std::vector<float> &decoder_input, Cache &cache) const;
 
   /// Backpropagate through the full decoder stack.
-  std::vector<float> backward(const Cache &cache, const std::vector<float> &d_decoder_output);
+  void backward(Cache &cache, const std::vector<float> &d_decoder_output,
+                std::vector<float> &d_decoder_input);
+
+private:
+  /// Reuse the alternating decoder backward buffers across training steps.
+  mutable std::vector<float> backward_buffer_a;
+  mutable std::vector<float> backward_buffer_b;
 };
 
 } // namespace decoder

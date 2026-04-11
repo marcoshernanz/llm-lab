@@ -6,14 +6,13 @@
 namespace feed_forward {
 
 /// Run the feedforward sublayer without the skip connection.
-Cache forward(const std::vector<float> &inputs, const Param &hidden_weights,
-              const Param &hidden_bias, const Param &output_projection_weights,
-              const Param &output_projection_bias) {
+void forward(const std::vector<float> &inputs, const Param &hidden_weights,
+             const Param &hidden_bias, const Param &output_projection_weights,
+             const Param &output_projection_bias, Cache &cache) {
   const profiler::Scope scope("feed_forward.forward");
-  Cache cache;
   cache.hidden_pre.resize(batch_size * context_len * feed_forward_dim);
   cache.hidden.resize(batch_size * context_len * feed_forward_dim);
-  cache.projected_output.assign(batch_size * context_len * embedding_dim, 0.0f);
+  resize_and_zero(cache.projected_output, batch_size * context_len * embedding_dim);
 
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t c = 0; c < context_len; ++c) {
@@ -46,18 +45,16 @@ Cache forward(const std::vector<float> &inputs, const Param &hidden_weights,
       }
     }
   }
-
-  return cache;
 }
 
 /// Backpropagate through the feedforward sublayer and its skip path.
-std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache,
-                            const std::vector<float> &d_projected_output, Param &hidden_weights,
-                            Param &hidden_bias, Param &output_projection_weights,
-                            Param &output_projection_bias) {
+void backward(const std::vector<float> &inputs, Cache &cache,
+              const std::vector<float> &d_projected_output, Param &hidden_weights,
+              Param &hidden_bias, Param &output_projection_weights,
+              Param &output_projection_bias, std::vector<float> &d_inputs) {
   const profiler::Scope scope("feed_forward.backward");
-  std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
-  std::vector<float> d_hidden(batch_size * context_len * feed_forward_dim, 0.0f);
+  resize_and_zero(d_inputs, batch_size * context_len * embedding_dim);
+  resize_and_zero(cache.d_hidden, batch_size * context_len * feed_forward_dim);
 
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t c = 0; c < context_len; ++c) {
@@ -65,20 +62,20 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       const size_t out_base = b * context_len * embedding_dim + c * embedding_dim;
 
       for (size_t i = 0; i < embedding_dim; ++i) {
-        const float grad = d_projected_output[out_base + i];
-        output_projection_bias.grad[i] += grad;
-        for (size_t j = 0; j < feed_forward_dim; ++j) {
-          output_projection_weights.grad[j * embedding_dim + i] +=
+          const float grad = d_projected_output[out_base + i];
+          output_projection_bias.grad[i] += grad;
+          for (size_t j = 0; j < feed_forward_dim; ++j) {
+            output_projection_weights.grad[j * embedding_dim + i] +=
               cache.hidden[hidden_base + j] * grad;
-          d_hidden[hidden_base + j] +=
+          cache.d_hidden[hidden_base + j] +=
               grad * output_projection_weights.val[j * embedding_dim + i];
         }
       }
     }
   }
 
-  for (size_t i = 0; i < d_hidden.size(); ++i) {
-    d_hidden[i] *= (1.0f - cache.hidden[i] * cache.hidden[i]);
+  for (size_t i = 0; i < cache.d_hidden.size(); ++i) {
+    cache.d_hidden[i] *= (1.0f - cache.hidden[i] * cache.hidden[i]);
   }
 
   for (size_t b = 0; b < batch_size; ++b) {
@@ -87,7 +84,7 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       const size_t in_base = b * context_len * embedding_dim + c * embedding_dim;
 
       for (size_t i = 0; i < feed_forward_dim; ++i) {
-        const float grad = d_hidden[hidden_base + i];
+        const float grad = cache.d_hidden[hidden_base + i];
         hidden_bias.grad[i] += grad;
         for (size_t j = 0; j < embedding_dim; ++j) {
           hidden_weights.grad[j * feed_forward_dim + i] += inputs[in_base + j] * grad;
@@ -96,8 +93,6 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       }
     }
   }
-
-  return d_inputs;
 }
 
 } // namespace feed_forward

@@ -28,17 +28,16 @@ size_t attended_index(size_t batch_index, size_t token_index, size_t head_index,
 }
 
 /// Run the full multi-head attention sublayer without the skip connection.
-Cache forward(const std::vector<float> &inputs, const Param &query_weights,
-              const Param &key_weights, const Param &value_weights,
-              const Param &output_projection_weights) {
+void forward(const std::vector<float> &inputs, const Param &query_weights,
+             const Param &key_weights, const Param &value_weights,
+             const Param &output_projection_weights, Cache &cache) {
   const profiler::Scope scope("attention.forward");
-  Cache cache;
   cache.queries.resize(batch_size * context_len * attention_dim);
   cache.keys.resize(batch_size * context_len * attention_dim);
   cache.values.resize(batch_size * context_len * attention_dim);
   cache.attention_weights.resize(batch_size * num_heads * context_len * context_len);
-  cache.attended_values.assign(batch_size * context_len * attention_dim, 0.0f);
-  cache.projected_output.assign(batch_size * context_len * embedding_dim, 0.0f);
+  resize_and_zero(cache.attended_values, batch_size * context_len * attention_dim);
+  resize_and_zero(cache.projected_output, batch_size * context_len * embedding_dim);
 
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t t = 0; t < context_len; ++t) {
@@ -129,47 +128,45 @@ Cache forward(const std::vector<float> &inputs, const Param &query_weights,
       }
     }
   }
-
-  return cache;
 }
 
 /// Backpropagate through the full multi-head attention sublayer.
-std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache,
-                            const std::vector<float> &d_projected_output, Param &query_weights,
-                            Param &key_weights, Param &value_weights,
-                            Param &output_projection_weights) {
+void backward(const std::vector<float> &inputs, Cache &cache,
+              const std::vector<float> &d_projected_output, Param &query_weights,
+              Param &key_weights, Param &value_weights,
+              Param &output_projection_weights, std::vector<float> &d_inputs) {
   const profiler::Scope scope("attention.backward");
-  std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
-  std::vector<float> d_attended_values(batch_size * context_len * attention_dim, 0.0f);
+  resize_and_zero(d_inputs, batch_size * context_len * embedding_dim);
+  resize_and_zero(cache.d_attended_values, batch_size * context_len * attention_dim);
 
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t t = 0; t < context_len; ++t) {
       const size_t attended_base = b * context_len * attention_dim + t * attention_dim;
       const size_t output_base = b * context_len * embedding_dim + t * embedding_dim;
 
-      for (size_t i = 0; i < embedding_dim; ++i) {
-        const float grad = d_projected_output[output_base + i];
-        for (size_t j = 0; j < attention_dim; ++j) {
-          output_projection_weights.grad[j * embedding_dim + i] +=
-              cache.attended_values[attended_base + j] * grad;
-          d_attended_values[attended_base + j] +=
+        for (size_t i = 0; i < embedding_dim; ++i) {
+          const float grad = d_projected_output[output_base + i];
+          for (size_t j = 0; j < attention_dim; ++j) {
+            output_projection_weights.grad[j * embedding_dim + i] +=
+                cache.attended_values[attended_base + j] * grad;
+          cache.d_attended_values[attended_base + j] +=
               grad * output_projection_weights.val[j * embedding_dim + i];
         }
       }
     }
   }
 
-  std::vector<float> d_attention_weights(batch_size * num_heads * context_len * context_len, 0.0f);
-  std::vector<float> d_values(batch_size * context_len * attention_dim, 0.0f);
+  resize_and_zero(cache.d_attention_weights, batch_size * num_heads * context_len * context_len);
+  resize_and_zero(cache.d_values, batch_size * context_len * attention_dim);
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t h = 0; h < num_heads; ++h) {
       for (size_t q = 0; q < context_len; ++q) {
         for (size_t c = 0; c < head_dim; ++c) {
-          const float grad = d_attended_values[attended_index(b, q, h, c)];
+          const float grad = cache.d_attended_values[attended_index(b, q, h, c)];
           for (size_t k = 0; k < context_len; ++k) {
-            d_attention_weights[weight_index(b, h, q, k)] +=
+            cache.d_attention_weights[weight_index(b, h, q, k)] +=
                 grad * cache.values[qkv_index(b, k, h, c)];
-            d_values[qkv_index(b, k, h, c)] +=
+            cache.d_values[qkv_index(b, k, h, c)] +=
                 cache.attention_weights[weight_index(b, h, q, k)] * grad;
           }
         }
@@ -177,36 +174,36 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
     }
   }
 
-  std::vector<float> d_scores(batch_size * num_heads * context_len * context_len, 0.0f);
+  resize_and_zero(cache.d_scores, batch_size * num_heads * context_len * context_len);
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t h = 0; h < num_heads; ++h) {
       for (size_t q = 0; q < context_len; ++q) {
         float dot = 0.0f;
         for (size_t k = 0; k < context_len; ++k) {
-          dot += d_attention_weights[weight_index(b, h, q, k)] *
+          dot += cache.d_attention_weights[weight_index(b, h, q, k)] *
                  cache.attention_weights[weight_index(b, h, q, k)];
         }
 
         for (size_t k = 0; k < context_len; ++k) {
-          d_scores[weight_index(b, h, q, k)] =
+          cache.d_scores[weight_index(b, h, q, k)] =
               cache.attention_weights[weight_index(b, h, q, k)] *
-              (d_attention_weights[weight_index(b, h, q, k)] - dot);
+              (cache.d_attention_weights[weight_index(b, h, q, k)] - dot);
         }
       }
     }
   }
 
-  std::vector<float> d_queries(batch_size * context_len * attention_dim, 0.0f);
-  std::vector<float> d_keys(batch_size * context_len * attention_dim, 0.0f);
+  resize_and_zero(cache.d_queries, batch_size * context_len * attention_dim);
+  resize_and_zero(cache.d_keys, batch_size * context_len * attention_dim);
   const float inv_sqrt_head_dim = 1.0f / std::sqrt(static_cast<float>(head_dim));
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t h = 0; h < num_heads; ++h) {
       for (size_t q = 0; q < context_len; ++q) {
         for (size_t k = 0; k <= q; ++k) {
-          const float grad = d_scores[weight_index(b, h, q, k)] * inv_sqrt_head_dim;
+          const float grad = cache.d_scores[weight_index(b, h, q, k)] * inv_sqrt_head_dim;
           for (size_t c = 0; c < head_dim; ++c) {
-            d_queries[qkv_index(b, q, h, c)] += grad * cache.keys[qkv_index(b, k, h, c)];
-            d_keys[qkv_index(b, k, h, c)] += grad * cache.queries[qkv_index(b, q, h, c)];
+            cache.d_queries[qkv_index(b, q, h, c)] += grad * cache.keys[qkv_index(b, k, h, c)];
+            cache.d_keys[qkv_index(b, k, h, c)] += grad * cache.queries[qkv_index(b, q, h, c)];
           }
         }
       }
@@ -221,9 +218,9 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       for (size_t i = 0; i < embedding_dim; ++i) {
         const float x = inputs[input_base + i];
         for (size_t j = 0; j < attention_dim; ++j) {
-          const float dq = d_queries[qkv_base + j];
-          const float dk = d_keys[qkv_base + j];
-          const float dv = d_values[qkv_base + j];
+          const float dq = cache.d_queries[qkv_base + j];
+          const float dk = cache.d_keys[qkv_base + j];
+          const float dv = cache.d_values[qkv_base + j];
 
           query_weights.grad[i * attention_dim + j] += x * dq;
           key_weights.grad[i * attention_dim + j] += x * dk;
@@ -236,8 +233,6 @@ std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache
       }
     }
   }
-
-  return d_inputs;
 }
 
 } // namespace attention

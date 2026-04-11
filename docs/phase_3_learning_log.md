@@ -10,6 +10,7 @@ This log contains the completed baseline and profiling runs from the phase-3 CPU
 | --- | ------- | ----: | ---------: | -------: | ------------: | ---------: | ------- | -------- | ------- |
 | P3-001 | `phase3/phase3.cpp` | 10000 | 2.270360 | 2.311920 | 881.868 | 1451.464 | [csv](../artifacts/phase3/cpu_reference/20260411_190530_404/metrics.csv) | [json](../artifacts/phase3/cpu_reference/20260411_190530_404/run_metadata.json) | - |
 | P3-002 | `phase3/phase3.cpp` | 10000 | 2.270360 | 2.311920 | 1231.656 | 1039.251 | [csv](../artifacts/phase3/cpu_reference/20260411_192638_438/metrics.csv) | [json](../artifacts/phase3/cpu_reference/20260411_192638_438/run_metadata.json) | [csv](../artifacts/phase3/cpu_reference/20260411_192638_438/profile_summary.csv) |
+| P3-003 | `phase3/phase3.cpp` | 10000 | 2.270360 | 2.311920 | 859.860 | 1488.615 | [csv](../artifacts/phase3/cpu_reference/20260411_201721_178/metrics.csv) | [json](../artifacts/phase3/cpu_reference/20260411_201721_178/run_metadata.json) | [csv](../artifacts/phase3/cpu_reference/20260411_201721_178/profile_summary.csv) |
 
 ## P3-001 Phase-3 CPU Reference AdamW Baseline
 
@@ -76,3 +77,38 @@ This log contains the completed baseline and profiling runs from the phase-3 CPU
 - Metrics artifact: [metrics.csv](../artifacts/phase3/cpu_reference/20260411_192638_438/metrics.csv)
 - Metadata artifact: [run_metadata.json](../artifacts/phase3/cpu_reference/20260411_192638_438/run_metadata.json)
 - Profile artifact: [profile_summary.csv](../artifacts/phase3/cpu_reference/20260411_192638_438/profile_summary.csv)
+
+## P3-003 Phase-3 CPU Reference Buffer-Reuse Profiling Run
+
+- Trainer: `phase3/phase3.cpp`
+- Artifact root: `artifacts/phase3/cpu_reference`
+- Run id: `20260411_201721_178`
+- Corpus: `datasets/tinyshakespeare.txt`
+- Steps: `10000`
+- Steps per chunk: `100`
+- Batch size: `32`
+- Context length: `4`
+- Train tokens per step: `128`
+- Train tokens seen: `1280000`
+- Parameter count: `70784`
+- Learning rate: `0.01`
+- Beta1: `0.9`
+- Beta2: `0.999`
+- Epsilon: `1e-8`
+- Weight decay: `0.01`
+- Final train loss: `2.270360`
+- Final validation loss: `2.311920`
+- Mean step time: `85.986 ms`
+- Overall train tokens per second: `1488.615`
+- Total train seconds: `859.860`
+- Note: this run kept the same trainer semantics as `P3-001` and `P3-002`, but reused forward caches and backward scratch buffers across training steps instead of allocating fresh vectors on the hot path.
+- Note: compared with the profiled `P3-002` run, this pass improved total profiled wall time by `1.432x` and recovered throughput from `1039.251` to `1488.615` train tokens per second while preserving the exact final displayed losses.
+- Top hotspot: `train.forward_backward_step` at `630.563 s` inclusive over `10000` calls.
+- Top hotspot: `model.forward` at `440.085 s` inclusive over `20000` calls.
+- Top hotspot: `decoder.forward` at `409.236 s` inclusive over `20000` calls.
+- Top hotspot: `decoder.backward` at `384.391 s` inclusive over `10000` calls.
+- Top hotspot: `feed_forward.forward` at `213.739 s` inclusive over `80000` calls.
+- Interpretation: the hotspot ranking stayed broadly the same, but the inclusive times dropped sharply once the trainer stopped rebuilding the same working buffers every step.
+- Metrics artifact: [metrics.csv](../artifacts/phase3/cpu_reference/20260411_201721_178/metrics.csv)
+- Metadata artifact: [run_metadata.json](../artifacts/phase3/cpu_reference/20260411_201721_178/run_metadata.json)
+- Profile artifact: [profile_summary.csv](../artifacts/phase3/cpu_reference/20260411_201721_178/profile_summary.csv)

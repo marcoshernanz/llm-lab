@@ -73,59 +73,53 @@ void Block::update() {
 }
 
 /// Run one full decoder-block forward pass.
-Cache Block::forward(const std::vector<float> &block_input) const {
+void Block::forward(const std::vector<float> &block_input, Cache &cache) const {
   const profiler::Scope scope("decoder_block.forward");
-  Cache cache{.block_input = block_input,
-              .attention_rms_norm = rms_norm::forward(block_input, attention_rms_gain),
-              .attention = {},
-              .attention_residual = std::vector<float>(batch_size * context_len * embedding_dim),
-              .feed_forward_rms_norm = {},
-              .feed_forward = {},
-              .block_output = std::vector<float>(batch_size * context_len * embedding_dim)};
-  cache.attention = attention::forward(cache.attention_rms_norm.rms_norm_output,
-                                       attention_query_weights, attention_key_weights,
-                                       attention_value_weights,
-                                       attention_output_projection_weights);
+  copy_into(cache.block_input, block_input);
+  rms_norm::forward(block_input, attention_rms_gain, cache.attention_rms_norm);
+  attention::forward(cache.attention_rms_norm.rms_norm_output, attention_query_weights,
+                     attention_key_weights, attention_value_weights,
+                     attention_output_projection_weights, cache.attention);
+  cache.attention_residual.resize(batch_size * context_len * embedding_dim);
   for (size_t i = 0; i < cache.attention_residual.size(); ++i) {
     cache.attention_residual[i] = block_input[i] + cache.attention.projected_output[i];
   }
-  cache.feed_forward_rms_norm = rms_norm::forward(cache.attention_residual, feed_forward_rms_gain);
-  cache.feed_forward = feed_forward::forward(cache.feed_forward_rms_norm.rms_norm_output,
-                                             feed_forward_in_weights, feed_forward_in_bias,
-                                             feed_forward_out_weights, feed_forward_out_bias);
+  rms_norm::forward(cache.attention_residual, feed_forward_rms_gain, cache.feed_forward_rms_norm);
+  feed_forward::forward(cache.feed_forward_rms_norm.rms_norm_output, feed_forward_in_weights,
+                        feed_forward_in_bias, feed_forward_out_weights, feed_forward_out_bias,
+                        cache.feed_forward);
+  cache.block_output.resize(batch_size * context_len * embedding_dim);
   for (size_t i = 0; i < cache.block_output.size(); ++i) {
     cache.block_output[i] = cache.attention_residual[i] + cache.feed_forward.projected_output[i];
   }
-  return cache;
 }
 
 /// Backpropagate through one full decoder block.
-std::vector<float> Block::backward(const Cache &cache, const std::vector<float> &d_block_output) {
+void Block::backward(Cache &cache, const std::vector<float> &d_block_output,
+                     std::vector<float> &d_block_input) {
   const profiler::Scope scope("decoder_block.backward");
-  std::vector<float> d_attention_residual = d_block_output;
-  const std::vector<float> d_feed_forward_norm_output = feed_forward::backward(
-      cache.feed_forward_rms_norm.rms_norm_output, cache.feed_forward, d_block_output,
-      feed_forward_in_weights, feed_forward_in_bias, feed_forward_out_weights,
-      feed_forward_out_bias);
-  const std::vector<float> d_attention_residual_from_norm = rms_norm::backward(
-      d_feed_forward_norm_output, cache.attention_residual, cache.feed_forward_rms_norm,
-      feed_forward_rms_gain);
+  copy_into(d_attention_residual, d_block_output);
+  feed_forward::backward(cache.feed_forward_rms_norm.rms_norm_output, cache.feed_forward,
+                         d_block_output, feed_forward_in_weights, feed_forward_in_bias,
+                         feed_forward_out_weights, feed_forward_out_bias,
+                         d_feed_forward_norm_output);
+  rms_norm::backward(d_feed_forward_norm_output, cache.attention_residual,
+                     cache.feed_forward_rms_norm, feed_forward_rms_gain,
+                     d_block_input_from_norm);
   for (size_t i = 0; i < d_attention_residual.size(); ++i) {
-    d_attention_residual[i] += d_attention_residual_from_norm[i];
+    d_attention_residual[i] += d_block_input_from_norm[i];
   }
 
-  std::vector<float> d_block_input = d_attention_residual;
-  const std::vector<float> d_attention_norm_output =
-      attention::backward(cache.attention_rms_norm.rms_norm_output, cache.attention,
-                          d_attention_residual, attention_query_weights, attention_key_weights,
-                          attention_value_weights, attention_output_projection_weights);
-  const std::vector<float> d_block_input_from_norm = rms_norm::backward(
-      d_attention_norm_output, cache.block_input, cache.attention_rms_norm, attention_rms_gain);
+  copy_into(d_block_input, d_attention_residual);
+  attention::backward(cache.attention_rms_norm.rms_norm_output, cache.attention,
+                      d_attention_residual,
+                      attention_query_weights, attention_key_weights, attention_value_weights,
+                      attention_output_projection_weights, d_attention_norm_output);
+  rms_norm::backward(d_attention_norm_output, cache.block_input, cache.attention_rms_norm,
+                     attention_rms_gain, d_block_input_from_norm);
   for (size_t i = 0; i < d_block_input.size(); ++i) {
     d_block_input[i] += d_block_input_from_norm[i];
   }
-
-  return d_block_input;
 }
 
 } // namespace decoder_block

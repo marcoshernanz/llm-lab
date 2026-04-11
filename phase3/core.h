@@ -38,6 +38,18 @@ inline float fan_in_stddev(int fan_in) {
   return 1.0f / std::sqrt(static_cast<float>(fan_in));
 }
 
+/// Resize one vector and overwrite every element with zero.
+inline void resize_and_zero(std::vector<float> &values, size_t size) {
+  values.resize(size);
+  std::fill(values.begin(), values.end(), 0.0f);
+}
+
+/// Resize one vector and copy another vector into it.
+inline void copy_into(std::vector<float> &dst, const std::vector<float> &src) {
+  dst.resize(src.size());
+  std::copy(src.begin(), src.end(), dst.begin());
+}
+
 /// Hold AdamW state for one parameter tensor.
 class AdamW {
 public:

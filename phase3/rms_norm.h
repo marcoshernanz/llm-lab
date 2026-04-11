@@ -14,10 +14,10 @@ struct Cache {
 };
 
 /// Run one RMSNorm over the embedding dimension.
-Cache forward(const std::vector<float> &inputs, const Param &gain);
+void forward(const std::vector<float> &inputs, const Param &gain, Cache &cache);
 
 /// Backpropagate through one RMSNorm application.
-std::vector<float> backward(const std::vector<float> &d_output, const std::vector<float> &inputs,
-                            const Cache &cache, Param &gain);
+void backward(const std::vector<float> &d_output, const std::vector<float> &inputs,
+              const Cache &cache, Param &gain, std::vector<float> &d_inputs);
 
 } // namespace rms_norm

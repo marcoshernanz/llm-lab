@@ -14,17 +14,23 @@ struct Cache {
   std::vector<float> attention_weights;
   std::vector<float> attended_values;
   std::vector<float> projected_output;
+  std::vector<float> d_attended_values;
+  std::vector<float> d_attention_weights;
+  std::vector<float> d_values;
+  std::vector<float> d_scores;
+  std::vector<float> d_queries;
+  std::vector<float> d_keys;
 };
 
 /// Run the full multi-head attention sublayer without the skip connection.
-Cache forward(const std::vector<float> &inputs, const Param &query_weights,
-              const Param &key_weights, const Param &value_weights,
-              const Param &output_projection_weights);
+void forward(const std::vector<float> &inputs, const Param &query_weights,
+             const Param &key_weights, const Param &value_weights,
+             const Param &output_projection_weights, Cache &cache);
 
 /// Backpropagate through the full multi-head attention sublayer.
-std::vector<float> backward(const std::vector<float> &inputs, const Cache &cache,
-                            const std::vector<float> &d_projected_output, Param &query_weights,
-                            Param &key_weights, Param &value_weights,
-                            Param &output_projection_weights);
+void backward(const std::vector<float> &inputs, Cache &cache,
+              const std::vector<float> &d_projected_output, Param &query_weights,
+              Param &key_weights, Param &value_weights,
+              Param &output_projection_weights, std::vector<float> &d_inputs);
 
 } // namespace attention

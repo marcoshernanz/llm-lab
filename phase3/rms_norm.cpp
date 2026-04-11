@@ -6,9 +6,8 @@
 namespace rms_norm {
 
 /// Run one RMSNorm over the embedding dimension.
-Cache forward(const std::vector<float> &inputs, const Param &gain) {
+void forward(const std::vector<float> &inputs, const Param &gain, Cache &cache) {
   const profiler::Scope scope("rms_norm.forward");
-  Cache cache;
   cache.normalized_input.resize(batch_size * context_len * embedding_dim);
   cache.rms_norm_output.resize(batch_size * context_len * embedding_dim);
   cache.inv_rms.resize(batch_size * context_len);
@@ -34,15 +33,13 @@ Cache forward(const std::vector<float> &inputs, const Param &gain) {
       }
     }
   }
-
-  return cache;
 }
 
 /// Backpropagate through one RMSNorm application.
-std::vector<float> backward(const std::vector<float> &d_output, const std::vector<float> &inputs,
-                            const Cache &cache, Param &gain) {
+void backward(const std::vector<float> &d_output, const std::vector<float> &inputs,
+              const Cache &cache, Param &gain, std::vector<float> &d_inputs) {
   const profiler::Scope scope("rms_norm.backward");
-  std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
+  resize_and_zero(d_inputs, batch_size * context_len * embedding_dim);
 
   for (size_t b = 0; b < batch_size; ++b) {
     for (size_t c = 0; c < context_len; ++c) {
@@ -65,8 +62,6 @@ std::vector<float> backward(const std::vector<float> &d_output, const std::vecto
       }
     }
   }
-
-  return d_inputs;
 }
 
 } // namespace rms_norm

@@ -120,14 +120,13 @@ public:
   }
 
   /// Run one full forward pass and keep the tensors needed for backprop.
-  ForwardCache forward(const std::vector<int> &ids, const std::vector<int> &targets) const {
+  void forward(const std::vector<int> &ids, const std::vector<int> &targets,
+               ForwardCache &cache) const {
     const profiler::Scope scope("model.forward");
-    ForwardCache cache;
-    cache.input_embeddings = compute_input_embeddings(ids);
-    cache.decoder_cache = decoder_stack.forward(cache.input_embeddings);
+    compute_input_embeddings(ids, cache.input_embeddings);
+    decoder_stack.forward(cache.input_embeddings, cache.decoder_cache);
     compute_logits_and_loss(cache.decoder_cache.decoder_output, targets, cache.logits, cache.probs,
                             cache.avg_loss);
-    return cache;
   }
 
   /// Run one full forward and backward pass for one batch.
@@ -135,20 +134,21 @@ public:
     const profiler::Scope scope("model.forward_backward");
     zero_grad();
 
-    const ForwardCache cache = forward(ids, targets);
-    const std::vector<float> d_block_output =
-        backward_logits(cache.decoder_cache.decoder_output, targets, cache.probs);
-    const std::vector<float> d_embeddings = decoder_stack.backward(cache.decoder_cache, d_block_output);
+    forward(ids, targets, forward_cache);
+    backward_logits(forward_cache.decoder_cache.decoder_output, targets, forward_cache.probs,
+                    d_block_output);
+    decoder_stack.backward(forward_cache.decoder_cache, d_block_output, d_embeddings);
     accumulate_embedding_grads(ids, d_embeddings);
 
     scale_grads(inv_token_count);
-    return cache.avg_loss;
+    return forward_cache.avg_loss;
   }
 
   /// Compute the average loss for one batch without building gradients.
   float forward_loss(const std::vector<int> &ids, const std::vector<int> &targets) const {
     const profiler::Scope scope("model.forward_loss");
-    return forward(ids, targets).avg_loss;
+    forward(ids, targets, forward_cache);
+    return forward_cache.avg_loss;
   }
 
   /// Apply one optimizer step to every parameter tensor.
@@ -181,9 +181,9 @@ public:
 
 private:
   /// Build token-plus-position embeddings for one batch.
-  std::vector<float> compute_input_embeddings(const std::vector<int> &ids) const {
+  void compute_input_embeddings(const std::vector<int> &ids, std::vector<float> &embeddings) const {
     const profiler::Scope scope("model.compute_input_embeddings");
-    std::vector<float> embeddings(batch_size * context_len * embedding_dim);
+    embeddings.resize(batch_size * context_len * embedding_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t out_base = b * context_len * embedding_dim + c * embedding_dim;
@@ -197,7 +197,6 @@ private:
         }
       }
     }
-    return embeddings;
   }
 
   /// Compute logits, probabilities, and loss from the final block output.
@@ -246,11 +245,10 @@ private:
   }
 
   /// Backpropagate through the final logits projection and softmax loss.
-  std::vector<float> backward_logits(const std::vector<float> &inputs,
-                                     const std::vector<int> &targets,
-                                     const std::vector<float> &probs) {
+  void backward_logits(const std::vector<float> &inputs, const std::vector<int> &targets,
+                       const std::vector<float> &probs, std::vector<float> &d_inputs) {
     const profiler::Scope scope("model.backward_logits");
-    std::vector<float> d_logits = probs;
+    copy_into(d_logits, probs);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         d_logits[b * context_len * vocab_size + c * vocab_size + targets[b * context_len + c]] -=
@@ -258,7 +256,7 @@ private:
       }
     }
 
-    std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
+    resize_and_zero(d_inputs, batch_size * context_len * embedding_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t in_base = b * context_len * embedding_dim + c * embedding_dim;
@@ -274,8 +272,6 @@ private:
         }
       }
     }
-
-    return d_inputs;
   }
 
   /// Accumulate token and position embedding gradients from one input gradient tensor.
@@ -296,6 +292,12 @@ private:
       }
     }
   }
+
+  /// Reuse one forward cache and gradient buffers across training steps.
+  mutable ForwardCache forward_cache;
+  std::vector<float> d_block_output;
+  std::vector<float> d_embeddings;
+  std::vector<float> d_logits;
 };
 
 /// Sample one batch of context windows and next-token targets.

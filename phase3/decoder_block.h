@@ -49,10 +49,18 @@ public:
   void update();
 
   /// Run one full decoder-block forward pass.
-  Cache forward(const std::vector<float> &block_input) const;
+  void forward(const std::vector<float> &block_input, Cache &cache) const;
 
   /// Backpropagate through one full decoder block.
-  std::vector<float> backward(const Cache &cache, const std::vector<float> &d_block_output);
+  void backward(Cache &cache, const std::vector<float> &d_block_output,
+                std::vector<float> &d_block_input);
+
+private:
+  /// Reuse block-local backward buffers across training steps.
+  mutable std::vector<float> d_feed_forward_norm_output;
+  mutable std::vector<float> d_attention_residual;
+  mutable std::vector<float> d_attention_norm_output;
+  mutable std::vector<float> d_block_input_from_norm;
 };
 
 } // namespace decoder_block
