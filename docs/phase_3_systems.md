@@ -2,6 +2,10 @@
 
 This document describes the planned phase after phase 2.
 
+Historical note:
+- phase 3 is now best read as the completed handwritten systems-reference plan,
+- while the active next learning path of the repo is phase 4 in [docs/phase4.md](./phase4.md).
+
 Phase 3 starts only after phase 2 has frozen a real target well enough that low-level systems work is grounded in actual training behavior rather than abstraction taste.
 
 ## Goal
