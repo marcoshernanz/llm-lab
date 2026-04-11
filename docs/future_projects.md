@@ -25,11 +25,21 @@ Without GPU fundamentals, later CUDA or Triton work easily turns into cargo-cult
 
 This topic should be treated as a prerequisite for serious CUDA work, not as an optional side interest.
 
-## CUDA And Triton
+## Triton And CUDA
+
+### Triton
+
+Under the current phase-4 plan, Triton is the first custom-kernel layer after real PyTorch profiling.
+
+It is best treated as:
+
+- a productive kernel-learning layer,
+- a faster experimentation tool,
+- and a bridge between high-level tensor thinking and low-level GPU implementation.
 
 ### CUDA
 
-CUDA is the core later systems topic once the CPU trainer and profiling work are solid.
+CUDA remains the deeper later target.
 
 It is worthwhile because it forces understanding of:
 
@@ -39,22 +49,12 @@ It is worthwhile because it forces understanding of:
 - bandwidth limits,
 - and the relationship between kernel design and model structure.
 
-### Triton
-
-Triton is also worthwhile, but later than basic CUDA understanding.
-
-It is best treated as:
-
-- a productive kernel-learning layer,
-- a faster experimentation tool,
-- and a bridge between high-level tensor thinking and low-level GPU implementation.
-
 ### Good Entry Condition
 
-Start serious CUDA and Triton work once:
+Start serious Triton and CUDA work once:
 
-- one CPU trainer works end to end,
-- one real profile exists,
+- one PyTorch baseline works end to end,
+- one real profile exists on that PyTorch workload,
 - and the hot kernels are known rather than guessed.
 
 ## FlashAttention
@@ -225,9 +225,9 @@ A future project becomes active only when it satisfies both:
 The current best order is:
 
 1. Rust tokenizer and data path, later
-2. GPU fundamentals, soon after the CPU trainer path is frozen
-3. CUDA
-4. Triton
+2. GPU fundamentals, soon after the PyTorch baseline and profiling path are stable
+3. Triton
+4. CUDA
 5. FlashAttention
 6. distributed ML systems work
 7. MoE and other more advanced architecture/system combinations
