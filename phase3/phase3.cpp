@@ -1,10 +1,14 @@
 /// Minimal phase-3 script for learning manual language-model gradients.
 
+#include "artifact_logging.h"
 #include "core.h"
 #include "decoder.h"
+#include "profiler.h"
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <random>
 #include <stdexcept>
@@ -116,46 +120,70 @@ public:
   }
 
   /// Run one full forward pass and keep the tensors needed for backprop.
-  ForwardCache forward(const std::vector<int> &ids, const std::vector<int> &targets) const {
-    ForwardCache cache;
-    cache.input_embeddings = compute_input_embeddings(ids);
-    cache.decoder_cache = decoder_stack.forward(cache.input_embeddings);
+  void forward(const std::vector<int> &ids, const std::vector<int> &targets,
+               ForwardCache &cache) const {
+    const profiler::Scope scope("model.forward");
+    compute_input_embeddings(ids, cache.input_embeddings);
+    decoder_stack.forward(cache.input_embeddings, cache.decoder_cache);
     compute_logits_and_loss(cache.decoder_cache.decoder_output, targets, cache.logits, cache.probs,
                             cache.avg_loss);
-    return cache;
   }
 
   /// Run one full forward and backward pass for one batch.
   float forward_backward(const std::vector<int> &ids, const std::vector<int> &targets) {
+    const profiler::Scope scope("model.forward_backward");
     zero_grad();
 
-    const ForwardCache cache = forward(ids, targets);
-    const std::vector<float> d_block_output =
-        backward_logits(cache.decoder_cache.decoder_output, targets, cache.probs);
-    const std::vector<float> d_embeddings = decoder_stack.backward(cache.decoder_cache, d_block_output);
+    forward(ids, targets, forward_cache);
+    backward_logits(forward_cache.decoder_cache.decoder_output, targets, forward_cache.probs,
+                    d_block_output);
+    decoder_stack.backward(forward_cache.decoder_cache, d_block_output, d_embeddings);
     accumulate_embedding_grads(ids, d_embeddings);
 
     scale_grads(inv_token_count);
-    return cache.avg_loss;
+    return forward_cache.avg_loss;
   }
 
   /// Compute the average loss for one batch without building gradients.
   float forward_loss(const std::vector<int> &ids, const std::vector<int> &targets) const {
-    return forward(ids, targets).avg_loss;
+    const profiler::Scope scope("model.forward_loss");
+    forward(ids, targets, forward_cache);
+    return forward_cache.avg_loss;
   }
 
   /// Apply one optimizer step to every parameter tensor.
   void update() {
+    const profiler::Scope scope("model.update");
     token_embedding_table.update();
     position_embedding_table.update();
     decoder_stack.update();
     lm_head_bias.update();
   }
 
+  /// Return the total number of trainable scalar parameters in the model.
+  size_t parameter_count() const {
+    size_t total = token_embedding_table.val.size() + position_embedding_table.val.size() +
+                   lm_head_bias.val.size();
+    for (const decoder_block::Block &block : decoder_stack.blocks) {
+      total += block.attention_query_weights.val.size();
+      total += block.attention_key_weights.val.size();
+      total += block.attention_value_weights.val.size();
+      total += block.attention_output_projection_weights.val.size();
+      total += block.attention_rms_gain.val.size();
+      total += block.feed_forward_in_weights.val.size();
+      total += block.feed_forward_in_bias.val.size();
+      total += block.feed_forward_out_weights.val.size();
+      total += block.feed_forward_out_bias.val.size();
+      total += block.feed_forward_rms_gain.val.size();
+    }
+    return total;
+  }
+
 private:
   /// Build token-plus-position embeddings for one batch.
-  std::vector<float> compute_input_embeddings(const std::vector<int> &ids) const {
-    std::vector<float> embeddings(batch_size * context_len * embedding_dim);
+  void compute_input_embeddings(const std::vector<int> &ids, std::vector<float> &embeddings) const {
+    const profiler::Scope scope("model.compute_input_embeddings");
+    embeddings.resize(batch_size * context_len * embedding_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t out_base = b * context_len * embedding_dim + c * embedding_dim;
@@ -169,13 +197,13 @@ private:
         }
       }
     }
-    return embeddings;
   }
 
   /// Compute logits, probabilities, and loss from the final block output.
   void compute_logits_and_loss(const std::vector<float> &inputs, const std::vector<int> &targets,
                                std::vector<float> &logits, std::vector<float> &probs,
                                float &avg_loss) const {
+    const profiler::Scope scope("model.compute_logits_and_loss");
     logits.resize(batch_size * context_len * vocab_size);
     probs.resize(batch_size * context_len * vocab_size);
     float loss_sum = 0.0f;
@@ -217,10 +245,10 @@ private:
   }
 
   /// Backpropagate through the final logits projection and softmax loss.
-  std::vector<float> backward_logits(const std::vector<float> &inputs,
-                                     const std::vector<int> &targets,
-                                     const std::vector<float> &probs) {
-    std::vector<float> d_logits = probs;
+  void backward_logits(const std::vector<float> &inputs, const std::vector<int> &targets,
+                       const std::vector<float> &probs, std::vector<float> &d_inputs) {
+    const profiler::Scope scope("model.backward_logits");
+    copy_into(d_logits, probs);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         d_logits[b * context_len * vocab_size + c * vocab_size + targets[b * context_len + c]] -=
@@ -228,7 +256,7 @@ private:
       }
     }
 
-    std::vector<float> d_inputs(batch_size * context_len * embedding_dim, 0.0f);
+    resize_and_zero(d_inputs, batch_size * context_len * embedding_dim);
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t in_base = b * context_len * embedding_dim + c * embedding_dim;
@@ -244,13 +272,12 @@ private:
         }
       }
     }
-
-    return d_inputs;
   }
 
   /// Accumulate token and position embedding gradients from one input gradient tensor.
   void accumulate_embedding_grads(const std::vector<int> &ids,
                                   const std::vector<float> &d_embeddings) {
+    const profiler::Scope scope("model.accumulate_embedding_grads");
     for (size_t b = 0; b < batch_size; ++b) {
       for (size_t c = 0; c < context_len; ++c) {
         const size_t grad_base = b * context_len * embedding_dim + c * embedding_dim;
@@ -265,11 +292,18 @@ private:
       }
     }
   }
+
+  /// Reuse one forward cache and gradient buffers across training steps.
+  mutable ForwardCache forward_cache;
+  std::vector<float> d_block_output;
+  std::vector<float> d_embeddings;
+  std::vector<float> d_logits;
 };
 
 /// Sample one batch of context windows and next-token targets.
 void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &targets,
                     const std::vector<int> &token_ids) {
+  const profiler::Scope scope("train.generate_batch");
   for (size_t b = 0; b < batch_size; ++b) {
     const int index = randint(min, max);
     for (size_t j = 0; j < context_len; ++j) {
@@ -281,30 +315,71 @@ void generate_batch(int min, int max, std::vector<int> &ids, std::vector<int> &t
 
 /// Run the current single-file training loop.
 void run_training(Model &model, const std::vector<int> &token_ids) {
+  const profiler::Scope scope("train.run");
   const int split_index =
       static_cast<int>(std::floor(token_ids.size() * (1.0f - validation_split)));
+  ArtifactLogger artifact_logger(corpus_path, model.parameter_count());
+  profiler::reset();
+  const auto training_start = std::chrono::steady_clock::now();
 
   std::vector<int> ids(batch_size * context_len);
   std::vector<int> targets(batch_size * context_len);
+
+  std::cout << "run_dir=" << artifact_logger.paths.run_dir.string() << "\n";
+  std::cout << "metrics_csv=" << artifact_logger.paths.metrics_csv.string() << "\n";
+  std::cout << "metadata_json=" << artifact_logger.paths.metadata_json.string() << "\n";
+  std::cout << "profile_summary_csv=" << artifact_logger.paths.profile_summary_csv.string() << "\n";
+  std::cout << "parameter_count=" << model.parameter_count() << "\n";
 
   for (int start_step = 0; start_step < steps; start_step += steps_per_chunk) {
     const int chunk_steps = std::min(steps_per_chunk, steps - start_step);
     float train_loss = 0.0f;
     float val_loss = 0.0f;
+    const auto chunk_start = std::chrono::steady_clock::now();
 
     for (int step = 0; step < chunk_steps; ++step) {
-      generate_batch(0, split_index - context_len, ids, targets, token_ids);
-      train_loss += model.forward_backward(ids, targets);
+      {
+        const profiler::Scope training_step_scope("train.forward_backward_step");
+        generate_batch(0, split_index - context_len, ids, targets, token_ids);
+        train_loss += model.forward_backward(ids, targets);
+      }
 
-      generate_batch(split_index, static_cast<int>(token_ids.size()) - context_len, ids, targets,
-                     token_ids);
-      val_loss += model.forward_loss(ids, targets);
+      {
+        const profiler::Scope validation_step_scope("train.validation_step");
+        generate_batch(split_index, static_cast<int>(token_ids.size()) - context_len, ids, targets,
+                       token_ids);
+        val_loss += model.forward_loss(ids, targets);
+      }
 
-      model.update();
+      {
+        const profiler::Scope optimizer_step_scope("train.optimizer_step");
+        model.update();
+      }
     }
 
-    std::cout << "step=" << start_step << " train_loss=" << train_loss / chunk_steps
-              << " val_loss=" << val_loss / chunk_steps << "\n";
+    const double chunk_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - chunk_start).count();
+    const double step_time_ms = chunk_seconds * 1000.0 / static_cast<double>(chunk_steps);
+    const double tokens_per_second =
+        chunk_seconds > 0.0
+            ? static_cast<double>(chunk_steps) * static_cast<double>(batch_size * context_len) /
+                  chunk_seconds
+            : 0.0;
+    const float avg_train_loss = train_loss / chunk_steps;
+    const float avg_val_loss = val_loss / chunk_steps;
+
+    artifact_logger.log_chunk(start_step, chunk_steps, avg_train_loss, avg_val_loss, chunk_seconds);
+    std::cout << std::fixed << std::setprecision(6) << "step=" << start_step
+              << " train_loss=" << avg_train_loss << " val_loss=" << avg_val_loss
+              << " step_time_ms=" << step_time_ms << " tokens_per_second=" << tokens_per_second
+              << "\n";
+  }
+
+  const double training_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - training_start).count();
+  if (profiler::has_samples()) {
+    profiler::write_summary_csv(artifact_logger.paths.profile_summary_csv, training_seconds);
+    profiler::print_summary(std::cout, training_seconds, 12);
   }
 }
 

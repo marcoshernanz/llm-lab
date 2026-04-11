@@ -6,6 +6,8 @@
 #include <cmath>
 #include <vector>
 
+#include "profiler.h"
+
 inline constexpr int vocab_size = 128;
 inline constexpr int context_len = 4;
 inline constexpr int embedding_dim = 32;
@@ -15,7 +17,7 @@ inline constexpr int attention_dim = num_heads * head_dim;
 inline constexpr int num_decoder_blocks = 4;
 inline constexpr int feed_forward_dim = 128;
 
-inline constexpr int steps = 10000;
+inline constexpr int steps = 1000;
 inline constexpr int steps_per_chunk = 100;
 inline constexpr int batch_size = 32;
 inline constexpr float inv_token_count = 1.0f / static_cast<float>(batch_size * context_len);
@@ -25,6 +27,7 @@ inline constexpr float learning_rate = 0.01f;
 inline constexpr float beta1 = 0.9f;
 inline constexpr float beta2 = 0.999f;
 inline constexpr float eps = 1e-8f;
+inline constexpr float weight_decay = 0.01f;
 inline constexpr float rms_norm_eps = 1e-5f;
 
 /// Sample one normal random value for parameter initialization.
@@ -35,18 +38,30 @@ inline float fan_in_stddev(int fan_in) {
   return 1.0f / std::sqrt(static_cast<float>(fan_in));
 }
 
-/// Hold Adam state for one parameter tensor.
-class Adam {
+/// Resize one vector and overwrite every element with zero.
+inline void resize_and_zero(std::vector<float> &values, size_t size) {
+  values.resize(size);
+  std::fill(values.begin(), values.end(), 0.0f);
+}
+
+/// Resize one vector and copy another vector into it.
+inline void copy_into(std::vector<float> &dst, const std::vector<float> &src) {
+  dst.resize(src.size());
+  std::copy(src.begin(), src.end(), dst.begin());
+}
+
+/// Hold AdamW state for one parameter tensor.
+class AdamW {
 public:
   float beta1_pow = 1.0f;
   float beta2_pow = 1.0f;
   std::vector<float> first_moment;
   std::vector<float> second_moment;
 
-  /// Construct one Adam state object with zero moments.
-  explicit Adam(size_t size) : first_moment(size, 0.0f), second_moment(size, 0.0f) {}
+  /// Construct one AdamW state object with zero moments.
+  explicit AdamW(size_t size) : first_moment(size, 0.0f), second_moment(size, 0.0f) {}
 
-  /// Apply one Adam update to a parameter tensor.
+  /// Apply one AdamW update to a parameter tensor.
   void update(std::vector<float> &values, const std::vector<float> &gradients) {
     beta1_pow *= beta1;
     beta2_pow *= beta2;
@@ -59,7 +74,9 @@ public:
 
       const float corrected_first = first_moment[i] / beta1_correction;
       const float corrected_second = second_moment[i] / beta2_correction;
-      values[i] -= learning_rate * corrected_first / (std::sqrt(corrected_second) + eps);
+      values[i] =
+          (1.0f - learning_rate * weight_decay) * values[i] -
+          learning_rate * corrected_first / (std::sqrt(corrected_second) + eps);
     }
   }
 };
@@ -69,7 +86,7 @@ class Param {
 public:
   std::vector<float> val;
   std::vector<float> grad;
-  Adam optimizer;
+  AdamW optimizer;
 
   /// Construct one parameter tensor with matching gradient and optimizer state.
   explicit Param(size_t size) : val(size), grad(size, 0.0f), optimizer(size) {}
@@ -98,5 +115,8 @@ public:
   }
 
   /// Apply one optimizer step using the current gradient buffer.
-  void update() { optimizer.update(val, grad); }
+  void update() {
+    const profiler::Scope scope("param.update");
+    optimizer.update(val, grad);
+  }
 };

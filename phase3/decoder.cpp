@@ -1,6 +1,7 @@
 /// Stacked decoder helpers for phase 3.
 
 #include "decoder.h"
+#include "profiler.h"
 
 namespace decoder {
 
@@ -36,27 +37,35 @@ void Stack::update() {
 }
 
 /// Run one full decoder-stack forward pass.
-Cache Stack::forward(const std::vector<float> &decoder_input) const {
-  Cache cache;
-  cache.blocks.reserve(blocks.size());
-
-  std::vector<float> block_input = decoder_input;
-  for (const decoder_block::Block &block : blocks) {
-    cache.blocks.push_back(block.forward(block_input));
-    block_input = cache.blocks.back().block_output;
+void Stack::forward(const std::vector<float> &decoder_input, Cache &cache) const {
+  const profiler::Scope scope("decoder.forward");
+  cache.blocks.resize(blocks.size());
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    const std::vector<float> &block_input = i == 0 ? decoder_input : cache.blocks[i - 1].block_output;
+    blocks[i].forward(block_input, cache.blocks[i]);
   }
-
-  cache.decoder_output = block_input;
-  return cache;
+  if (blocks.empty()) {
+    copy_into(cache.decoder_output, decoder_input);
+    return;
+  }
+  copy_into(cache.decoder_output, cache.blocks.back().block_output);
 }
 
 /// Backpropagate through the full decoder stack.
-std::vector<float> Stack::backward(const Cache &cache, const std::vector<float> &d_decoder_output) {
-  std::vector<float> d_block_input = d_decoder_output;
+void Stack::backward(Cache &cache, const std::vector<float> &d_decoder_output,
+                     std::vector<float> &d_decoder_input) {
+  const profiler::Scope scope("decoder.backward");
+  const std::vector<float> *current_input = &d_decoder_output;
+  std::vector<float> *current_output = &backward_buffer_a;
+
   for (size_t i = blocks.size(); i-- > 0;) {
-    d_block_input = blocks[i].backward(cache.blocks[i], d_block_input);
+    if (i == 0) {
+      current_output = &d_decoder_input;
+    }
+    blocks[i].backward(cache.blocks[i], *current_input, *current_output);
+    current_input = current_output;
+    current_output = current_output == &backward_buffer_a ? &backward_buffer_b : &backward_buffer_a;
   }
-  return d_block_input;
 }
 
 } // namespace decoder
