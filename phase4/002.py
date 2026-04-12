@@ -42,7 +42,7 @@ class CausalSelfAttention(nn.Module):
         k = self.k(x)
         v = self.v(x)
         x = q @ k.mT / math.sqrt(EMBEDDING_DIM)
-        mask = torch.triu(torch.ones(EMBEDDING_DIM, EMBEDDING_DIM), diagonal=1)
+        mask = torch.triu(torch.ones(CONTEXT_LEN, CONTEXT_LEN), diagonal=1)
         x = x.where(mask, torch.inf)
         x = F.softmax(x, dim=-1)
         x = x @ v
