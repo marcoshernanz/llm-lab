@@ -14,4 +14,8 @@ class LanguageModel(nn.Module):
         self.out = nn.Linear(HIDDEN_DIM, VOCAB_SIZE)
 
     def forward(self, x: torch.Tensor):
-        return self.out(self.hidden(self.embedding(x)))
+        x = self.embedding(x)
+        x = self.hidden(x)
+        x = torch.tanh(x)
+        x = self.out(x)
+        return x
