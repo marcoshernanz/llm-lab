@@ -44,7 +44,7 @@ class CausalSelfAttention(nn.Module):
         batch_size, sequence_len, _ = x.shape
         return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
 
-    def join_heads(self, x: torch.Tensor):
+    def combine_heads(self, x: torch.Tensor):
         batch_size, _, sequence_len, _ = x.shape
         return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
 
@@ -66,7 +66,7 @@ class CausalSelfAttention(nn.Module):
 
         attention_weights = F.softmax(attention_scores, dim=-1)
         attended_values = attention_weights @ values
-        return self.join_heads(attended_values)
+        return self.combine_heads(attended_values)
 
 
 class LanguageModel(nn.Module):
