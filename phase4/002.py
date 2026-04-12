@@ -82,7 +82,7 @@ class FeedForward(nn.Module):
         return self.out(x)
 
 
-class RSMNorm(nn.Module):
+class RMSNorm(nn.Module):
     def __init__(self):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(EMBEDDING_DIM))
