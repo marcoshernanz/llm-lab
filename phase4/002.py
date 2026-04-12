@@ -71,7 +71,7 @@ class CausalSelfAttention(nn.Module):
         return self.out(attended_values)
 
 
-class FeedForward:
+class FeedForward(nn.Module):
     def __init__(self):
         super().__init__()
         self.hidden = nn.Linear(EMBEDDING_DIM, HIDDEN_DIM)
