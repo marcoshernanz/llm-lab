@@ -34,9 +34,10 @@ SAMPLE_LENGTH = 400
 class CausalSelfAttention(nn.Module):
     def __init__(self):
         super().__init__()
-        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
-        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
-        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
+        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
         self.num_heads = NUM_HEADS
         self.head_dim = EMBEDDING_DIM // NUM_HEADS
 
@@ -65,8 +66,8 @@ class CausalSelfAttention(nn.Module):
         attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)
 
         attention_weights = F.softmax(attention_scores, dim=-1)
-        attended_values = attention_weights @ values
-        return self.combine_heads(attended_values)
+        attended_values = self.combine_heads(attention_weights @ values)
+        return self.out(attended_values)
 
 
 class LanguageModel(nn.Module):
