@@ -33,21 +33,29 @@ SAMPLE_LENGTH = 400
 class CausalSelfAttention(nn.Module):
     def __init__(self):
         super().__init__()
-        self.q = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
-        self.k = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
-        self.v = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
+        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
+        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
+        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
 
-    def forward(self, x: torch.Tensor):
-        q = self.q(x)
-        k = self.k(x)
-        v = self.v(x)
-        x = q @ k.mT / math.sqrt(EMBEDDING_DIM)
-        mask = torch.triu(torch.ones(CONTEXT_LEN, CONTEXT_LEN), diagonal=1)
-        x = x.where(mask, torch.inf)
-        x = F.softmax(x, dim=-1)
-        x = x @ v
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        sequence_length = x.shape[1]
 
-        return x
+        queries = self.query(x)
+        keys = self.key(x)
+        values = self.value(x)
+
+        attention_scores = queries @ keys.transpose(-2, -1)
+        attention_scores = attention_scores / math.sqrt(EMBEDDING_DIM)
+
+        causal_mask = torch.triu(
+            torch.ones(sequence_length, sequence_length, dtype=torch.bool, device=x.device),
+            diagonal=1,
+        )
+        attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)
+
+        attention_weights = F.softmax(attention_scores, dim=-1)
+        attended_values = attention_weights @ values
+        return attended_values
 
 
 class LanguageModel(nn.Module):
