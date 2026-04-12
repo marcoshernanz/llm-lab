@@ -89,8 +89,8 @@ class RMSNorm(nn.Module):
         self.eps = 1e-5
 
     def forward(self, x: torch.Tensor):
-        rms = torch.sqrt(x.square().sum(-1, keepdim=True) / EMBEDDING_DIM)
-        return self.weight * (x / (rms + self.eps))
+        scale = torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        return x * scale * self.weight
 
 
 class LanguageModel(nn.Module):
