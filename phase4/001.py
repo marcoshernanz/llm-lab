@@ -1,5 +1,3 @@
-# %%
-
 import torch
 from torch import nn
 
@@ -11,13 +9,9 @@ HIDDEN_DIM = 64
 class LanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.embedding_weights = torch.randn(VOCAB_SIZE * EMBEDDING_DIM)
-        self.hidden_weights = torch.randn(EMBEDDING_DIM * HIDDEN_DIM)
-        self.hidden_biases = torch.randn(HIDDEN_DIM)
-        self.out_weights = torch.randn(HIDDEN_DIM * VOCAB_SIZE)
-        self.out_biases = torch.randn(VOCAB_SIZE)
+        self.embedding = nn.Embedding(VOCAB_SIZE, EMBEDDING_DIM)
+        self.hidden = nn.Linear(EMBEDDING_DIM, HIDDEN_DIM)
+        self.out = nn.Linear(HIDDEN_DIM, VOCAB_SIZE)
 
     def forward(self, x: torch.Tensor):
-        x = x @ self.embedding_weights
-        x = x @ self.hidden_weights + self.hidden_biases
-        return x @ self.out_weights + self.out_biases
+        return self.out(self.hidden(self.embedding(x)))
