@@ -45,7 +45,7 @@ class CausalSelfAttention(nn.Module):
         return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
 
     def join_heads(self, x: torch.Tensor):
-        batch_size, sequence_len, _ = x.shape
+        batch_size, _, sequence_len, _ = x.shape
         return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
