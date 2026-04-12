@@ -82,6 +82,17 @@ class FeedForward(nn.Module):
         return self.out(x)
 
 
+class RSMNorm(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(EMBEDDING_DIM))
+        self.eps = 1e-5
+
+    def forward(self, x: torch.Tensor):
+        rms = torch.sqrt(x.square().sum(-1) / EMBEDDING_DIM)
+        return self.weight * (x / (rms + self.eps))
+
+
 class LanguageModel(nn.Module):
     def __init__(self, vocab_size: int):
         super().__init__()
