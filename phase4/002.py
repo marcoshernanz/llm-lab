@@ -89,7 +89,7 @@ class RSMNorm(nn.Module):
         self.eps = 1e-5
 
     def forward(self, x: torch.Tensor):
-        rms = torch.sqrt(x.square().sum(-1) / EMBEDDING_DIM)
+        rms = torch.sqrt(x.square().sum(-1, keepdim=True) / EMBEDDING_DIM)
         return self.weight * (x / (rms + self.eps))
 
 
