@@ -22,6 +22,7 @@ SEQUENCE_LEN = 128
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
+HIDDEN_DIM = 256
 
 BATCH_SIZE = 64
 LEARNING_RATE = 3e-3
@@ -68,6 +69,17 @@ class CausalSelfAttention(nn.Module):
         attention_weights = F.softmax(attention_scores, dim=-1)
         attended_values = self.combine_heads(attention_weights @ values)
         return self.out(attended_values)
+
+
+class FeedForward:
+    def __init__(self):
+        super().__init__()
+        self.hidden = nn.Linear(EMBEDDING_DIM, HIDDEN_DIM)
+        self.out = nn.Linear(HIDDEN_DIM, EMBEDDING_DIM)
+
+    def forward(self, x: torch.Tensor):
+        x = F.gelu(self.hidden(x))
+        return self.out(x)
 
 
 class LanguageModel(nn.Module):
