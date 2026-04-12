@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -14,10 +16,13 @@ VALIDATION_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 SEED = 1337
+
+VOCAB_SIZE = 128
+CONTEXT_LEN = 128
 EMBEDDING_DIM = 64
-HIDDEN_DIM = 64
+HEAD_DIM = 128
+
 BATCH_SIZE = 64
-SEQUENCE_LENGTH = 128
 LEARNING_RATE = 3e-3
 TRAIN_STEPS = 2_000
 EVAL_INTERVAL = 200
@@ -25,18 +30,36 @@ EVAL_BATCHES = 32
 SAMPLE_LENGTH = 400
 
 
+class CausalSelfAttention(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.q = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
+        self.k = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
+        self.v = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
+
+    def forward(self, x: torch.Tensor):
+        q = self.q(x)
+        k = self.k(x)
+        v = self.v(x)
+        x = q @ k.mT / math.sqrt(EMBEDDING_DIM)
+        mask = torch.triu(torch.ones(EMBEDDING_DIM, EMBEDDING_DIM), diagonal=1)
+        x = x.where(mask, torch.inf)
+        x = F.softmax(x, dim=-1)
+        x = x @ v
+
+        return x
+
+
 class LanguageModel(nn.Module):
     def __init__(self, vocab_size: int):
         super().__init__()
-        self.embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
-        self.hidden = nn.Linear(EMBEDDING_DIM, HIDDEN_DIM)
-        self.out = nn.Linear(HIDDEN_DIM, vocab_size)
+        self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
+        self.position_embedding = nn.Embedding(CONTEXT_LEN, EMBEDDING_DIM)
+        # Attention
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.embedding(x)
-        x = self.hidden(x)
-        x = torch.tanh(x)
-        x = self.out(x)
+        x = self.token_embedding(x) + self.position_embedding(x)
+
         return x
 
 
@@ -58,9 +81,9 @@ def encode_text(text: str, char_to_id: dict[str, int]) -> torch.Tensor:
 
 
 def sample_batch(token_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    max_start = token_ids.size(0) - SEQUENCE_LENGTH
+    max_start = token_ids.size(0) - CONTEXT_LEN
     starts = torch.randint(0, max_start, (BATCH_SIZE,), device=DEVICE)
-    offsets = torch.arange(SEQUENCE_LENGTH, device=DEVICE)
+    offsets = torch.arange(CONTEXT_LEN, device=DEVICE)
     positions = starts[:, None] + offsets[None, :]
     inputs = token_ids[positions]
     targets = token_ids[positions + 1]
