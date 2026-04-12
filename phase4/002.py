@@ -56,7 +56,7 @@ class CausalSelfAttention(nn.Module):
         values = self.split_heads(self.value(x))
 
         attention_scores = queries @ keys.transpose(-2, -1)
-        attention_scores = attention_scores / math.sqrt(EMBEDDING_DIM)
+        attention_scores = attention_scores / math.sqrt(self.head_dim)
 
         causal_mask = torch.triu(
             torch.ones(sequence_length, sequence_length, dtype=torch.bool, device=x.device),
