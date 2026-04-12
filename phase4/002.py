@@ -18,9 +18,10 @@ DEVICE = "mps"
 SEED = 1337
 
 VOCAB_SIZE = 128
-CONTEXT_LEN = 128
+SEQUENCE_LEN = 128
 EMBEDDING_DIM = 64
-HEAD_DIM = 128
+NUM_HEADS = 4
+
 
 BATCH_SIZE = 64
 LEARNING_RATE = 3e-3
@@ -36,13 +37,23 @@ class CausalSelfAttention(nn.Module):
         self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
         self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
         self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM)
+        self.num_heads = NUM_HEADS
+        self.head_dim = EMBEDDING_DIM // NUM_HEADS
+
+    def split_heads(self, x: torch.Tensor):
+        batch_size, sequence_len, _ = x.shape
+        return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
+
+    def join_heads(self, x: torch.Tensor):
+        batch_size, sequence_len, _ = x.shape
+        return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         sequence_length = x.shape[1]
 
-        queries = self.query(x)
-        keys = self.key(x)
-        values = self.value(x)
+        queries = self.split_heads(self.query(x))
+        keys = self.split_heads(self.key(x))
+        values = self.split_heads(self.value(x))
 
         attention_scores = queries @ keys.transpose(-2, -1)
         attention_scores = attention_scores / math.sqrt(EMBEDDING_DIM)
@@ -55,14 +66,14 @@ class CausalSelfAttention(nn.Module):
 
         attention_weights = F.softmax(attention_scores, dim=-1)
         attended_values = attention_weights @ values
-        return attended_values
+        return self.join_heads(attended_values)
 
 
 class LanguageModel(nn.Module):
     def __init__(self, vocab_size: int):
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
-        self.position_embedding = nn.Embedding(CONTEXT_LEN, EMBEDDING_DIM)
+        self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
         # Attention
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -89,9 +100,9 @@ def encode_text(text: str, char_to_id: dict[str, int]) -> torch.Tensor:
 
 
 def sample_batch(token_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    max_start = token_ids.size(0) - CONTEXT_LEN
+    max_start = token_ids.size(0) - SEQUENCE_LEN
     starts = torch.randint(0, max_start, (BATCH_SIZE,), device=DEVICE)
-    offsets = torch.arange(CONTEXT_LEN, device=DEVICE)
+    offsets = torch.arange(SEQUENCE_LEN, device=DEVICE)
     positions = starts[:, None] + offsets[None, :]
     inputs = token_ids[positions]
     targets = token_ids[positions + 1]
