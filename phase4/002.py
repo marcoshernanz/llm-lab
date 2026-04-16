@@ -93,12 +93,25 @@ class RMSNorm(nn.Module):
         return x * scale * self.weight
 
 
+class DecoderBlock(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.attention_norm = RMSNorm()
+        self.attention = CausalSelfAttention()
+        self.feed_forward_norm = RMSNorm()
+        self.feed_forward = FeedForward()
+
+    def forward(self, x: torch.Tensor):
+        x = x + self.attention(self.attention_norm(x))
+        x = x + self.feed_forward(self.feed_forward_norm(x))
+        return x
+
+
 class LanguageModel(nn.Module):
     def __init__(self, vocab_size: int):
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
         self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
-        # Attention
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.token_embedding(x) + self.position_embedding(x)
