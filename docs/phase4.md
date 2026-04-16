@@ -18,13 +18,10 @@ The end goal remains explicit:
 
 ## Why This Phase Is Separate
 
-Phase 4 is intentionally independent.
-It is not a continuation of phase 3, not a port of phase 3, and not an attempt to preserve phase-3 implementation choices inside PyTorch.
-
-Its job is different:
+Its job is to:
 - start from a clean PyTorch baseline,
 - learn the framework-to-profiler-to-kernel path directly,
-- and choose a small workload that is good for study rather than inherited for continuity.
+- and choose a small workload that is good for study.
 
 Real systems work usually looks more like:
 
@@ -85,9 +82,9 @@ That starting point should be:
 
 What does not matter:
 
-- matching an earlier phase exactly,
-- preserving an older corpus or optimizer for continuity,
-- or reusing an earlier implementation just because it already exists.
+- choosing the workload for familiarity alone,
+- keeping constraints that do not improve the learning value,
+- or reusing an implementation simply because it already exists.
 
 ## Tooling Philosophy
 
@@ -110,7 +107,7 @@ Goal:
 - Build a tiny PyTorch trainer as simply as possible.
 
 What changes:
-- Start phase 4 from a tiny PyTorch implementation with no obligation to match earlier phases.
+- Begin from a tiny PyTorch implementation.
 
 What stays fixed:
 - One deliberately chosen small training target.
