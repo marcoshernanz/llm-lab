@@ -10,8 +10,7 @@ It is to become the kind of engineer who can correctly decide:
 - when Triton is the right middle layer,
 - and when raw CUDA/C++ kernels are truly justified.
 
-That means phase 4 should not repeat the phase-3 mistake of spending too much time rebuilding framework responsibilities by hand.
-It should move much closer to the real modern workflow while still preserving first-principles learning.
+That means phase 4 should stay anchored in the real modern workflow while still preserving first-principles learning.
 
 The end goal remains explicit:
 - become part of the small group that can write real CUDA and C++ kernels well,
@@ -19,8 +18,10 @@ The end goal remains explicit:
 
 ## Why This Phase Is Separate
 
-Phase 3 was useful because it made memory movement, buffer lifetime, and profiling concrete.
-But it is not how most real ML systems work day to day.
+Its job is to:
+- start from a clean PyTorch baseline,
+- learn the framework-to-profiler-to-kernel path directly,
+- and choose a small workload that is good for study.
 
 Real systems work usually looks more like:
 
@@ -70,19 +71,20 @@ By the end of phase 4, you should be able to say:
 
 ## Starting Point
 
-Phase 4 should inherit from phase 3 only what is useful:
+Phase 4 should begin from a fresh, deliberately chosen small PyTorch workload.
 
-- one narrow frozen training target,
-- one clear understanding of the current small decoder shape,
-- one optimizer choice,
-- one habit of measuring before optimizing,
-- and one learning discipline about bottlenecks.
+That starting point should be:
 
-What should not be inherited:
+- small enough to inspect end to end,
+- modern enough to produce realistic profiler output,
+- narrow enough that bottlenecks stay visible,
+- and simple enough that kernel work later still has a clear relationship to the original model.
 
-- a commitment to handwritten low-level trainer code as the main workflow,
-- broad rebuilds of framework features,
-- or optimization work that is too far from how modern stacks actually operate.
+What does not matter:
+
+- choosing the workload for familiarity alone,
+- keeping constraints that do not improve the learning value,
+- or reusing an implementation simply because it already exists.
 
 ## Tooling Philosophy
 
@@ -102,14 +104,14 @@ It is "understand how a real model moves from framework code down to kernels."
 Track: PyTorch bring-up
 
 Goal:
-- Rebuild the current small trainer in PyTorch as simply as possible.
+- Build a tiny PyTorch trainer as simply as possible.
 
 What changes:
-- Move from the handwritten C++ CPU trainer to a tiny PyTorch implementation.
+- Begin from a tiny PyTorch implementation.
 
 What stays fixed:
-- Same small decoder family.
-- Same overall training target.
+- One deliberately chosen small training target.
+- One deliberately chosen small model family.
 - Same bias toward simplicity and inspectability.
 
 Requirements:
@@ -122,12 +124,12 @@ Exit criteria:
 - One PyTorch training run works end to end.
 - Loss decreases.
 - The code is simple enough that you can explain every major tensor path.
-- The implementation is clearly easier to iterate on than the phase-3 trainer.
+- The implementation is clearly easy to modify and rerun.
 
 Questions to answer:
 - What does PyTorch hide well?
 - What does PyTorch still leave visible enough to study?
-- Which parts of the old phase-3 understanding transfer directly?
+- Which parts of the training stack should remain explicit even in a framework-first workflow?
 
 ### Milestone 402: Modernize The Tiny Transformer Carefully
 Track: Model modernization
