@@ -126,10 +126,13 @@ class LanguageModel(nn.Module):
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
         self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
+        self.decoder = Decoder()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.token_embedding(x) + self.position_embedding(x)
-
+        positions = torch.arange(x.size(1), device=x.device)
+        x = self.token_embedding(x) + self.position_embedding(positions)
+        x = self.decoder(x)
+        x = x @ self.token_embedding.weight.T
         return x
 
 
