@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 
 import torch
 from torch import nn
@@ -23,6 +24,7 @@ EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
 HIDDEN_DIM = 256
+NUM_BLOCKS = 4
 
 BATCH_SIZE = 64
 LEARNING_RATE = 3e-3
@@ -105,6 +107,18 @@ class DecoderBlock(nn.Module):
         x = x + self.attention(self.attention_norm(x))
         x = x + self.feed_forward(self.feed_forward_norm(x))
         return x
+
+
+class Decoder(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
+        self.out_norm = RMSNorm()
+
+    def forward(self, x: torch.Tensor):
+        for block in self.blocks:
+            x = block(x)
+        return self.out_norm(x)
 
 
 class LanguageModel(nn.Module):
