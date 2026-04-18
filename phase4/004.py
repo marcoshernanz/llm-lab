@@ -47,11 +47,13 @@ def sinusoidal_position_embeddings(sequence_len: int, embedding_dim: int) -> tor
 def rotate(tensor: torch.Tensor):
     batch_size, sequence_len, head_dim = tensor.shape
 
-    positions = torch.arange(sequence_len, dtype=torch.float32)
-    pair_ids = torch.arange(0, head_dim, 2, dtype=torch.float32)
+    positions = torch.arange(sequence_len, dtype=torch.float32, device=tensor.device)
+    pair_ids = torch.arange(0, head_dim, 2, dtype=torch.float32, device=tensor.device)
     angles = positions[:, None] / (10000.0 ** (pair_ids / head_dim))[None, :]
 
-    rotation_matrices = torch.zeros(sequence_len, head_dim // 2, 2, 2)
+    rotation_matrices = torch.zeros(
+        sequence_len, head_dim // 2, 2, 2, dtype=torch.float32, device=tensor.device
+    )
     rotation_matrices[:, :, 0, 0] = torch.cos(angles)
     rotation_matrices[:, :, 0, 1] = -torch.sin(angles)
     rotation_matrices[:, :, 1, 0] = torch.sin(angles)
@@ -59,7 +61,7 @@ def rotate(tensor: torch.Tensor):
 
     x = tensor.reshape(batch_size, sequence_len, head_dim // 2, 2)
 
-    out = torch.zeros(batch_size, sequence_len, head_dim)
+    out = torch.zeros(batch_size, sequence_len, head_dim, dtype=torch.float32, device=tensor.device)
     out[:, :, 0::2] = x @ rotation_matrices
 
 
