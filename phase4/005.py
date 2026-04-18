@@ -20,6 +20,7 @@ SEED = 1337
 SEQUENCE_LEN = 128
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
+NUM_HEAD_GROUPS = 2
 assert EMBEDDING_DIM % NUM_HEADS == 0
 assert (EMBEDDING_DIM // NUM_HEADS) % 2 == 0
 HIDDEN_DIM = 256
@@ -56,12 +57,14 @@ class CausalSelfAttention(nn.Module):
     def __init__(self):
         """Create the query, key, value, and output projections."""
         super().__init__()
-        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
         self.num_heads = NUM_HEADS
+        self.num_head_groups = NUM_HEAD_GROUPS
         self.head_dim = EMBEDDING_DIM // NUM_HEADS
+
+        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.key = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
+        self.value = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
+        self.out = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
