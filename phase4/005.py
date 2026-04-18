@@ -89,6 +89,14 @@ class CausalSelfAttention(nn.Module):
         queries = apply_rope(queries)
         keys = apply_rope(keys)
 
+        queries.reshape(
+            batch_size,
+            self.num_head_groups,
+            self.queries_per_group,
+            sequence_length,
+            self.head_dim,
+        )
+
         attention_scores = queries @ keys.mT
         attention_scores = attention_scores / math.sqrt(self.head_dim)
 
