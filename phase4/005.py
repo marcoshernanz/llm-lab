@@ -82,11 +82,11 @@ class CausalSelfAttention(nn.Module):
         sequence_length = x.shape[1]
 
         queries = self.split_heads(self.query(x), self.num_heads)
-        keys = self.split_heads(self.key(x), self.num_head_groups).repeat(
-            1, self.num_heads // self.num_head_groups, 1, 1
+        keys = self.split_heads(self.key(x), self.num_head_groups).repeat_interleave(
+            self.num_heads // self.num_head_groups, dim=1
         )
-        values = self.split_heads(self.value(x), self.num_head_groups).repeat(
-            1, self.num_heads // self.num_head_groups, 1, 1
+        values = self.split_heads(self.value(x), self.num_head_groups).repeat_interleave(
+            self.num_heads // self.num_head_groups, dim=1
         )
         queries = apply_rope(queries)
         keys = apply_rope(keys)
