@@ -1,4 +1,4 @@
-"""Phase 4 experiment 002: a tiny fixed-configuration PyTorch character decoder LM."""
+"""Phase 4 experiment 004: a tiny fixed-configuration PyTorch character decoder LM with rotary positional embeddings."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ SEQUENCE_LEN = 128
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
+assert (EMBEDDING_DIM // NUM_HEADS) % 2 == 0
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 
@@ -29,7 +30,24 @@ LEARNING_RATE = 3e-3
 TRAIN_STEPS = 2_000
 EVAL_INTERVAL = 200
 EVAL_BATCHES = 32
-SAMPLE_LENGTH = 400
+
+
+def apply_rope(x: torch.Tensor) -> torch.Tensor:
+    """Rotate query or key vectors by position-dependent angles."""
+    _, _, sequence_len, head_dim = x.shape
+
+    positions = torch.arange(sequence_len, dtype=torch.float32, device=x.device)
+    pair_ids = torch.arange(0, head_dim, 2, dtype=torch.float32, device=x.device)
+    angles = positions[:, None] / (10000.0 ** (pair_ids / head_dim))[None, :]
+    cos = torch.cos(angles).to(x.dtype)[None, None, :, :]
+    sin = torch.sin(angles).to(x.dtype)[None, None, :, :]
+
+    rotated = torch.empty_like(x)
+    even = x[..., 0::2]
+    odd = x[..., 1::2]
+    rotated[..., 0::2] = even * cos - odd * sin
+    rotated[..., 1::2] = even * sin + odd * cos
+    return rotated
 
 
 class CausalSelfAttention(nn.Module):
@@ -62,6 +80,8 @@ class CausalSelfAttention(nn.Module):
         queries = self.split_heads(self.query(x))
         keys = self.split_heads(self.key(x))
         values = self.split_heads(self.value(x))
+        queries = apply_rope(queries)
+        keys = apply_rope(keys)
 
         attention_scores = queries @ keys.transpose(-2, -1)
         attention_scores = attention_scores / math.sqrt(self.head_dim)
@@ -148,13 +168,11 @@ class LanguageModel(nn.Module):
         """Create the embeddings and decoder."""
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
-        self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
         self.decoder = Decoder()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
-        positions = torch.arange(x.size(1), device=x.device)
-        x = self.token_embedding(x) + self.position_embedding(positions)
+        x = self.token_embedding(x)
         x = self.decoder(x)
         x = x @ self.token_embedding.weight.T
         return x

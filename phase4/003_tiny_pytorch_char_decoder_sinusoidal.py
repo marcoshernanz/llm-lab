@@ -1,4 +1,4 @@
-"""Phase 4 experiment 002: a tiny fixed-configuration PyTorch character decoder LM."""
+"""Phase 4 experiment 003: a tiny fixed-configuration PyTorch character decoder LM with sinusoidal positional embeddings."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ SEED = 1337
 SEQUENCE_LEN = 128
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
+assert EMBEDDING_DIM % 2 == 0
 assert EMBEDDING_DIM % NUM_HEADS == 0
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
@@ -29,7 +30,18 @@ LEARNING_RATE = 3e-3
 TRAIN_STEPS = 2_000
 EVAL_INTERVAL = 200
 EVAL_BATCHES = 32
-SAMPLE_LENGTH = 400
+
+
+def sinusoidal_position_embeddings(sequence_len: int, embedding_dim: int) -> torch.Tensor:
+    """Return fixed sinusoidal position embeddings."""
+    positions = torch.arange(sequence_len, dtype=torch.float32)
+    pair_ids = torch.arange(0, embedding_dim, 2, dtype=torch.float32)
+    angles = positions[:, None] / (10000.0 ** (pair_ids / embedding_dim))[None, :]
+
+    embeddings = torch.zeros(sequence_len, embedding_dim, dtype=torch.float32)
+    embeddings[:, 0::2] = torch.sin(angles)
+    embeddings[:, 1::2] = torch.cos(angles)
+    return embeddings
 
 
 class CausalSelfAttention(nn.Module):
@@ -148,13 +160,16 @@ class LanguageModel(nn.Module):
         """Create the embeddings and decoder."""
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
-        self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
+        self.position_embeddings: torch.Tensor
+        self.register_buffer(
+            "position_embeddings",
+            sinusoidal_position_embeddings(SEQUENCE_LEN, EMBEDDING_DIM),
+        )
         self.decoder = Decoder()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
-        positions = torch.arange(x.size(1), device=x.device)
-        x = self.token_embedding(x) + self.position_embedding(positions)
+        x = self.token_embedding(x) + self.position_embeddings[: x.size(1)]
         x = self.decoder(x)
         x = x @ self.token_embedding.weight.T
         return x
