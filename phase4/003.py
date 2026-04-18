@@ -160,6 +160,7 @@ class LanguageModel(nn.Module):
         """Create the embeddings and decoder."""
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
+        self.position_embeddings: torch.Tensor
         self.register_buffer(
             "position_embeddings",
             sinusoidal_position_embeddings(SEQUENCE_LEN, EMBEDDING_DIM),
