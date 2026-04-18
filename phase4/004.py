@@ -45,19 +45,21 @@ def sinusoidal_position_embeddings(sequence_len: int, embedding_dim: int) -> tor
 
 
 def rotate(tensor: torch.Tensor):
-    positions = torch.arange(SEQUENCE_LEN, dtype=torch.float32)
-    pair_ids = torch.arange(0, EMBEDDING_DIM, 2, dtype=torch.float32)
-    angles = positions[:, None] / (10000.0 ** (pair_ids / EMBEDDING_DIM))[None, :]
+    batch_size, sequence_len, embedding_dim = tensor.shape
 
-    rotation_matrices = torch.zeros(SEQUENCE_LEN, EMBEDDING_DIM // 2, 2, 2)
+    positions = torch.arange(sequence_len, dtype=torch.float32)
+    pair_ids = torch.arange(0, embedding_dim, 2, dtype=torch.float32)
+    angles = positions[:, None] / (10000.0 ** (pair_ids / embedding_dim))[None, :]
+
+    rotation_matrices = torch.zeros(sequence_len, embedding_dim // 2, 2, 2)
     rotation_matrices[:, :, 0, 0] = torch.cos(angles)
     rotation_matrices[:, :, 0, 1] = -torch.sin(angles)
     rotation_matrices[:, :, 1, 0] = torch.sin(angles)
     rotation_matrices[:, :, 1, 1] = torch.cos(angles)
 
-    x = tensor.reshape(BATCH_SIZE, SEQUENCE_LEN, EMBEDDING_DIM // 2, 2)
+    x = tensor.reshape(batch_size, sequence_len, embedding_dim // 2, 2)
 
-    out = torch.zeros(BATCH_SIZE, SEQUENCE_LEN, EMBEDDING_DIM)
+    out = torch.zeros(batch_size, sequence_len, embedding_dim)
     out[:, :, 0::2] = x @ rotation_matrices
 
 
