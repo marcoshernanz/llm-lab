@@ -107,7 +107,9 @@ class CausalSelfAttention(nn.Module):
         attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)
 
         attention_weights = F.softmax(attention_scores, dim=-1)
-        attended_values = self.combine_heads(attention_weights @ values)
+        attended_values = attention_weights @ values[:, :, None]
+        attended_values.reshape(batch_size, self.num_heads, sequence_length, self.head_dim)
+        attended_values = self.combine_heads(attended_values)
         return self.out(attended_values)
 
 
