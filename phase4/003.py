@@ -154,13 +154,13 @@ class LanguageModel(nn.Module):
         pair_ids = torch.arange(0, EMBEDDING_DIM, 2)
         frequencies = 1.0 / 10000.0 ** (pair_ids / EMBEDDING_DIM)
         angles = positions[:, None] * frequencies[None, :]
-        self.position_embeddings = torch.zeros(EMBEDDING_DIM, SEQUENCE_LEN)
+        self.position_embeddings = torch.zeros(SEQUENCE_LEN, EMBEDDING_DIM)
         self.position_embeddings[:, 0::2] = torch.sin(angles)
         self.position_embeddings[:, 1::2] = torch.cos(angles)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
-        x = self.token_embedding(x) + self.position_embeddings
+        x = self.token_embedding(x) + self.position_embeddings[: x.size(1)]
         x = self.decoder(x)
         x = x @ self.token_embedding.weight.T
         return x

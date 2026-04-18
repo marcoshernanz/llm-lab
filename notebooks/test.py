@@ -1,7 +1,6 @@
 # %%
 
 import torch
-import math
 
 EMBEDDING_DIM = 4
 SEQUENCE_LEN = 8
