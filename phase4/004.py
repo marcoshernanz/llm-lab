@@ -49,11 +49,11 @@ def rotate(tensor: torch.Tensor):
     pair_ids = torch.arange(0, EMBEDDING_DIM, 2, dtype=torch.float32)
     angles = positions[:, None] / (10000.0 ** (pair_ids / EMBEDDING_DIM))[None, :]
 
-    rotation_matrices = torch.zeros(SEQUENCE_LEN, 2, 2)
-    rotation_matrices[:, 0, 0] = torch.cos(angles)
-    rotation_matrices[:, 0, 1] = -torch.sin(angles)
-    rotation_matrices[:, 1, 0] = torch.sin(angles)
-    rotation_matrices[:, 1, 1] = torch.cos(angles)
+    rotation_matrices = torch.zeros(SEQUENCE_LEN, EMBEDDING_DIM // 2, 2, 2)
+    rotation_matrices[:, :, 0, 0] = torch.cos(angles)
+    rotation_matrices[:, :, 0, 1] = -torch.sin(angles)
+    rotation_matrices[:, :, 1, 0] = torch.sin(angles)
+    rotation_matrices[:, :, 1, 1] = torch.cos(angles)
 
     x = tensor.reshape(SEQUENCE_LEN, EMBEDDING_DIM // 2, 2)
 
