@@ -1,4 +1,4 @@
-"""Phase 4 baseline: a tiny fixed-configuration PyTorch character LM trainer."""
+"""Phase 4 experiment 001: a tiny fixed-configuration PyTorch character MLP LM."""
 
 from __future__ import annotations
 
