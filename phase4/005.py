@@ -66,10 +66,10 @@ class CausalSelfAttention(nn.Module):
         self.value = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
         self.out = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
 
-    def split_heads(self, x: torch.Tensor) -> torch.Tensor:
+    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
         batch_size, sequence_len, _ = x.shape
-        return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
+        return x.reshape(batch_size, sequence_len, num_heads, self.head_dim).swapaxes(1, 2)
 
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
@@ -80,9 +80,9 @@ class CausalSelfAttention(nn.Module):
         """Return attention outputs for one batch of embeddings."""
         sequence_length = x.shape[1]
 
-        queries = self.split_heads(self.query(x))
-        keys = self.split_heads(self.key(x))
-        values = self.split_heads(self.value(x))
+        queries = self.split_heads(self.query(x), self.num_heads)
+        keys = self.split_heads(self.key(x), self.num_head_groups)
+        values = self.split_heads(self.value(x), self.num_head_groups)
         queries = apply_rope(queries)
         keys = apply_rope(keys)
 
