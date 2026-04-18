@@ -90,11 +90,7 @@ class CausalSelfAttention(nn.Module):
         keys = apply_rope(keys)
 
         queries.reshape(
-            batch_size,
-            self.num_head_groups,
-            self.queries_per_group,
-            sequence_length,
-            self.head_dim,
+            batch_size, self.num_head_groups, self.queries_per_group, sequence_length, self.head_dim
         )
 
         attention_scores = queries @ keys[:, :, None].mT
@@ -108,7 +104,9 @@ class CausalSelfAttention(nn.Module):
 
         attention_weights = F.softmax(attention_scores, dim=-1)
         attended_values = attention_weights @ values[:, :, None]
-        attended_values.reshape(batch_size, self.num_heads, sequence_length, self.head_dim)
+        attended_values = attended_values.reshape(
+            batch_size, self.num_heads, sequence_length, self.head_dim
+        )
         attended_values = self.combine_heads(attended_values)
         return self.out(attended_values)
 
