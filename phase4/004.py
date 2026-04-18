@@ -20,8 +20,8 @@ SEED = 1337
 SEQUENCE_LEN = 128
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
-assert EMBEDDING_DIM % 2 == 0
 assert EMBEDDING_DIM % NUM_HEADS == 0
+assert (EMBEDDING_DIM // NUM_HEADS) % 2 == 0
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 
@@ -32,38 +32,22 @@ EVAL_INTERVAL = 200
 EVAL_BATCHES = 32
 
 
-def sinusoidal_position_embeddings(sequence_len: int, embedding_dim: int) -> torch.Tensor:
-    """Return fixed sinusoidal position embeddings."""
-    positions = torch.arange(sequence_len, dtype=torch.float32)
-    pair_ids = torch.arange(0, embedding_dim, 2, dtype=torch.float32)
-    angles = positions[:, None] / (10000.0 ** (pair_ids / embedding_dim))[None, :]
+def apply_rope(x: torch.Tensor) -> torch.Tensor:
+    """Rotate query or key vectors by position-dependent angles."""
+    _, _, sequence_len, head_dim = x.shape
 
-    embeddings = torch.zeros(sequence_len, embedding_dim, dtype=torch.float32)
-    embeddings[:, 0::2] = torch.sin(angles)
-    embeddings[:, 1::2] = torch.cos(angles)
-    return embeddings
-
-
-def rotate(tensor: torch.Tensor):
-    batch_size, num_heads, sequence_len, head_dim = tensor.shape
-
-    positions = torch.arange(sequence_len, dtype=torch.float32, device=tensor.device)
-    pair_ids = torch.arange(0, head_dim, 2, dtype=torch.float32, device=tensor.device)
+    positions = torch.arange(sequence_len, dtype=torch.float32, device=x.device)
+    pair_ids = torch.arange(0, head_dim, 2, dtype=torch.float32, device=x.device)
     angles = positions[:, None] / (10000.0 ** (pair_ids / head_dim))[None, :]
+    cos = torch.cos(angles).to(x.dtype)[None, None, :, :]
+    sin = torch.sin(angles).to(x.dtype)[None, None, :, :]
 
-    rotation_matrices = torch.zeros(
-        sequence_len, head_dim // 2, 2, 2, dtype=torch.float32, device=tensor.device
-    )
-    rotation_matrices[:, :, 0, 0] = torch.cos(angles)
-    rotation_matrices[:, :, 0, 1] = -torch.sin(angles)
-    rotation_matrices[:, :, 1, 0] = torch.sin(angles)
-    rotation_matrices[:, :, 1, 1] = torch.cos(angles)
-
-    x = tensor.reshape(batch_size, num_heads, sequence_len, head_dim // 2, 2)
-    x = rotation_matrices @ x
-    x = x.reshape(batch_size, num_heads, sequence_len, head_dim)
-
-    return x
+    rotated = torch.empty_like(x)
+    even = x[..., 0::2]
+    odd = x[..., 1::2]
+    rotated[..., 0::2] = even * cos - odd * sin
+    rotated[..., 1::2] = even * sin + odd * cos
+    return rotated
 
 
 class CausalSelfAttention(nn.Module):
@@ -94,11 +78,10 @@ class CausalSelfAttention(nn.Module):
         sequence_length = x.shape[1]
 
         queries = self.split_heads(self.query(x))
-        queries = queries
-        queries = self.split_heads(queries)
-
         keys = self.split_heads(self.key(x))
         values = self.split_heads(self.value(x))
+        queries = apply_rope(queries)
+        keys = apply_rope(keys)
 
         attention_scores = queries @ keys.transpose(-2, -1)
         attention_scores = attention_scores / math.sqrt(self.head_dim)
