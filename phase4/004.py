@@ -55,10 +55,10 @@ def rotate(tensor: torch.Tensor):
     rotation_matrices[:, :, 1, 0] = torch.sin(angles)
     rotation_matrices[:, :, 1, 1] = torch.cos(angles)
 
-    x = tensor.reshape(SEQUENCE_LEN, EMBEDDING_DIM // 2, 2)
+    x = tensor.reshape(BATCH_SIZE, SEQUENCE_LEN, EMBEDDING_DIM // 2, 2)
 
-    out = torch.zeros(SEQUENCE_LEN, EMBEDDING_DIM)
-    out[:, 0::2] = x @ rotation_matrices
+    out = torch.zeros(BATCH_SIZE, SEQUENCE_LEN, EMBEDDING_DIM)
+    out[:, :, 0::2] = x @ rotation_matrices
 
 
 class CausalSelfAttention(nn.Module):
