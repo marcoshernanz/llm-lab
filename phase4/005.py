@@ -86,7 +86,7 @@ class CausalSelfAttention(nn.Module):
         queries = apply_rope(queries)
         keys = apply_rope(keys)
 
-        attention_scores = queries @ keys.transpose(-2, -1)
+        attention_scores = queries @ keys.mT
         attention_scores = attention_scores / math.sqrt(self.head_dim)
 
         causal_mask = torch.triu(
