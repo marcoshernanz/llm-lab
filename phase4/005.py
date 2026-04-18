@@ -65,7 +65,7 @@ class CausalSelfAttention(nn.Module):
         self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
         self.key = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
         self.value = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
-        self.out = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
+        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
 
     def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
