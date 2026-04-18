@@ -61,6 +61,7 @@ class CausalSelfAttention(nn.Module):
         self.num_heads = NUM_HEADS
         self.num_head_groups = NUM_HEAD_GROUPS
         self.head_dim = EMBEDDING_DIM // NUM_HEADS
+        self.queries_per_group = self.num_heads // self.num_head_groups
 
         self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
         self.key = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
