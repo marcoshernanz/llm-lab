@@ -8,11 +8,11 @@ This log contains the completed baseline and later profiling or kernel runs from
 
 | Run | Script | Steps | Train Loss | Val Loss | Wall Seconds |
 | --- | ------ | ----: | ---------: | -------: | -----------: |
-| P4-001 | [`phase4/002_tiny_pytorch_char_decoder.py`](../phase4/002_tiny_pytorch_char_decoder.py) | 2000 | 1.2200 | 1.2162 | 132.55 |
+| P4-001 | [`phase4/002_char_decoder.py`](../phase4/002_char_decoder.py) | 2000 | 1.2200 | 1.2162 | 132.55 |
 
 ## P4-001 Milestone 401 PyTorch Decoder Baseline
 
-- Script: [`phase4/002_tiny_pytorch_char_decoder.py`](../phase4/002_tiny_pytorch_char_decoder.py)
+- Script: [`phase4/002_char_decoder.py`](../phase4/002_char_decoder.py)
 - Date: `2026-04-17`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
