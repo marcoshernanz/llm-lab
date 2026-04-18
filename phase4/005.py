@@ -1,4 +1,4 @@
-"""Phase 4 experiment 004: a tiny fixed-configuration PyTorch character decoder LM with rotary positional embeddings."""
+"""Phase 4 experiment 005: a tiny PyTorch character decoder with RoPE and GQA."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ SEED = 1337
 SEQUENCE_LEN = 128
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
-NUM_HEAD_GROUPS = 2
+NUM_KV_HEADS = 2
 assert EMBEDDING_DIM % NUM_HEADS == 0
 assert (EMBEDDING_DIM // NUM_HEADS) % 2 == 0
-assert NUM_HEADS % NUM_HEAD_GROUPS == 0
+assert NUM_HEADS % NUM_KV_HEADS == 0
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 
@@ -59,21 +59,21 @@ class CausalSelfAttention(nn.Module):
         """Create the query, key, value, and output projections."""
         super().__init__()
         self.num_heads = NUM_HEADS
-        self.num_head_groups = NUM_HEAD_GROUPS
+        self.num_kv_heads = NUM_KV_HEADS
         self.head_dim = EMBEDDING_DIM // NUM_HEADS
-        self.queries_per_group = self.num_heads // self.num_head_groups
+        self.queries_per_kv_head = self.num_heads // self.num_kv_heads
 
-        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.key = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
-        self.value = nn.Linear(EMBEDDING_DIM, self.num_head_groups * self.head_dim, bias=False)
-        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.q_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.k_proj = nn.Linear(EMBEDDING_DIM, self.num_kv_heads * self.head_dim, bias=False)
+        self.v_proj = nn.Linear(EMBEDDING_DIM, self.num_kv_heads * self.head_dim, bias=False)
+        self.out_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
 
     def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
         batch_size, sequence_len, _ = x.shape
         return x.reshape(batch_size, sequence_len, num_heads, self.head_dim).swapaxes(1, 2)
 
-    def combine_heads(self, x: torch.Tensor) -> torch.Tensor:
+    def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
         batch_size, _, sequence_len, _ = x.shape
         return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
@@ -82,18 +82,20 @@ class CausalSelfAttention(nn.Module):
         """Return attention outputs for one batch of embeddings."""
         batch_size, sequence_length, _ = x.shape
 
-        queries = self.split_heads(self.query(x), self.num_heads)
-        keys = self.split_heads(self.key(x), self.num_head_groups)
-        values = self.split_heads(self.value(x), self.num_head_groups)
+        queries = self.split_heads(self.q_proj(x), self.num_heads)
+        keys = self.split_heads(self.k_proj(x), self.num_kv_heads)
+        values = self.split_heads(self.v_proj(x), self.num_kv_heads)
 
         queries = apply_rope(queries)
         keys = apply_rope(keys)
 
         queries = queries.reshape(
-            batch_size, self.num_head_groups, self.queries_per_group, sequence_length, self.head_dim
+            batch_size, self.num_kv_heads, self.queries_per_kv_head, sequence_length, self.head_dim
         )
+        keys = keys.unsqueeze(2)
+        values = values.unsqueeze(2)
 
-        attention_scores = queries @ keys[:, :, None].mT
+        attention_scores = queries @ keys.transpose(-2, -1)
         attention_scores = attention_scores / math.sqrt(self.head_dim)
 
         causal_mask = torch.triu(
@@ -103,12 +105,12 @@ class CausalSelfAttention(nn.Module):
         attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)
 
         attention_weights = F.softmax(attention_scores, dim=-1)
-        attended_values = attention_weights @ values[:, :, None]
+        attended_values = attention_weights @ values
         attended_values = attended_values.reshape(
             batch_size, self.num_heads, sequence_length, self.head_dim
         )
-        attended_values = self.combine_heads(attended_values)
-        return self.out(attended_values)
+        attended_values = self.merge_heads(attended_values)
+        return self.out_proj(attended_values)
 
 
 class FeedForward(nn.Module):
@@ -214,8 +216,8 @@ def encode_text(text: str, char_to_id: dict[str, int]) -> torch.Tensor:
 
 def sample_batch(token_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample contiguous input and target windows from one token stream."""
-    max_start = token_ids.size(0) - SEQUENCE_LEN
-    starts = torch.randint(0, max_start, (BATCH_SIZE,), device=DEVICE)
+    max_start = token_ids.size(0) - SEQUENCE_LEN - 1
+    starts = torch.randint(0, max_start + 1, (BATCH_SIZE,), device=DEVICE)
     offsets = torch.arange(SEQUENCE_LEN, device=DEVICE)
     positions = starts[:, None] + offsets[None, :]
     inputs = token_ids[positions]
