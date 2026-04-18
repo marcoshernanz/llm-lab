@@ -80,15 +80,12 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return attention outputs for one batch of embeddings."""
-        sequence_length = x.shape[1]
+        batch_size, sequence_length, _ = x.shape
 
         queries = self.split_heads(self.query(x), self.num_heads)
-        keys = self.split_heads(self.key(x), self.num_head_groups).repeat_interleave(
-            self.num_heads // self.num_head_groups, dim=1
-        )
-        values = self.split_heads(self.value(x), self.num_head_groups).repeat_interleave(
-            self.num_heads // self.num_head_groups, dim=1
-        )
+        keys = self.split_heads(self.key(x), self.num_head_groups)
+        values = self.split_heads(self.value(x), self.num_head_groups)
+
         queries = apply_rope(queries)
         keys = apply_rope(keys)
 
