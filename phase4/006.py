@@ -1,4 +1,4 @@
-"""Phase 4 experiment 005: a tiny PyTorch character decoder with RoPE and GQA."""
+"""Phase 4 experiment 006: a tiny PyTorch character decoder with RoPE, GQA, and SwiGLU."""
 
 from __future__ import annotations
 
@@ -114,22 +114,20 @@ class CausalSelfAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    """Project up, apply a nonlinearity, and project back down."""
+    """Apply a SwiGLU MLP and project back to the model width."""
 
     def __init__(self):
-        """Create the two linear layers of the MLP."""
+        """Create the three linear layers of the gated MLP."""
         super().__init__()
-        self.value = nn.Linear(EMBEDDING_DIM, HIDDEN_DIM)
-        self.gate = nn.Linear(EMBEDDING_DIM, HIDDEN_DIM)
-        self.out = nn.Linear(HIDDEN_DIM, EMBEDDING_DIM)
+        self.gate_proj = nn.Linear(EMBEDDING_DIM, HIDDEN_DIM, bias=False)
+        self.up_proj = nn.Linear(EMBEDDING_DIM, HIDDEN_DIM, bias=False)
+        self.down_proj = nn.Linear(HIDDEN_DIM, EMBEDDING_DIM, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Return the feed-forward block output."""
-        values = self.value(x)
-        gates = self.gate(x)
-        gates = gates * F.sigmoid(gates)
-        x = values * gates
-        return self.out(x)
+        """Return the SwiGLU feed-forward block output."""
+        gates = F.silu(self.gate_proj(x))
+        values = self.up_proj(x)
+        return self.down_proj(values * gates)
 
 
 class RMSNorm(nn.Module):
