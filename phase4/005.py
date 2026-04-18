@@ -89,7 +89,7 @@ class CausalSelfAttention(nn.Module):
         queries = apply_rope(queries)
         keys = apply_rope(keys)
 
-        queries.reshape(
+        queries = queries.reshape(
             batch_size, self.num_head_groups, self.queries_per_group, sequence_length, self.head_dim
         )
 
