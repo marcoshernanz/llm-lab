@@ -110,7 +110,9 @@ class MemoryRetrieval(nn.Module):
         return x.swapaxes(1, 2).reshape(num_memory_slots, self.num_heads * self.head_dim)
 
     def forward(self, x: torch.Tensor, memory_keys: torch.Tensor, memory_values: torch.Tensor):
-        pass
+        queries = self.split_heads(self.query(x))
+        keys = self.split_memory_heads(self.key(memory_keys))
+        values = self.split_memory_heads(self.value(memory_values))
 
 
 class FeedForward(nn.Module):
