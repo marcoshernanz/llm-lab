@@ -95,7 +95,7 @@ class FeedForward(nn.Module):
         return self.out(x)
 
 
-class Memory(nn.Module):
+class MemoryRetrieval(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -124,7 +124,7 @@ class DecoderBlock(nn.Module):
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
         self.memory_norm = RMSNorm()
-        self.memory = Memory()
+        self.memory = MemoryRetrieval()
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
 
