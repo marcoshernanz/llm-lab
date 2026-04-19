@@ -1,4 +1,4 @@
-"""Phase 4 experiment 002: a tiny fixed-configuration PyTorch character decoder LM."""
+"""Memory architecture experiment 001: a tiny character decoder with static memory retrieval."""
 
 from __future__ import annotations
 
@@ -40,19 +40,19 @@ class CausalSelfAttention(nn.Module):
     def __init__(self):
         """Create the query, key, value, and output projections."""
         super().__init__()
-        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
         self.num_heads = NUM_HEADS
         self.head_dim = EMBEDDING_DIM // NUM_HEADS
+        self.q_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.k_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.v_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.out_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
         batch_size, sequence_len, _ = x.shape
         return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
 
-    def combine_heads(self, x: torch.Tensor) -> torch.Tensor:
+    def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
         batch_size, _, sequence_len, _ = x.shape
         return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
@@ -61,9 +61,9 @@ class CausalSelfAttention(nn.Module):
         """Return attention outputs for one batch of embeddings."""
         sequence_length = x.shape[1]
 
-        queries = self.split_heads(self.query(x))
-        keys = self.split_heads(self.key(x))
-        values = self.split_heads(self.value(x))
+        queries = self.split_heads(self.q_proj(x))
+        keys = self.split_heads(self.k_proj(x))
+        values = self.split_heads(self.v_proj(x))
 
         attention_scores = queries @ keys.transpose(-2, -1)
         attention_scores = attention_scores / math.sqrt(self.head_dim)
@@ -75,45 +75,54 @@ class CausalSelfAttention(nn.Module):
         attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)
 
         attention_weights = F.softmax(attention_scores, dim=-1)
-        attended_values = self.combine_heads(attention_weights @ values)
-        return self.out(attended_values)
+        attended_values = self.merge_heads(attention_weights @ values)
+        return self.out_proj(attended_values)
 
 
 class MemoryRetrieval(nn.Module):
+    """Let token representations retrieve latent values from a shared memory bank."""
+
     def __init__(self):
+        """Create the token-query and memory key-value projections."""
         super().__init__()
-        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
         self.num_heads = NUM_HEADS
         self.head_dim = EMBEDDING_DIM // NUM_HEADS
+        self.q_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.k_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.v_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.out_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
         batch_size, sequence_len, _ = x.shape
         return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
 
-    def combine_heads(self, x: torch.Tensor) -> torch.Tensor:
+    def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
         batch_size, _, sequence_len, _ = x.shape
         return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
 
     def split_memory_heads(self, x: torch.Tensor) -> torch.Tensor:
-        """Reshape embeddings into separate attention heads."""
+        """Reshape shared memory slots into separate attention heads."""
         num_memory_slots, _ = x.shape
         return x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(0, 1)
 
-    def forward(self, x: torch.Tensor, memory_keys: torch.Tensor, memory_values: torch.Tensor):
-        queries = self.split_heads(self.query(x))
-        keys = self.split_memory_heads(self.key(memory_keys))
-        values = self.split_memory_heads(self.value(memory_values))
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_keys: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> torch.Tensor:
+        """Return memory-conditioned residuals for one batch of token embeddings."""
+        queries = self.split_heads(self.q_proj(x))
+        keys = self.split_memory_heads(self.k_proj(memory_keys))
+        values = self.split_memory_heads(self.v_proj(memory_values))
 
         attention_scores = queries @ keys.transpose(-2, -1)
         attention_scores = attention_scores / math.sqrt(self.head_dim)
         attention_weights = F.softmax(attention_scores, dim=-1)
-        attended_values = self.combine_heads(attention_weights @ values)
-        return self.out(attended_values)
+        attended_values = self.merge_heads(attention_weights @ values)
+        return self.out_proj(attended_values)
 
 
 class FeedForward(nn.Module):
@@ -147,22 +156,27 @@ class RMSNorm(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    """Apply one pre-norm attention block followed by one MLP block."""
+    """Apply self-attention, memory retrieval, and one MLP block."""
 
     def __init__(self):
-        """Create the norms, attention, and feed-forward sublayers."""
+        """Create the norms, attention, memory, and feed-forward sublayers."""
         super().__init__()
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
-        self.memory_norm = RMSNorm()
-        self.memory = MemoryRetrieval()
+        self.memory_retrieval_norm = RMSNorm()
+        self.memory_retrieval = MemoryRetrieval()
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
 
-    def forward(self, x: torch.Tensor, memory_keys: torch.Tensor, memory_values: torch.Tensor):
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_keys: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> torch.Tensor:
         """Return the residual output of one decoder block."""
         x = x + self.attention(self.attention_norm(x))
-        x = x + self.memory(self.memory_norm(x), memory_keys, memory_values)
+        x = x + self.memory_retrieval(self.memory_retrieval_norm(x), memory_keys, memory_values)
         x = x + self.feed_forward(self.feed_forward_norm(x))
         return x
 
@@ -208,8 +222,7 @@ def load_text(split: str) -> str:
     """Load one text split from Hugging Face and join it into one string."""
     dataset = load_dataset(DATASET_NAME, DATASET_CONFIG, split=split)
     parts = [text for text in dataset[TEXT_COLUMN] if text]
-    text = "\n".join(parts)
-    return text
+    return "\n".join(parts)
 
 
 def build_vocab(train_text: str, validation_text: str) -> tuple[list[str], dict[str, int]]:
