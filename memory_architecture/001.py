@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -95,6 +96,11 @@ class FeedForward(nn.Module):
         return self.out(x)
 
 
+class Memory(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+
 class RMSNorm(nn.Module):
     """Scale activations by their root-mean-square magnitude."""
 
@@ -118,6 +124,8 @@ class DecoderBlock(nn.Module):
         super().__init__()
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
+        self.memory_norm = RMSNorm()
+        self.memory = Memory()
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
 
