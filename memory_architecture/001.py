@@ -79,6 +79,30 @@ class CausalSelfAttention(nn.Module):
         return self.out(attended_values)
 
 
+class MemoryRetrieval(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.num_heads = NUM_HEADS
+        self.head_dim = EMBEDDING_DIM // NUM_HEADS
+
+    def split_heads(self, x: torch.Tensor) -> torch.Tensor:
+        """Reshape embeddings into separate attention heads."""
+        batch_size, sequence_len, _ = x.shape
+        return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
+
+    def combine_heads(self, x: torch.Tensor) -> torch.Tensor:
+        """Merge attention heads back into one embedding axis."""
+        batch_size, _, sequence_len, _ = x.shape
+        return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
+
+    def forward(self, x: torch.Tensor, memory_keys: torch.Tensor, memory_values: torch.Tensor):
+        pass
+
+
 class FeedForward(nn.Module):
     """Project up, apply a nonlinearity, and project back down."""
 
@@ -92,17 +116,6 @@ class FeedForward(nn.Module):
         """Return the feed-forward block output."""
         x = F.gelu(self.hidden(x))
         return self.out(x)
-
-
-class MemoryRetrieval(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
-        self.num_heads = NUM_HEADS
-        self.head_dim = EMBEDDING_DIM // NUM_HEADS
 
 
 class RMSNorm(nn.Module):
