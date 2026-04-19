@@ -99,6 +99,11 @@ class MemoryRetrieval(nn.Module):
         batch_size, _, sequence_len, _ = x.shape
         return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
 
+    def split_memory_heads(self, x: torch.Tensor) -> torch.Tensor:
+        """Reshape embeddings into separate attention heads."""
+        num_memory_slots, _ = x.shape
+        return x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(0, 1)
+
     def forward(self, x: torch.Tensor, memory_keys: torch.Tensor, memory_values: torch.Tensor):
         pass
 
