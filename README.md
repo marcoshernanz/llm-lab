@@ -1,6 +1,6 @@
 # llm-lab
 
-Learning-oriented language model lab, scaled from toy models to a full-dataset TPU run and now pivoting from framework training to kernel work.
+Learning-oriented language model lab, scaled from toy models to a full-dataset TPU run, then extended into a handwritten CPU trainer and a fresh PyTorch-to-kernel path.
 
 This repo is a compact record of building up modern LM training capability step by step:
 
@@ -8,8 +8,8 @@ This repo is a compact record of building up modern LM training capability step 
 - build RNNs, GRUs, attention, and decoder-only transformers
 - move onto tokenization, real web-scale data, TPU scaling, profiling, and multi-device training
 - finish Phase 2 with a full `sample-10BT` run on TPU `v5e-8`
-- use Phase 3 as a narrow handwritten CPU systems reference
-- begin Phase 4 with a very small PyTorch baseline, real profiling, Triton, and later raw CUDA/C++
+- use Phase 3 as a narrow handwritten CPU systems reference with profiling and buffer reuse
+- use Phase 4 as a tiny modern PyTorch baseline before production profiling, Triton, and later raw CUDA/C++
 
 ## Showcase
 
@@ -47,9 +47,10 @@ Artifacts:
 | data           | tokenizer training, token shards, FineWeb-Edu pipeline     |
 | optimization   | SGD, momentum, Adam, AdamW                                 |
 | systems        | TPU bring-up, profiling, multi-device execution            |
-| systems ref    | handwritten CPU trainer, profiling, buffer reuse           |
-| current pivot  | PyTorch baseline, production profiling, Triton, CUDA/C++   |
 | final baseline | full-dataset long run on TPU `v5e-8`                       |
+| systems ref    | handwritten CPU trainer, profiling, buffer reuse           |
+| framework path | tiny PyTorch baselines, RoPE/GQA/SwiGLU modernization      |
+| current pivot  | production profiling, Triton, CUDA/C++                     |
 
 ## Experiment Index
 
@@ -87,14 +88,22 @@ Artifacts:
 | `030_tpu_fineweb_edu_profiling.py`                        | profiling and timing breakdown               |
 | `031_tpu_fineweb_edu_multi_core.py`                       | working multi-device TPU baseline            |
 | `032_tpu_fineweb_edu_best_model.py`                       | best long-run full-dataset model             |
+| `phase3/phase3.cpp`                                       | handwritten CPU decoder trainer and profiler |
+| `phase4/001_char_mlp.py`                                  | tiny PyTorch character MLP baseline          |
+| `phase4/002_char_decoder.py`                              | tiny PyTorch character decoder baseline      |
+| `phase4/003_char_decoder_sinusoidal.py`                   | decoder with sinusoidal positional embeddings |
+| `phase4/004_char_decoder_rope.py`                         | decoder with rotary positional embeddings    |
+| `phase4/005_char_decoder_rope_gqa.py`                     | decoder with RoPE and grouped-query attention |
+| `phase4/006_char_decoder_rope_gqa_swiglu.py`              | decoder with RoPE, GQA, SwiGLU, and RMSNorm  |
 
 ## Evidence
 
-The two main documents are:
+The main learning logs are:
 
 - [`docs/phase_1_learning_log.md`](docs/phase_1_learning_log.md)
 - [`docs/phase_2_learning_log.md`](docs/phase_2_learning_log.md)
 - [`docs/phase_3_learning_log.md`](docs/phase_3_learning_log.md)
+- [`docs/phase_4_learning_log.md`](docs/phase_4_learning_log.md)
 
 They contain the actual run history, metrics, curves, and milestone conclusions.
 
@@ -113,10 +122,22 @@ Install dependencies:
 uv sync
 ```
 
-Run the strongest current baseline:
+Run the strongest current TPU baseline:
 
 ```bash
 uv run python experiments/032_tpu_fineweb_edu_best_model.py \
   --token-shard-root datasets/fineweb_edu/sample10bt_bpe_16384_full \
   --tokenizer-path datasets/fineweb_edu/sample10bt_bpe_16384_full/fineweb_edu_sample10bt_bpe_16384.json
+```
+
+Run the phase-3 CPU reference trainer:
+
+```bash
+make -C phase3 run
+```
+
+Run the current phase-4 PyTorch baseline:
+
+```bash
+uv run python phase4/006_char_decoder_rope_gqa_swiglu.py
 ```
