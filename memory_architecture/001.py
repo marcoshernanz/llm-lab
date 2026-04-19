@@ -133,10 +133,10 @@ class DecoderBlock(nn.Module):
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, memory_keys: torch.Tensor, memory_values: torch.Tensor):
         """Return the residual output of one decoder block."""
         x = x + self.attention(self.attention_norm(x))
-        x = x + self.memory(self.memory_norm(x))
+        x = x + self.memory(self.memory_norm(x), memory_keys, memory_values)
         x = x + self.feed_forward(self.feed_forward_norm(x))
         return x
 
