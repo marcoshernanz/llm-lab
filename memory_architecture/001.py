@@ -104,15 +104,16 @@ class MemoryRetrieval(nn.Module):
         num_memory_slots, _ = x.shape
         return x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(0, 1)
 
-    def combine_memory_heads(self, x: torch.Tensor) -> torch.Tensor:
-        """Merge attention heads back into one embedding axis."""
-        _, num_memory_slots, _ = x.shape
-        return x.swapaxes(1, 2).reshape(num_memory_slots, self.num_heads * self.head_dim)
-
     def forward(self, x: torch.Tensor, memory_keys: torch.Tensor, memory_values: torch.Tensor):
         queries = self.split_heads(self.query(x))
         keys = self.split_memory_heads(self.key(memory_keys))
         values = self.split_memory_heads(self.value(memory_values))
+
+        attention_scores = queries @ keys.transpose(-2, -1)
+        attention_scores = attention_scores / math.sqrt(self.head_dim)
+        attention_weights = F.softmax(attention_scores, dim=-1)
+        attended_values = self.combine_heads(attention_weights @ values)
+        return self.out(attended_values)
 
 
 class FeedForward(nn.Module):
