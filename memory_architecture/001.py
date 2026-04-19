@@ -23,7 +23,6 @@ EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
 NUM_MEMORY_SLOTS = 64
-MEMORY_DIM = 64
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 
@@ -98,6 +97,12 @@ class FeedForward(nn.Module):
 class MemoryRetrieval(nn.Module):
     def __init__(self):
         super().__init__()
+        self.query = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.key = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.value = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.out = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.num_heads = NUM_HEADS
+        self.head_dim = EMBEDDING_DIM // NUM_HEADS
 
 
 class RMSNorm(nn.Module):
@@ -124,6 +129,8 @@ class DecoderBlock(nn.Module):
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
         self.memory_norm = RMSNorm()
+        self.memory_keys = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, HIDDEN_DIM))
+        self.memory_values = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, HIDDEN_DIM))
         self.memory = MemoryRetrieval()
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
