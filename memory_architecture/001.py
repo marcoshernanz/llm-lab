@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -132,6 +131,7 @@ class DecoderBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return the residual output of one decoder block."""
         x = x + self.attention(self.attention_norm(x))
+        x = x + self.memory(self.memory_norm(x))
         x = x + self.feed_forward(self.feed_forward_norm(x))
         return x
 
