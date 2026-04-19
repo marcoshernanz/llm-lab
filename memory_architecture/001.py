@@ -173,8 +173,8 @@ class Decoder(nn.Module):
     def __init__(self) -> None:
         """Create the block stack."""
         super().__init__()
-        self.memory_keys = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, HIDDEN_DIM))
-        self.memory_values = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, HIDDEN_DIM))
+        self.memory_keys = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, EMBEDDING_DIM))
+        self.memory_values = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, EMBEDDING_DIM))
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
         self.out_norm = RMSNorm()
 
