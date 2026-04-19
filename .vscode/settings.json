@@ -17,6 +17,7 @@
     "numel",
     "pmean",
     "randint",
+    "silu",
     "smap",
     "softmax",
     "tinyshakespeare"
