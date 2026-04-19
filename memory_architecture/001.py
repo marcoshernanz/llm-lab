@@ -129,8 +129,6 @@ class DecoderBlock(nn.Module):
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
         self.memory_norm = RMSNorm()
-        self.memory_keys = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, HIDDEN_DIM))
-        self.memory_values = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, HIDDEN_DIM))
         self.memory = MemoryRetrieval()
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
@@ -149,13 +147,15 @@ class Decoder(nn.Module):
     def __init__(self) -> None:
         """Create the block stack."""
         super().__init__()
+        self.memory_keys = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, HIDDEN_DIM))
+        self.memory_values = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, HIDDEN_DIM))
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
         self.out_norm = RMSNorm()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run the full decoder stack."""
         for block in self.blocks:
-            x = block(x)
+            x = block(x, self.memory_keys, self.memory_values)
         return self.out_norm(x)
 
 
