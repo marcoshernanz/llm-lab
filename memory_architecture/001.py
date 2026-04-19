@@ -104,6 +104,11 @@ class MemoryRetrieval(nn.Module):
         num_memory_slots, _ = x.shape
         return x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(0, 1)
 
+    def combine_memory_heads(self, x: torch.Tensor) -> torch.Tensor:
+        """Merge attention heads back into one embedding axis."""
+        _, num_memory_slots, _ = x.shape
+        return x.swapaxes(1, 2).reshape(num_memory_slots, self.num_heads * self.head_dim)
+
     def forward(self, x: torch.Tensor, memory_keys: torch.Tensor, memory_values: torch.Tensor):
         pass
 
