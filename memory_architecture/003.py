@@ -136,9 +136,6 @@ class Decoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run the full decoder stack."""
-        batch_size, sequence_len, embedding_dim = x.shape
-        x.reshape(batch_size, sequence_len // CHUNK_SIZE, CHUNK_SIZE, embedding_dim)
-
         for block in self.blocks:
             x = block(x)
         x = self.out_norm(x)
@@ -152,12 +149,15 @@ class LanguageModel(nn.Module):
         """Create the embeddings and decoder."""
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
-        self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
+        self.position_embedding = nn.Embedding(CHUNK_SIZE, EMBEDDING_DIM)
         self.decoder = Decoder()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
-        positions = torch.arange(x.size(1), device=x.device)
+        batch_size, sequence_len = x.shape
+        x = x.reshape(batch_size, sequence_len // CHUNK_SIZE, CHUNK_SIZE)
+
+        positions = torch.arange(x.size(-1), device=x.device)
         x = self.token_embedding(x) + self.position_embedding(positions)
         x = self.decoder(x)
         x = x @ self.token_embedding.weight.T
