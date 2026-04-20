@@ -4,7 +4,7 @@ This document defines the second learning phase of the repo.
 
 Phase 1 ended with `experiments/018_decoder_refactor.py`, which established the first standardized tokenized decoder baseline.
 Phase 2 starts from that baseline and shifts the goal from discovering the architecture to making it usable on better data and better hardware.
-For the run history from this phase, see [docs/phase_2_learning_log.md](./phase_2_learning_log.md).
+For the run history from this phase, see [learning_log.md](./learning_log.md).
 
 ## Why This Phase Is Separate
 Phase 1 was about learning the model family piece by piece.
@@ -622,11 +622,10 @@ Tracks still exist, but they are secondary to milestones:
 
 ## Next
 After `032`, the repo did complete a narrow handwritten systems reference in phase 3.
-The current active next phase is the PyTorch-to-kernel path described in [docs/phase4.md](./phase4.md).
-The phase-3 systems reference remains documented in [docs/phase_3_systems.md](./phase_3_systems.md).
-The broader project thesis and decision rules live in [docs/project_direction.md](./project_direction.md).
-The personal context behind those choices is summarized in [docs/personal_context.md](./personal_context.md).
-Later worthwhile side projects, such as a Rust tokenizer, are listed in [docs/future_projects.md](./future_projects.md).
+The current active next phase is the PyTorch-to-kernel path described in [phase4/roadmap.md](../phase4/roadmap.md).
+The phase-3 systems reference remains documented in [phase3/systems.md](../phase3/systems.md).
+The broader project thesis and decision rules live in [meta/project_direction.md](../meta/project_direction.md).
+Later worthwhile side projects, such as a Rust tokenizer, are listed in [meta/future_projects.md](../meta/future_projects.md).
 
 ## Later
 Only after the model, data path, and training loop are stable enough that lower-level performance work is grounded in real usage.

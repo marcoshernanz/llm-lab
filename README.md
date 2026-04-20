@@ -27,7 +27,7 @@ This repo is a compact record of building up modern LM training capability step 
 
 Artifacts:
 
-- [`docs/phase_2_learning_log.md`](docs/phase_2_learning_log.md)
+- [`docs/phase2/learning_log.md`](docs/phase2/learning_log.md)
 - [`loss_curve.svg`](artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/loss_curve.svg)
 - [`run_metadata.json`](artifacts/experiments/032_tpu_fineweb_edu_best_model/20260407_125944_870793/run_metadata.json)
 
@@ -95,25 +95,31 @@ Artifacts:
 | `phase4/004_char_decoder_rope.py`                         | decoder with rotary positional embeddings    |
 | `phase4/005_char_decoder_rope_gqa.py`                     | decoder with RoPE and grouped-query attention |
 | `phase4/006_char_decoder_rope_gqa_swiglu.py`              | decoder with RoPE, GQA, SwiGLU, and RMSNorm  |
+| `memory_architecture/001_char_decoder.py`                 | memory-path vanilla decoder baseline         |
+| `memory_architecture/002_memory_retrieval.py`             | static retrieval scaffold                    |
+| `memory_architecture/003_chunk_local.py`                  | chunk-local decoder baseline                 |
+| `memory_architecture/004_chunk_memory_retrieval.py`       | chunk-local decoder with static memory read  |
 
 ## Evidence
 
 The main learning logs are:
 
-- [`docs/phase_1_learning_log.md`](docs/phase_1_learning_log.md)
-- [`docs/phase_2_learning_log.md`](docs/phase_2_learning_log.md)
-- [`docs/phase_3_learning_log.md`](docs/phase_3_learning_log.md)
-- [`docs/phase_4_learning_log.md`](docs/phase_4_learning_log.md)
-- [`docs/memory_architecture_learning_log.md`](docs/memory_architecture_learning_log.md)
+- [`docs/phase1/learning_log.md`](docs/phase1/learning_log.md)
+- [`docs/phase2/learning_log.md`](docs/phase2/learning_log.md)
+- [`docs/phase3/learning_log.md`](docs/phase3/learning_log.md)
+- [`docs/phase4/learning_log.md`](docs/phase4/learning_log.md)
+- [`docs/memory/learning_log.md`](docs/memory/learning_log.md)
 
 They contain the actual run history, metrics, curves, and milestone conclusions.
 
 The completed and active roadmap documents are:
 
-- [`docs/phase_2_scaling.md`](docs/phase_2_scaling.md)
-- [`docs/phase_3_systems.md`](docs/phase_3_systems.md)
-- [`docs/phase4.md`](docs/phase4.md)
-- [`docs/project_direction.md`](docs/project_direction.md)
+- [`docs/phase1/foundations.md`](docs/phase1/foundations.md)
+- [`docs/phase2/scaling.md`](docs/phase2/scaling.md)
+- [`docs/phase3/systems.md`](docs/phase3/systems.md)
+- [`docs/phase4/roadmap.md`](docs/phase4/roadmap.md)
+- [`docs/memory/roadmap.md`](docs/memory/roadmap.md)
+- [`docs/meta/project_direction.md`](docs/meta/project_direction.md)
 
 ## Run It
 

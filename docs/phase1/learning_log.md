@@ -8,24 +8,24 @@ This log contains the completed runs from phase 1, covering experiments `001` th
 
 | Milestone | Script | Steps | Train Loss | Val Loss | Train Seconds | Steps/Sec | Total Seconds | CSV | Graph |
 | --------- | ------ | ----: | ---------: | -------: | ------------: | --------: | ------------: | --- | ----- |
-| 001 | `experiments/001_bigram.py` | 0 | 2.454943 | - | - | - | 2.709 | [csv](../artifacts/experiments/001_bigram/20260316_002802_607381/loss_history.csv) | [svg](../artifacts/experiments/001_bigram/20260316_002802_607381/loss_curve.svg) |
-| 002 | `experiments/002_mlp.py` | 50000 | 2.487126 | 2.521707 | 5.609 | 8914.785 | 11.283 | [csv](../artifacts/experiments/002_mlp/20260316_002814_677671/loss_history.csv) | [svg](../artifacts/experiments/002_mlp/20260316_002814_677671/loss_curve.svg) |
-| 003 | `experiments/003_context_window_linear.py` | 50000 | 2.127830 | 2.230438 | 10.309 | 4850.070 | 16.009 | [csv](../artifacts/experiments/003_context_window_linear/20260316_002831_740947/loss_history.csv) | [svg](../artifacts/experiments/003_context_window_linear/20260316_002831_740947/loss_curve.svg) |
-| 004 | `experiments/004_context_window_mlp.py` | 50000 | 1.818015 | 1.963075 | 12.338 | 4052.608 | 19.239 | [csv](../artifacts/experiments/004_context_window_mlp/20260316_002852_051364/loss_history.csv) | [svg](../artifacts/experiments/004_context_window_mlp/20260316_002852_051364/loss_curve.svg) |
-| 005 | `experiments/005_larger_context_mlp.py` | 50000 | 1.829704 | 1.987969 | 26.703 | 1872.426 | 40.417 | [csv](../artifacts/experiments/005_larger_context_mlp/20260316_002933_560488/loss_history.csv) | [svg](../artifacts/experiments/005_larger_context_mlp/20260316_002933_560488/loss_curve.svg) |
-| 006 | `experiments/006_vanilla_rnn.py` | 50000 | 1.871434 | 1.995282 | 122.540 | 408.030 | 130.278 | [csv](../artifacts/experiments/006_vanilla_rnn/20260316_003145_981115/loss_history.csv) | [svg](../artifacts/experiments/006_vanilla_rnn/20260316_003145_981115/loss_curve.svg) |
-| 007 | `experiments/007_vanilla_rnn.py` | 50000 | 1.923394 | 2.025352 | 184.648 | 270.786 | 188.270 | [csv](../artifacts/experiments/007_vanilla_rnn/20260316_195745_191033/loss_history.csv) | [svg](../artifacts/experiments/007_vanilla_rnn/20260316_195745_191033/loss_curve.svg) |
-| 008 | `experiments/008_gru.py` | 50000 | 1.978897 | 2.031622 | 290.632 | 172.039 | 294.285 | [csv](../artifacts/experiments/008_gru/20260316_235249_013574/loss_history.csv) | [svg](../artifacts/experiments/008_gru/20260316_235249_013574/loss_curve.svg) |
-| 009 | `experiments/009_single_head_attention.py` | 100000 | 2.458452 | 2.484670 | 305.335 | 327.509 | 541.878 | [csv](../artifacts/experiments/009_single_head_attention/20260321_095756_487781/loss_history.csv) | [svg](../artifacts/experiments/009_single_head_attention/20260321_095756_487781/loss_curve.svg) |
-| 010 | `experiments/010_single_head_attention.py` | 100000 | 2.463586 | 2.487816 | 320.054 | 312.447 | 496.636 | [csv](../artifacts/experiments/010_single_head_attention/20260321_231810_874023/loss_history.csv) | [svg](../artifacts/experiments/010_single_head_attention/20260321_231810_874023/loss_curve.svg) |
-| 011 | `experiments/011_attention_residual.py` | 100000 | 2.315200 | 2.356931 | 276.444 | 361.737 | 332.165 | [csv](../artifacts/experiments/011_attention_residual/20260322_091010_566218/loss_history.csv) | [svg](../artifacts/experiments/011_attention_residual/20260322_091010_566218/loss_curve.svg) |
-| 012 | `experiments/012_attention_residual_layer_norm.py` | 100000 | 2.182534 | 2.259682 | 252.862 | 395.473 | 297.579 | [csv](../artifacts/experiments/012_attention_residual_layer_norm/20260322_125705_316057/loss_history.csv) | [svg](../artifacts/experiments/012_attention_residual_layer_norm/20260322_125705_316057/loss_curve.svg) |
-| 013 | `experiments/013_attention_residual_layer_norm_ffn.py` | 100000 | 1.690038 | 1.878318 | 432.607 | 231.157 | 504.172 | [csv](../artifacts/experiments/013_attention_residual_layer_norm_ffn/20260322_200628_017070/loss_history.csv) | [svg](../artifacts/experiments/013_attention_residual_layer_norm_ffn/20260322_200628_017070/loss_curve.svg) |
-| 014 | `experiments/014_single_block_decoder_only_transformer.py` | 100000 | 1.686884 | 1.873174 | 411.317 | 243.122 | 483.435 | [csv](../artifacts/experiments/014_single_block_decoder_only_transformer/20260323_011612_784899/loss_history.csv) | [svg](../artifacts/experiments/014_single_block_decoder_only_transformer/20260323_011612_784899/loss_curve.svg) |
-| 015 | `experiments/015_single_block_multi_head_decoder_only_transformer.py` | 100000 | 1.822181 | 1.956108 | 681.613 | 146.711 | 804.293 | [csv](../artifacts/experiments/015_single_block_multi_head_decoder_only_transformer/20260323_184835_096532/loss_history.csv) | [svg](../artifacts/experiments/015_single_block_multi_head_decoder_only_transformer/20260323_184835_096532/loss_curve.svg) |
-| 016 | `experiments/016_small_multi_layer_decoder.py` | 100000 | 1.624889 | 1.826635 | 817.049 | 61.196 | 1025.764 | [csv](../artifacts/experiments/016_small_multi_layer_decoder/20260324_002448_334792/loss_history.csv) | [svg](../artifacts/experiments/016_small_multi_layer_decoder/20260324_002448_334792/loss_curve.svg) |
-| 017 | `experiments/017_tokenized_small_multi_layer_decoder.py` | 50000 | 3.025190 | 3.573010 | 716.232 | 69.810 | 832.839 | [csv](../artifacts/experiments/017_tokenized_small_multi_layer_decoder/20260326_114042_013888/loss_history.csv) | [svg](../artifacts/experiments/017_tokenized_small_multi_layer_decoder/20260326_114042_013888/loss_curve.svg) |
-| 018 | `experiments/018_decoder_refactor.py` | 50000 | 3.212770 | 3.679991 | 482.025 | 103.729 | 498.218 | [csv](../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_history.csv) | [svg](../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_curve.svg) |
+| 001 | `experiments/001_bigram.py` | 0 | 2.454943 | - | - | - | 2.709 | [csv](../../artifacts/experiments/001_bigram/20260316_002802_607381/loss_history.csv) | [svg](../../artifacts/experiments/001_bigram/20260316_002802_607381/loss_curve.svg) |
+| 002 | `experiments/002_mlp.py` | 50000 | 2.487126 | 2.521707 | 5.609 | 8914.785 | 11.283 | [csv](../../artifacts/experiments/002_mlp/20260316_002814_677671/loss_history.csv) | [svg](../../artifacts/experiments/002_mlp/20260316_002814_677671/loss_curve.svg) |
+| 003 | `experiments/003_context_window_linear.py` | 50000 | 2.127830 | 2.230438 | 10.309 | 4850.070 | 16.009 | [csv](../../artifacts/experiments/003_context_window_linear/20260316_002831_740947/loss_history.csv) | [svg](../../artifacts/experiments/003_context_window_linear/20260316_002831_740947/loss_curve.svg) |
+| 004 | `experiments/004_context_window_mlp.py` | 50000 | 1.818015 | 1.963075 | 12.338 | 4052.608 | 19.239 | [csv](../../artifacts/experiments/004_context_window_mlp/20260316_002852_051364/loss_history.csv) | [svg](../../artifacts/experiments/004_context_window_mlp/20260316_002852_051364/loss_curve.svg) |
+| 005 | `experiments/005_larger_context_mlp.py` | 50000 | 1.829704 | 1.987969 | 26.703 | 1872.426 | 40.417 | [csv](../../artifacts/experiments/005_larger_context_mlp/20260316_002933_560488/loss_history.csv) | [svg](../../artifacts/experiments/005_larger_context_mlp/20260316_002933_560488/loss_curve.svg) |
+| 006 | `experiments/006_vanilla_rnn.py` | 50000 | 1.871434 | 1.995282 | 122.540 | 408.030 | 130.278 | [csv](../../artifacts/experiments/006_vanilla_rnn/20260316_003145_981115/loss_history.csv) | [svg](../../artifacts/experiments/006_vanilla_rnn/20260316_003145_981115/loss_curve.svg) |
+| 007 | `experiments/007_vanilla_rnn.py` | 50000 | 1.923394 | 2.025352 | 184.648 | 270.786 | 188.270 | [csv](../../artifacts/experiments/007_vanilla_rnn/20260316_195745_191033/loss_history.csv) | [svg](../../artifacts/experiments/007_vanilla_rnn/20260316_195745_191033/loss_curve.svg) |
+| 008 | `experiments/008_gru.py` | 50000 | 1.978897 | 2.031622 | 290.632 | 172.039 | 294.285 | [csv](../../artifacts/experiments/008_gru/20260316_235249_013574/loss_history.csv) | [svg](../../artifacts/experiments/008_gru/20260316_235249_013574/loss_curve.svg) |
+| 009 | `experiments/009_single_head_attention.py` | 100000 | 2.458452 | 2.484670 | 305.335 | 327.509 | 541.878 | [csv](../../artifacts/experiments/009_single_head_attention/20260321_095756_487781/loss_history.csv) | [svg](../../artifacts/experiments/009_single_head_attention/20260321_095756_487781/loss_curve.svg) |
+| 010 | `experiments/010_single_head_attention.py` | 100000 | 2.463586 | 2.487816 | 320.054 | 312.447 | 496.636 | [csv](../../artifacts/experiments/010_single_head_attention/20260321_231810_874023/loss_history.csv) | [svg](../../artifacts/experiments/010_single_head_attention/20260321_231810_874023/loss_curve.svg) |
+| 011 | `experiments/011_attention_residual.py` | 100000 | 2.315200 | 2.356931 | 276.444 | 361.737 | 332.165 | [csv](../../artifacts/experiments/011_attention_residual/20260322_091010_566218/loss_history.csv) | [svg](../../artifacts/experiments/011_attention_residual/20260322_091010_566218/loss_curve.svg) |
+| 012 | `experiments/012_attention_residual_layer_norm.py` | 100000 | 2.182534 | 2.259682 | 252.862 | 395.473 | 297.579 | [csv](../../artifacts/experiments/012_attention_residual_layer_norm/20260322_125705_316057/loss_history.csv) | [svg](../../artifacts/experiments/012_attention_residual_layer_norm/20260322_125705_316057/loss_curve.svg) |
+| 013 | `experiments/013_attention_residual_layer_norm_ffn.py` | 100000 | 1.690038 | 1.878318 | 432.607 | 231.157 | 504.172 | [csv](../../artifacts/experiments/013_attention_residual_layer_norm_ffn/20260322_200628_017070/loss_history.csv) | [svg](../../artifacts/experiments/013_attention_residual_layer_norm_ffn/20260322_200628_017070/loss_curve.svg) |
+| 014 | `experiments/014_single_block_decoder_only_transformer.py` | 100000 | 1.686884 | 1.873174 | 411.317 | 243.122 | 483.435 | [csv](../../artifacts/experiments/014_single_block_decoder_only_transformer/20260323_011612_784899/loss_history.csv) | [svg](../../artifacts/experiments/014_single_block_decoder_only_transformer/20260323_011612_784899/loss_curve.svg) |
+| 015 | `experiments/015_single_block_multi_head_decoder_only_transformer.py` | 100000 | 1.822181 | 1.956108 | 681.613 | 146.711 | 804.293 | [csv](../../artifacts/experiments/015_single_block_multi_head_decoder_only_transformer/20260323_184835_096532/loss_history.csv) | [svg](../../artifacts/experiments/015_single_block_multi_head_decoder_only_transformer/20260323_184835_096532/loss_curve.svg) |
+| 016 | `experiments/016_small_multi_layer_decoder.py` | 100000 | 1.624889 | 1.826635 | 817.049 | 61.196 | 1025.764 | [csv](../../artifacts/experiments/016_small_multi_layer_decoder/20260324_002448_334792/loss_history.csv) | [svg](../../artifacts/experiments/016_small_multi_layer_decoder/20260324_002448_334792/loss_curve.svg) |
+| 017 | `experiments/017_tokenized_small_multi_layer_decoder.py` | 50000 | 3.025190 | 3.573010 | 716.232 | 69.810 | 832.839 | [csv](../../artifacts/experiments/017_tokenized_small_multi_layer_decoder/20260326_114042_013888/loss_history.csv) | [svg](../../artifacts/experiments/017_tokenized_small_multi_layer_decoder/20260326_114042_013888/loss_curve.svg) |
+| 018 | `experiments/018_decoder_refactor.py` | 50000 | 3.212770 | 3.679991 | 482.025 | 103.729 | 498.218 | [csv](../../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_history.csv) | [svg](../../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_curve.svg) |
 
 ## 001 Bigram JAX
 
@@ -35,7 +35,7 @@ This log contains the completed runs from phase 1, covering experiments `001` th
 - Val loss: `-`
 - Total seconds: `2.709`
 
-![001 bigram jax loss curve](../artifacts/experiments/001_bigram/20260316_002802_607381/loss_curve.svg)
+![001 bigram jax loss curve](../../artifacts/experiments/001_bigram/20260316_002802_607381/loss_curve.svg)
 
 ```text
 S:
@@ -59,7 +59,7 @@ Goumo serubun myear,
 - Steps per second: `8914.785`
 - Total seconds: `11.283`
 
-![002 mlp jax loss curve](../artifacts/experiments/002_mlp/20260316_002814_677671/loss_curve.svg)
+![002 mlp jax loss curve](../../artifacts/experiments/002_mlp/20260316_002814_677671/loss_curve.svg)
 
 ```text
 d ERGe thorryowofr,
@@ -82,7 +82,7 @@ ERTha serelofot t is we
 - Steps per second: `4850.070`
 - Total seconds: `16.009`
 
-![003 context window linear jax loss curve](../artifacts/experiments/003_context_window_linear/20260316_002831_740947/loss_curve.svg)
+![003 context window linear jax loss curve](../../artifacts/experiments/003_context_window_linear/20260316_002831_740947/loss_curve.svg)
 
 ```text
 re ofrele thor your sord,
@@ -105,7 +105,7 @@ thee dag of ht be ther spayou hey fotreson, worven
 - Steps per second: `4052.608`
 - Total seconds: `19.239`
 
-![004 context window mlp jax loss curve](../artifacts/experiments/004_context_window_mlp/20260316_002852_051364/loss_curve.svg)
+![004 context window mlp jax loss curve](../../artifacts/experiments/004_context_window_mlp/20260316_002852_051364/loss_curve.svg)
 
 ```text
 re of slean, swiat agard:
@@ -127,7 +127,7 @@ Bnow this
 - Steps per second: `1872.426`
 - Total seconds: `40.417`
 
-![005 larger context mlp jax loss curve](../artifacts/experiments/005_larger_context_mlp/20260316_002933_560488/loss_curve.svg)
+![005 larger context mlp jax loss curve](../../artifacts/experiments/005_larger_context_mlp/20260316_002933_560488/loss_curve.svg)
 
 ```text
 ee on thy way:
@@ -146,7 +146,7 @@ Come you well deme to Lort of oly hord
 - Steps per second: `408.030`
 - Total seconds: `130.278`
 
-![006 vanilla rnn jax loss curve](../artifacts/experiments/006_vanilla_rnn/20260316_003145_981115/loss_curve.svg)
+![006 vanilla rnn jax loss curve](../../artifacts/experiments/006_vanilla_rnn/20260316_003145_981115/loss_curve.svg)
 
 ```text
 s Edle courry that,
@@ -170,7 +170,7 @@ Woald, from my foigh is wel
 - Steps per second: `270.786`
 - Total seconds: `188.270`
 
-![007 vanilla rnn jax loss curve](../artifacts/experiments/007_vanilla_rnn/20260316_195745_191033/loss_curve.svg)
+![007 vanilla rnn jax loss curve](../../artifacts/experiments/007_vanilla_rnn/20260316_195745_191033/loss_curve.svg)
 
 ```text
 r spurr'd their coursers at the trumpet's sound;
@@ -188,7 +188,7 @@ He cans now wowllds: car'd to vithere axk, be connung't the demed
 - Steps per second: `172.039`
 - Total seconds: `294.285`
 
-![008 gru jax loss curve](../artifacts/experiments/008_gru/20260316_235249_013574/loss_curve.svg)
+![008 gru jax loss curve](../../artifacts/experiments/008_gru/20260316_235249_013574/loss_curve.svg)
 
 ```text
 r spurr'd their coursers at the trumpet's sound;
@@ -207,7 +207,7 @@ Nor to heprecait us a'd gettan eack songlesom on to ce'd torve woue axjouds, whe
 - Steps per second: `327.509`
 - Total seconds: `541.878`
 
-![009 single-head attention jax loss curve](../artifacts/experiments/009_single_head_attention/20260321_095756_487781/loss_curve.svg)
+![009 single-head attention jax loss curve](../../artifacts/experiments/009_single_head_attention/20260321_095756_487781/loss_curve.svg)
 
 ```text
  give pardon to a slave?
@@ -226,7 +226,7 @@ Thiton s es ay s thayato t hou atomy t te m he; se
 - Steps per second: `312.447`
 - Total seconds: `496.636`
 
-![010 single-head attention jax loss curve](../artifacts/experiments/010_single_head_attention/20260321_231810_874023/loss_curve.svg)
+![010 single-head attention jax loss curve](../../artifacts/experiments/010_single_head_attention/20260321_231810_874023/loss_curve.svg)
 
 ```text
  give pardon to a slave?
@@ -245,7 +245,7 @@ Thiton s es ay s thayato t hou atomy t te m he lse
 - Steps per second: `361.737`
 - Total seconds: `332.165`
 
-![011 attention residual jax loss curve](../artifacts/experiments/011_attention_residual/20260322_091010_566218/loss_curve.svg)
+![011 attention residual jax loss curve](../../artifacts/experiments/011_attention_residual/20260322_091010_566218/loss_curve.svg)
 
 ```text
  give pardon to a slave?
@@ -267,7 +267,7 @@ Foua, t ie s Diory t te m henlde
 - Steps per second: `395.473`
 - Total seconds: `297.579`
 
-![012 attention residual layer norm jax loss curve](../artifacts/experiments/012_attention_residual_layer_norm/20260322_125705_316057/loss_curve.svg)
+![012 attention residual layer norm jax loss curve](../../artifacts/experiments/012_attention_residual_layer_norm/20260322_125705_316057/loss_curve.svg)
 
 ```text
  give pardon to a slave?
@@ -288,7 +288,7 @@ Foraic Eizes stoof thee m notlee
 - Steps per second: `231.157`
 - Total seconds: `504.172`
 
-![013 attention residual layer norm ffn jax loss curve](../artifacts/experiments/013_attention_residual_layer_norm_ffn/20260322_200628_017070/loss_curve.svg)
+![013 attention residual layer norm ffn jax loss curve](../../artifacts/experiments/013_attention_residual_layer_norm_ffn/20260322_200628_017070/loss_curve.svg)
 
 ```text
  give pardon to a slave?
@@ -308,7 +308,7 @@ someh reevess wish
 - Steps per second: `243.122`
 - Total seconds: `483.435`
 
-![014 single-block decoder-only transformer jax loss curve](../artifacts/experiments/014_single_block_decoder_only_transformer/20260323_011612_784899/loss_curve.svg)
+![014 single-block decoder-only transformer jax loss curve](../../artifacts/experiments/014_single_block_decoder_only_transformer/20260323_011612_784899/loss_curve.svg)
 
 ```text
  give pardon to a slave?
@@ -329,7 +329,7 @@ ISe Esles a to they No Eigh I so; hi te more; se
 - Steps per second: `146.711`
 - Total seconds: `804.293`
 
-![015 single-block multi-head decoder-only transformer jax loss curve](../artifacts/experiments/015_single_block_multi_head_decoder_only_transformer/20260323_184835_096532/loss_curve.svg)
+![015 single-block multi-head decoder-only transformer jax loss curve](../../artifacts/experiments/015_single_block_multi_head_decoder_only_transformer/20260323_184835_096532/loss_curve.svg)
 
 ```text
  give pardon to a slave?
@@ -350,7 +350,7 @@ Th
 - Steps per second: `61.196`
 - Total seconds: `1025.764`
 
-![016 small multi-layer decoder jax loss curve](../artifacts/experiments/016_small_multi_layer_decoder/20260324_002448_334792/loss_curve.svg)
+![016 small multi-layer decoder jax loss curve](../../artifacts/experiments/016_small_multi_layer_decoder/20260324_002448_334792/loss_curve.svg)
 
 ```text
 e, that is meant love.
@@ -382,7 +382,7 @@ K
 - Steps per second: `69.810`
 - Total seconds: `832.839`
 
-![017 tokenized small multi-layer decoder jax loss curve](../artifacts/experiments/017_tokenized_small_multi_layer_decoder/20260326_114042_013888/loss_curve.svg)
+![017 tokenized small multi-layer decoder jax loss curve](../../artifacts/experiments/017_tokenized_small_multi_layer_decoder/20260326_114042_013888/loss_curve.svg)
 
 ```text
 locks more swift?
@@ -403,9 +403,9 @@ Of hath unto chambour I a wornis hare. Your hope to fear the good out
 - Steps per second: `103.729`
 - Total seconds: `498.218`
 - Note: the plotted red curve is `validation_subset_loss` measured on a fixed subset each chunk; the final reported `validation_loss` is still the full validation split.
-- Sample artifact: [sample.txt](../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/sample.txt)
+- Sample artifact: [sample.txt](../../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/sample.txt)
 
-![018 decoder refactor jax loss curve](../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_curve.svg)
+![018 decoder refactor jax loss curve](../../artifacts/experiments/018_decoder_refactor/20260328_111728_745864/loss_curve.svg)
 
 ```text
 To unstable slightness: purpose so barr'd,
