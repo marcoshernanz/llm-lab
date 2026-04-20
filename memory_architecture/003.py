@@ -34,7 +34,7 @@ EVAL_BATCHES = 32
 
 
 class CausalSelfAttention(nn.Module):
-    """Apply masked multi-head self-attention over one sequence."""
+    """Apply masked multi-head self-attention inside each chunk."""
 
     def __init__(self):
         """Create the query, key, value, and output projections."""
@@ -62,7 +62,7 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return attention outputs for one batch of embeddings."""
-        chunk_size = x.shape[-2]
+        _, _, chunk_size, _ = x.shape
 
         queries = self.split_heads(self.q_proj(x))
         keys = self.split_heads(self.k_proj(x))
@@ -143,8 +143,7 @@ class Decoder(nn.Module):
         """Run the full decoder stack."""
         for block in self.blocks:
             x = block(x)
-        x = self.out_norm(x)
-        return x
+        return self.out_norm(x)
 
 
 class LanguageModel(nn.Module):
@@ -161,12 +160,13 @@ class LanguageModel(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
         batch_size, sequence_len = x.shape
+        num_chunks = sequence_len // CHUNK_SIZE
         positions = torch.arange(sequence_len, device=x.device)
         position_embeddings = self.position_embedding(positions).reshape(
-            1, sequence_len // CHUNK_SIZE, CHUNK_SIZE, EMBEDDING_DIM
+            1, num_chunks, CHUNK_SIZE, EMBEDDING_DIM
         )
 
-        x = x.reshape(batch_size, sequence_len // CHUNK_SIZE, CHUNK_SIZE)
+        x = x.reshape(batch_size, num_chunks, CHUNK_SIZE)
         x = self.token_embedding(x) + position_embeddings
         x = self.decoder(x)
         x = x @ self.token_embedding.weight.T
