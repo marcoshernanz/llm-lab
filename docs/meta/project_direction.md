@@ -146,6 +146,6 @@ This repo should produce:
 
 for the later low-level systems phase.
 
-The current active kernel-learning path is described in [docs/phase4.md](./phase4.md).
-The phase-3 handwritten systems reference remains documented in [docs/phase_3_systems.md](./phase_3_systems.md).
-Possible worthwhile later side projects are listed in [docs/future_projects.md](./future_projects.md).
+The current active kernel-learning path is described in [phase4/roadmap.md](../phase4/roadmap.md).
+The phase-3 handwritten systems reference remains documented in [phase3/systems.md](../phase3/systems.md).
+Possible worthwhile later side projects are listed in [future_projects.md](./future_projects.md).
