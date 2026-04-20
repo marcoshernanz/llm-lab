@@ -1,4 +1,4 @@
-"""Memory architecture experiment 003: a tiny chunk-local character decoder baseline."""
+"""Memory architecture experiment 004: a tiny chunk-local decoder with static memory retrieval."""
 
 from __future__ import annotations
 
@@ -110,10 +110,11 @@ class MemoryRetrieval(nn.Module):
             batch_size, num_chunks, chunk_size, self.num_heads * self.head_dim
         )
 
-    def split_memory_heads(self, x: torch.Tensor) -> torch.Tensor:
-        """Reshape shared memory slots into separate attention heads."""
+    def prepare_memory_heads(self, x: torch.Tensor) -> torch.Tensor:
+        """Reshape shared memory slots into broadcast-ready attention heads."""
         num_memory_slots, _ = x.shape
-        return x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(-2, -3)
+        x = x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(0, 1)
+        return x.unsqueeze(0).unsqueeze(0)
 
     def forward(
         self,
@@ -123,8 +124,8 @@ class MemoryRetrieval(nn.Module):
     ) -> torch.Tensor:
         """Return memory-conditioned residuals for one batch of token embeddings."""
         queries = self.split_heads(self.q_proj(x))
-        keys = self.split_memory_heads(self.k_proj(memory_keys))
-        values = self.split_memory_heads(self.v_proj(memory_values))
+        keys = self.prepare_memory_heads(self.k_proj(memory_keys))
+        values = self.prepare_memory_heads(self.v_proj(memory_values))
 
         attention_scores = queries @ keys.transpose(-2, -1)
         attention_scores = attention_scores / math.sqrt(self.head_dim)
@@ -164,10 +165,10 @@ class RMSNorm(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    """Apply one pre-norm attention block followed by one MLP block."""
+    """Apply local attention, memory retrieval, and one MLP block."""
 
     def __init__(self):
-        """Create the norms, attention, and feed-forward sublayers."""
+        """Create the norms, attention, memory, and feed-forward sublayers."""
         super().__init__()
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
@@ -190,8 +191,8 @@ class Decoder(nn.Module):
     def __init__(self) -> None:
         """Create the block stack."""
         super().__init__()
-        self.memory_keys = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, EMBEDDING_DIM))
-        self.memory_values = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, EMBEDDING_DIM))
+        self.memory_keys = nn.Parameter(0.02 * torch.randn(NUM_MEMORY_SLOTS, EMBEDDING_DIM))
+        self.memory_values = nn.Parameter(0.02 * torch.randn(NUM_MEMORY_SLOTS, EMBEDDING_DIM))
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
         self.out_norm = RMSNorm()
 
