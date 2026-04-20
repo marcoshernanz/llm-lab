@@ -3,8 +3,8 @@
 This document records the first learning phase of the repo: the path from simple language-model baselines to the first standardized tokenized decoder baseline.
 
 It is now a completed phase guide.
-For the follow-on plan after phase 1, see [docs/phase_2_scaling.md](./phase_2_scaling.md).
-For the run history from this phase, see [docs/phase_1_learning_log.md](./phase_1_learning_log.md).
+For the follow-on plan after phase 1, see [phase2/scaling.md](../phase2/scaling.md).
+For the run history from this phase, see [learning_log.md](./learning_log.md).
 
 ## Why This Phase Is Structured This Way
 The goal of this project is to maximize learning, not to reach a modern architecture in the fewest calendar days.
@@ -608,7 +608,7 @@ That means:
 - `018` is the end of phase 1.
 - The next roadmap begins from the standardized `018` baseline, not from `017`.
 
-Continue with [docs/phase_2_scaling.md](./phase_2_scaling.md) for:
+Continue with [phase2/scaling.md](../phase2/scaling.md) for:
 - loss-curve tooling and experiment observability,
 - better datasets,
 - TPU `v5e-1` runs,
