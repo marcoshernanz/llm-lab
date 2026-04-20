@@ -8,12 +8,12 @@ This log contains the completed baseline and later profiling or kernel runs from
 
 | Run | Script | Steps | Train Loss | Val Loss | Wall Seconds |
 | --- | ------ | ----: | ---------: | -------: | -----------: |
-| P4-001 | [`phase4/002_char_decoder.py`](../phase4/002_char_decoder.py) | 2000 | 1.2200 | 1.2162 | 132.55 |
-| P4-002 | [`phase4/006_char_decoder_rope_gqa_swiglu.py`](../phase4/006_char_decoder_rope_gqa_swiglu.py) | 2000 | 1.0908 | 1.0886 | 178.78 |
+| P4-001 | [`phase4/002_char_decoder.py`](../../phase4/002_char_decoder.py) | 2000 | 1.2200 | 1.2162 | 132.55 |
+| P4-002 | [`phase4/006_char_decoder_rope_gqa_swiglu.py`](../../phase4/006_char_decoder_rope_gqa_swiglu.py) | 2000 | 1.0908 | 1.0886 | 178.78 |
 
 ## P4-001 Milestone 401 PyTorch Decoder Baseline
 
-- Script: [`phase4/002_char_decoder.py`](../phase4/002_char_decoder.py)
+- Script: [`phase4/002_char_decoder.py`](../../phase4/002_char_decoder.py)
 - Date: `2026-04-17`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
@@ -54,7 +54,7 @@ step=2000 batch_loss=1.2109 train_loss=1.2200 validation_loss=1.2162
 
 ## P4-002 Milestone 402 Careful Modernization Baseline
 
-- Script: [`phase4/006_char_decoder_rope_gqa_swiglu.py`](../phase4/006_char_decoder_rope_gqa_swiglu.py)
+- Script: [`phase4/006_char_decoder_rope_gqa_swiglu.py`](../../phase4/006_char_decoder_rope_gqa_swiglu.py)
 - Date: `2026-04-18`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
@@ -76,7 +76,7 @@ step=2000 batch_loss=1.2109 train_loss=1.2200 validation_loss=1.2162
 - Final train loss: `1.0908`
 - Final validation loss: `1.0886`
 - Wall-clock time: `178.78s`
-- Raw run log artifact: [`artifacts/phase4_006_run_2026-04-18.log`](../artifacts/phase4_006_run_2026-04-18.log)
+- Raw run log artifact: [`artifacts/phase4_006_run_2026-04-18.log`](../../artifacts/phase4_006_run_2026-04-18.log)
 - Note: this run keeps the model small while adding the modern transformer mechanisms chosen for Milestone 402.
 - Note: no `scaled_dot_product_attention` path was added; the attention mechanism remains explicit and inspectable.
 - Note: this run is enough to mark Milestone 402 complete and move the phase-4 path to real profiling work.
