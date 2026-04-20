@@ -1,4 +1,4 @@
-"""Memory architecture experiment 001: a tiny character decoder baseline."""
+"""Memory architecture experiment 003: a tiny chunk-local character decoder baseline."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ SEED = 1337
 
 CHUNK_SIZE = 16
 SEQUENCE_LEN = 128
+assert SEQUENCE_LEN % CHUNK_SIZE == 0
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
@@ -154,16 +155,19 @@ class LanguageModel(nn.Module):
         super().__init__()
         self.vocab_size = vocab_size
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
-        self.position_embedding = nn.Embedding(CHUNK_SIZE, EMBEDDING_DIM)
+        self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
         self.decoder = Decoder()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
         batch_size, sequence_len = x.shape
-        x = x.reshape(batch_size, sequence_len // CHUNK_SIZE, CHUNK_SIZE)
+        positions = torch.arange(sequence_len, device=x.device)
+        position_embeddings = self.position_embedding(positions).reshape(
+            1, sequence_len // CHUNK_SIZE, CHUNK_SIZE, EMBEDDING_DIM
+        )
 
-        positions = torch.arange(x.size(-1), device=x.device)
-        x = self.token_embedding(x) + self.position_embedding(positions)
+        x = x.reshape(batch_size, sequence_len // CHUNK_SIZE, CHUNK_SIZE)
+        x = self.token_embedding(x) + position_embeddings
         x = self.decoder(x)
         x = x @ self.token_embedding.weight.T
         x = x.reshape(batch_size, sequence_len, self.vocab_size)
@@ -192,7 +196,7 @@ def encode_text(text: str, char_to_id: dict[str, int]) -> torch.Tensor:
 def sample_batch(token_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample contiguous input and target windows from one token stream."""
     max_start = token_ids.size(0) - SEQUENCE_LEN
-    starts = torch.randint(0, max_start, (BATCH_SIZE,), device=DEVICE)
+    starts = torch.randint(0, max_start + 1, (BATCH_SIZE,), device=DEVICE)
     offsets = torch.arange(SEQUENCE_LEN, device=DEVICE)
     positions = starts[:, None] + offsets[None, :]
     inputs = token_ids[positions]
