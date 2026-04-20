@@ -2,7 +2,7 @@
 
 Runs recorded through 2026-04-20.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline and then the first static memory-retrieval scaffold.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, and then the first chunk-local baseline.
 
 ## Summary
 
@@ -10,6 +10,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | --- | ------ | ----: | ---------: | -------: | -----------: |
 | M-001 | [`memory_architecture/001_char_decoder.py`](../memory_architecture/001_char_decoder.py) | 2000 | 1.2200 | 1.2162 | 147.86 |
 | M-002 | [`memory_architecture/002_memory_retrieval.py`](../memory_architecture/002_memory_retrieval.py) | 2000 | 1.2254 | 1.2189 | 256.70 |
+| M-003 | [`memory_architecture/003.py`](../memory_architecture/003.py) | 2000 | 1.3291 | 1.3242 | 124.95 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -96,4 +97,50 @@ step=1400 batch_loss=1.3925 train_loss=1.3593 validation_loss=1.3623
 step=1600 batch_loss=1.3035 train_loss=1.3057 validation_loss=1.2973
 step=1800 batch_loss=1.2762 train_loss=1.2579 validation_loss=1.2504
 step=2000 batch_loss=1.2156 train_loss=1.2254 validation_loss=1.2189
+```
+
+## M-003 Chunk-Local Decoder Baseline
+
+- Script: [`memory_architecture/003.py`](../memory_architecture/003.py)
+- Date: `2026-04-20`
+- Dataset: `roneneldan/TinyStories`
+- Train split: `train[:20000]`
+- Validation split: `validation[:2000]`
+- Text representation: character-level vocabulary built from the loaded train and validation text
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk only
+- Positional scheme: absolute positions over the full sequence, then reshaped into chunk form
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Final train loss: `1.3291`
+- Final validation loss: `1.3242`
+- Wall-clock time: `124.95s`
+- Raw run log artifact: [`artifacts/memory_architecture_003_chunk_local_run_2026-04-20.log`](../artifacts/memory_architecture_003_chunk_local_run_2026-04-20.log)
+- Note: this is the first baseline that actually removes cross-chunk token-token attention while preserving absolute sequence positions.
+- Note: compared with the full-context vanilla baseline, chunk-local attention is about `0.1080` validation-loss worse while running slightly faster. That gap is the signal the next memory-enabled chunked model should try to recover.
+- Note: this run is the correct no-memory control for evaluating whether static or writable memory helps once long-range token attention is removed.
+
+Logged checkpoints:
+
+```text
+step=1 batch_loss=43.0558 train_loss=33.5154 validation_loss=33.4525
+step=200 batch_loss=2.3116 train_loss=2.2921 validation_loss=2.2869
+step=400 batch_loss=2.0073 train_loss=1.9648 validation_loss=1.9676
+step=600 batch_loss=1.7456 train_loss=1.7137 validation_loss=1.7197
+step=800 batch_loss=1.6121 train_loss=1.5822 validation_loss=1.5801
+step=1000 batch_loss=1.5105 train_loss=1.5055 validation_loss=1.5036
+step=1200 batch_loss=1.4250 train_loss=1.4469 validation_loss=1.4368
+step=1400 batch_loss=1.4502 train_loss=1.4034 validation_loss=1.3989
+step=1600 batch_loss=1.4482 train_loss=1.3794 validation_loss=1.3694
+step=1800 batch_loss=1.3736 train_loss=1.3539 validation_loss=1.3449
+step=2000 batch_loss=1.3360 train_loss=1.3291 validation_loss=1.3242
 ```
