@@ -104,6 +104,7 @@ The main learning logs are:
 - [`docs/phase_2_learning_log.md`](docs/phase_2_learning_log.md)
 - [`docs/phase_3_learning_log.md`](docs/phase_3_learning_log.md)
 - [`docs/phase_4_learning_log.md`](docs/phase_4_learning_log.md)
+- [`docs/memory_architecture_learning_log.md`](docs/memory_architecture_learning_log.md)
 
 They contain the actual run history, metrics, curves, and milestone conclusions.
 
