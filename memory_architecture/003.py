@@ -17,8 +17,9 @@ TEXT_COLUMN = "text"
 DEVICE = "mps"
 SEED = 1337
 
-SEQUENCE_LEN = 128
+NUM_CHUNKS = 8
 CHUNK_SIZE = 16
+SEQUENCE_LEN = NUM_CHUNKS * CHUNK_SIZE
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
@@ -136,9 +137,13 @@ class Decoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run the full decoder stack."""
+        batch_size, sequence_len, embedding_dim = x.shape
+        x.reshape(batch_size, sequence_len // CHUNK_SIZE, CHUNK_SIZE, embedding_dim)
+
         for block in self.blocks:
             x = block(x)
-        return self.out_norm(x)
+        x = self.out_norm(x)
+        return x
 
 
 class LanguageModel(nn.Module):
