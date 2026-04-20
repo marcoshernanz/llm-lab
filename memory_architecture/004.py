@@ -113,7 +113,7 @@ class MemoryRetrieval(nn.Module):
     def split_memory_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape shared memory slots into separate attention heads."""
         num_memory_slots, _ = x.shape
-        return x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(0, 1)
+        return x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(-2, -3)
 
     def forward(
         self,
