@@ -152,6 +152,7 @@ class LanguageModel(nn.Module):
     def __init__(self, vocab_size: int):
         """Create the embeddings and decoder."""
         super().__init__()
+        self.vocab_size = vocab_size
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
         self.position_embedding = nn.Embedding(CHUNK_SIZE, EMBEDDING_DIM)
         self.decoder = Decoder()
@@ -165,7 +166,7 @@ class LanguageModel(nn.Module):
         x = self.token_embedding(x) + self.position_embedding(positions)
         x = self.decoder(x)
         x = x @ self.token_embedding.weight.T
-        x = x.reshape(batch_size, sequence_len)
+        x = x.reshape(batch_size, sequence_len, self.vocab_size)
         return x
 
 
