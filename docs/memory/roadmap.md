@@ -9,7 +9,7 @@ The goal is to study whether a language model can use an internal addressable me
 - experimentally falsifiable,
 - and ambitious enough to grow into a thesis or startup direction if the evidence becomes strong.
 
-For the run history from this path, see [docs/memory_architecture_learning_log.md](./memory_architecture_learning_log.md).
+For the run history from this path, see [learning_log.md](./learning_log.md).
 
 ## Why This Path Is Separate
 
@@ -56,8 +56,8 @@ As of 2026-04-20:
 
 - `001_char_decoder.py` is complete as the clean vanilla baseline.
 - `002_memory_retrieval.py` is complete as the static retrieval scaffold on top of full-sequence attention.
-- `003.py` is complete as the first honest chunk-local baseline.
-- `004.py` is complete as the first chunk-local model with static memory retrieval.
+- `003_chunk_local.py` is complete as the first honest chunk-local baseline.
+- `004_chunk_memory_retrieval.py` is complete as the first chunk-local model with static memory retrieval.
 - the longer `003L` and `004L` follow-up runs show that read-only static retrieval is not yet earning its cost in this setup.
 
 That means the fixed-slot read-only line has done its job:
@@ -167,7 +167,7 @@ What stays fixed:
 - No memory branch yet.
 
 Status:
-- Complete via `memory_architecture/003.py`.
+- Complete via `memory_architecture/003_chunk_local.py`.
 
 Main lesson:
 - Removing cross-chunk attention creates a real performance gap that later memory models should try to recover.
@@ -186,7 +186,7 @@ What stays fixed:
 - No writes yet.
 
 Status:
-- Complete via `memory_architecture/004.py`.
+- Complete via `memory_architecture/004_chunk_memory_retrieval.py`.
 
 Main lesson:
 - Over longer runs, static read-only retrieval does not clearly beat the chunk-local baseline and does not justify its cost.
