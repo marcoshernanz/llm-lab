@@ -113,6 +113,7 @@ The completed and active roadmap documents are:
 - [`docs/phase_2_scaling.md`](docs/phase_2_scaling.md)
 - [`docs/phase_3_systems.md`](docs/phase_3_systems.md)
 - [`docs/phase4.md`](docs/phase4.md)
+- [`docs/memory_architecture.md`](docs/memory_architecture.md)
 - [`docs/project_direction.md`](docs/project_direction.md)
 
 ## Run It
