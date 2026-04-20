@@ -83,6 +83,56 @@ class CausalSelfAttention(nn.Module):
         return self.out_proj(attended_values)
 
 
+class MemoryRetrieval(nn.Module):
+    """Let token representations retrieve latent values from a shared memory bank."""
+
+    def __init__(self):
+        """Create the token-query and memory key-value projections."""
+        super().__init__()
+        self.num_heads = NUM_HEADS
+        self.head_dim = EMBEDDING_DIM // NUM_HEADS
+        self.q_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.k_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.v_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.out_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+
+    def split_heads(self, x: torch.Tensor) -> torch.Tensor:
+        """Reshape embeddings into separate attention heads."""
+        batch_size, num_chunks, chunk_size, _ = x.shape
+        return x.reshape(
+            batch_size, num_chunks, chunk_size, self.num_heads, self.head_dim
+        ).swapaxes(-2, -3)
+
+    def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
+        """Merge attention heads back into one embedding axis."""
+        batch_size, num_chunks, _, chunk_size, _ = x.shape
+        return x.swapaxes(-2, -3).reshape(
+            batch_size, num_chunks, chunk_size, self.num_heads * self.head_dim
+        )
+
+    def split_memory_heads(self, x: torch.Tensor) -> torch.Tensor:
+        """Reshape shared memory slots into separate attention heads."""
+        num_memory_slots, _ = x.shape
+        return x.reshape(num_memory_slots, self.num_heads, self.head_dim).swapaxes(0, 1)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_keys: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> torch.Tensor:
+        """Return memory-conditioned residuals for one batch of token embeddings."""
+        queries = self.split_heads(self.q_proj(x))
+        keys = self.split_memory_heads(self.k_proj(memory_keys))
+        values = self.split_memory_heads(self.v_proj(memory_values))
+
+        attention_scores = queries @ keys.transpose(-2, -1)
+        attention_scores = attention_scores / math.sqrt(self.head_dim)
+        attention_weights = F.softmax(attention_scores, dim=-1)
+        attended_values = self.merge_heads(attention_weights @ values)
+        return self.out_proj(attended_values)
+
+
 class FeedForward(nn.Module):
     """Project up, apply a nonlinearity, and project back down."""
 
