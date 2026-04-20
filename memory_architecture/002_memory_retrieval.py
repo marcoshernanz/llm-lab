@@ -1,4 +1,4 @@
-"""Memory architecture experiment 001: a tiny character decoder with static memory retrieval."""
+"""Memory architecture experiment 002: a tiny character decoder with static memory retrieval."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ DEVICE = "mps"
 SEED = 1337
 
 SEQUENCE_LEN = 128
-CHUNK_SIZE = 16
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
@@ -31,7 +30,6 @@ LEARNING_RATE = 3e-3
 TRAIN_STEPS = 2_000
 EVAL_INTERVAL = 200
 EVAL_BATCHES = 32
-SAMPLE_LENGTH = 400
 
 
 class CausalSelfAttention(nn.Module):
