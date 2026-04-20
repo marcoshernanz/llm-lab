@@ -2,7 +2,7 @@
 
 Runs recorded through 2026-04-20.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, and then the first chunk-local baseline.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, and then the first chunk-local model with static memory retrieval.
 
 ## Summary
 
@@ -11,6 +11,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-001 | [`memory_architecture/001_char_decoder.py`](../memory_architecture/001_char_decoder.py) | 2000 | 1.2200 | 1.2162 | 147.86 |
 | M-002 | [`memory_architecture/002_memory_retrieval.py`](../memory_architecture/002_memory_retrieval.py) | 2000 | 1.2254 | 1.2189 | 256.70 |
 | M-003 | [`memory_architecture/003.py`](../memory_architecture/003.py) | 2000 | 1.3291 | 1.3242 | 124.95 |
+| M-004 | [`memory_architecture/004.py`](../memory_architecture/004.py) | 2000 | 1.3254 | 1.3214 | 188.56 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -143,4 +144,51 @@ step=1400 batch_loss=1.4502 train_loss=1.4034 validation_loss=1.3989
 step=1600 batch_loss=1.4482 train_loss=1.3794 validation_loss=1.3694
 step=1800 batch_loss=1.3736 train_loss=1.3539 validation_loss=1.3449
 step=2000 batch_loss=1.3360 train_loss=1.3291 validation_loss=1.3242
+```
+
+## M-004 Chunk-Local Decoder With Static Memory Retrieval
+
+- Script: [`memory_architecture/004.py`](../memory_architecture/004.py)
+- Date: `2026-04-20`
+- Dataset: `roneneldan/TinyStories`
+- Train split: `train[:20000]`
+- Validation split: `validation[:2000]`
+- Text representation: character-level vocabulary built from the loaded train and validation text
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Memory slots: `64`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk plus static memory retrieval in every decoder block
+- Positional scheme: absolute positions over the full sequence, then reshaped into chunk form
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Final train loss: `1.3254`
+- Final validation loss: `1.3214`
+- Wall-clock time: `188.56s`
+- Raw run log artifact: [`artifacts/memory_architecture_004_chunk_memory_retrieval_run_2026-04-20.log`](../artifacts/memory_architecture_004_chunk_memory_retrieval_run_2026-04-20.log)
+- Note: this is the first apples-to-apples test of whether read-only memory retrieval helps once long-range token-token attention has been removed.
+- Note: compared with the chunk-local no-memory baseline, static memory retrieval improves validation loss from `1.3242` to `1.3214`, a small gain of `0.0028`, while increasing wall-clock time by about `1.51x`.
+- Note: this is a real but weak positive result. The retrieval path appears to help slightly under the chunk bottleneck, but not enough yet to recover much of the `001 -> 003` gap.
+
+Logged checkpoints:
+
+```text
+step=1 batch_loss=42.7056 train_loss=32.8730 validation_loss=32.7913
+step=200 batch_loss=2.2707 train_loss=2.2482 validation_loss=2.2454
+step=400 batch_loss=1.9625 train_loss=1.9193 validation_loss=1.9227
+step=600 batch_loss=1.7168 train_loss=1.6878 validation_loss=1.6930
+step=800 batch_loss=1.5743 train_loss=1.5576 validation_loss=1.5560
+step=1000 batch_loss=1.4811 train_loss=1.4958 validation_loss=1.4906
+step=1200 batch_loss=1.4167 train_loss=1.4348 validation_loss=1.4249
+step=1400 batch_loss=1.4541 train_loss=1.3979 validation_loss=1.3962
+step=1600 batch_loss=1.4422 train_loss=1.3784 validation_loss=1.3695
+step=1800 batch_loss=1.3691 train_loss=1.3514 validation_loss=1.3440
+step=2000 batch_loss=1.3361 train_loss=1.3254 validation_loss=1.3214
 ```
