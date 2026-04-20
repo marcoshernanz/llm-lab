@@ -2,7 +2,7 @@
 
 Runs recorded through 2026-04-20.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, and then the first chunk-local model with static memory retrieval.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, and finally longer follow-up runs for the chunked pair.
 
 ## Summary
 
@@ -12,6 +12,8 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-002 | [`memory_architecture/002_memory_retrieval.py`](../memory_architecture/002_memory_retrieval.py) | 2000 | 1.2254 | 1.2189 | 256.70 |
 | M-003 | [`memory_architecture/003.py`](../memory_architecture/003.py) | 2000 | 1.3291 | 1.3242 | 124.95 |
 | M-004 | [`memory_architecture/004.py`](../memory_architecture/004.py) | 2000 | 1.3254 | 1.3214 | 188.56 |
+| M-003L | [`memory_architecture/003.py`](../memory_architecture/003.py) | 4000 | 1.2287 | 1.2301 | 148.58 |
+| M-004L | [`memory_architecture/004.py`](../memory_architecture/004.py) | 4000 | 1.2300 | 1.2317 | 394.76 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -191,4 +193,116 @@ step=1400 batch_loss=1.4541 train_loss=1.3979 validation_loss=1.3962
 step=1600 batch_loss=1.4422 train_loss=1.3784 validation_loss=1.3695
 step=1800 batch_loss=1.3691 train_loss=1.3514 validation_loss=1.3440
 step=2000 batch_loss=1.3361 train_loss=1.3254 validation_loss=1.3214
+```
+
+## M-003L Longer Chunk-Local Decoder Baseline
+
+- Script: [`memory_architecture/003.py`](../memory_architecture/003.py)
+- Date: `2026-04-20`
+- Dataset: `roneneldan/TinyStories`
+- Train split: `train[:20000]`
+- Validation split: `validation[:2000]`
+- Text representation: character-level vocabulary built from the loaded train and validation text
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk only
+- Positional scheme: absolute positions over the full sequence, then reshaped into chunk form
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `4000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Final train loss: `1.2287`
+- Final validation loss: `1.2301`
+- Wall-clock time: `148.58s`
+- Raw run log artifact: [`artifacts/memory_architecture_003_chunk_local_run_4000_2026-04-20.log`](../artifacts/memory_architecture_003_chunk_local_run_4000_2026-04-20.log)
+- Note: this longer follow-up keeps improving well past 2000 steps, ending `0.0941` validation-loss better than the 2000-step chunk-local baseline.
+- Note: this longer run is the correct reference point for deciding whether the `004` memory branch has a durable advantage rather than a short-horizon one.
+
+Logged checkpoints:
+
+```text
+step=1 batch_loss=43.0558 train_loss=33.5154 validation_loss=33.4525
+step=200 batch_loss=2.3116 train_loss=2.2921 validation_loss=2.2869
+step=400 batch_loss=2.0073 train_loss=1.9648 validation_loss=1.9676
+step=600 batch_loss=1.7456 train_loss=1.7137 validation_loss=1.7197
+step=800 batch_loss=1.6121 train_loss=1.5822 validation_loss=1.5801
+step=1000 batch_loss=1.5105 train_loss=1.5055 validation_loss=1.5036
+step=1200 batch_loss=1.4250 train_loss=1.4469 validation_loss=1.4368
+step=1400 batch_loss=1.4502 train_loss=1.4034 validation_loss=1.3989
+step=1600 batch_loss=1.4482 train_loss=1.3794 validation_loss=1.3694
+step=1800 batch_loss=1.3736 train_loss=1.3539 validation_loss=1.3449
+step=2000 batch_loss=1.3360 train_loss=1.3291 validation_loss=1.3242
+step=2200 batch_loss=1.2964 train_loss=1.3034 validation_loss=1.2969
+step=2400 batch_loss=1.2970 train_loss=1.3040 validation_loss=1.2913
+step=2600 batch_loss=1.2877 train_loss=1.2882 validation_loss=1.2769
+step=2800 batch_loss=1.2755 train_loss=1.2743 validation_loss=1.2714
+step=3000 batch_loss=1.2603 train_loss=1.2649 validation_loss=1.2680
+step=3200 batch_loss=1.2483 train_loss=1.2607 validation_loss=1.2512
+step=3400 batch_loss=1.2690 train_loss=1.2631 validation_loss=1.2517
+step=3600 batch_loss=1.2322 train_loss=1.2435 validation_loss=1.2433
+step=3800 batch_loss=1.2459 train_loss=1.2329 validation_loss=1.2334
+step=4000 batch_loss=1.2590 train_loss=1.2287 validation_loss=1.2301
+```
+
+## M-004L Longer Chunk-Local Decoder With Static Memory Retrieval
+
+- Script: [`memory_architecture/004.py`](../memory_architecture/004.py)
+- Date: `2026-04-20`
+- Dataset: `roneneldan/TinyStories`
+- Train split: `train[:20000]`
+- Validation split: `validation[:2000]`
+- Text representation: character-level vocabulary built from the loaded train and validation text
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Memory slots: `64`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk plus static memory retrieval in every decoder block
+- Positional scheme: absolute positions over the full sequence, then reshaped into chunk form
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `4000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Final train loss: `1.2300`
+- Final validation loss: `1.2317`
+- Wall-clock time: `394.76s`
+- Raw run log artifact: [`artifacts/memory_architecture_004_chunk_memory_retrieval_run_4000_2026-04-20.log`](../artifacts/memory_architecture_004_chunk_memory_retrieval_run_4000_2026-04-20.log)
+- Note: the small 2000-step gain for `004` does not hold up over the longer run. By 4000 steps, the no-memory chunk-local baseline is slightly better.
+- Note: compared with `M-003L`, static memory retrieval ends `0.0016` validation-loss worse while taking about `2.66x` more wall-clock time.
+- Note: the honest current conclusion is that read-only static memory retrieval is not yet earning its cost in this setup.
+
+Logged checkpoints:
+
+```text
+step=1 batch_loss=42.7056 train_loss=32.8730 validation_loss=32.7913
+step=200 batch_loss=2.2707 train_loss=2.2482 validation_loss=2.2454
+step=400 batch_loss=1.9625 train_loss=1.9193 validation_loss=1.9227
+step=600 batch_loss=1.7167 train_loss=1.6878 validation_loss=1.6930
+step=800 batch_loss=1.5743 train_loss=1.5576 validation_loss=1.5560
+step=1000 batch_loss=1.4810 train_loss=1.4959 validation_loss=1.4907
+step=1200 batch_loss=1.4167 train_loss=1.4349 validation_loss=1.4249
+step=1400 batch_loss=1.4541 train_loss=1.3979 validation_loss=1.3963
+step=1600 batch_loss=1.4423 train_loss=1.3785 validation_loss=1.3698
+step=1800 batch_loss=1.3696 train_loss=1.3515 validation_loss=1.3440
+step=2000 batch_loss=1.3361 train_loss=1.3256 validation_loss=1.3216
+step=2200 batch_loss=1.3015 train_loss=1.3084 validation_loss=1.2999
+step=2400 batch_loss=1.2940 train_loss=1.3027 validation_loss=1.2899
+step=2600 batch_loss=1.2936 train_loss=1.2877 validation_loss=1.2796
+step=2800 batch_loss=1.2806 train_loss=1.2751 validation_loss=1.2726
+step=3000 batch_loss=1.2621 train_loss=1.2692 validation_loss=1.2723
+step=3200 batch_loss=1.2492 train_loss=1.2661 validation_loss=1.2578
+step=3400 batch_loss=1.2668 train_loss=1.2648 validation_loss=1.2552
+step=3600 batch_loss=1.2315 train_loss=1.2466 validation_loss=1.2457
+step=3800 batch_loss=1.2533 train_loss=1.2396 validation_loss=1.2415
+step=4000 batch_loss=1.2673 train_loss=1.2300 validation_loss=1.2317
 ```
