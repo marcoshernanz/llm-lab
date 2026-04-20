@@ -165,6 +165,7 @@ class LanguageModel(nn.Module):
         x = self.token_embedding(x) + self.position_embedding(positions)
         x = self.decoder(x)
         x = x @ self.token_embedding.weight.T
+        x = x.reshape(batch_size, sequence_len)
         return x
 
 
