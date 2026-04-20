@@ -10,14 +10,14 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | --- | ------ | ----: | ---------: | -------: | -----------: |
 | M-001 | [`memory_architecture/001_char_decoder.py`](../memory_architecture/001_char_decoder.py) | 2000 | 1.2200 | 1.2162 | 147.86 |
 | M-002 | [`memory_architecture/002_memory_retrieval.py`](../memory_architecture/002_memory_retrieval.py) | 2000 | 1.2254 | 1.2189 | 256.70 |
-| M-003 | [`memory_architecture/003.py`](../memory_architecture/003.py) | 2000 | 1.3291 | 1.3242 | 124.95 |
-| M-004 | [`memory_architecture/004.py`](../memory_architecture/004.py) | 2000 | 1.3254 | 1.3214 | 188.56 |
-| M-003L | [`memory_architecture/003.py`](../memory_architecture/003.py) | 4000 | 1.2287 | 1.2301 | 148.58 |
-| M-004L | [`memory_architecture/004.py`](../memory_architecture/004.py) | 4000 | 1.2300 | 1.2317 | 394.76 |
+| M-003 | [`memory_architecture/003_chunk_local.py`](../../memory_architecture/003_chunk_local.py) | 2000 | 1.3291 | 1.3242 | 124.95 |
+| M-004 | [`memory_architecture/004_chunk_memory_retrieval.py`](../../memory_architecture/004_chunk_memory_retrieval.py) | 2000 | 1.3254 | 1.3214 | 188.56 |
+| M-003L | [`memory_architecture/003_chunk_local.py`](../../memory_architecture/003_chunk_local.py) | 4000 | 1.2287 | 1.2301 | 148.58 |
+| M-004L | [`memory_architecture/004_chunk_memory_retrieval.py`](../../memory_architecture/004_chunk_memory_retrieval.py) | 4000 | 1.2300 | 1.2317 | 394.76 |
 
 ## M-001 Vanilla Decoder Baseline
 
-- Script: [`memory_architecture/001_char_decoder.py`](../memory_architecture/001_char_decoder.py)
+- Script: [`memory_architecture/001_char_decoder.py`](../../memory_architecture/001_char_decoder.py)
 - Date: `2026-04-20`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
@@ -37,7 +37,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 - Final train loss: `1.2200`
 - Final validation loss: `1.2162`
 - Wall-clock time: `147.86s`
-- Raw run log artifact: [`artifacts/memory_architecture_001_char_decoder_run_2026-04-20.log`](../artifacts/memory_architecture_001_char_decoder_run_2026-04-20.log)
+- Raw run log artifact: [`artifacts/memory_architecture_001_char_decoder_run_2026-04-20.log`](../../artifacts/memory_architecture_001_char_decoder_run_2026-04-20.log)
 - Note: this is the cleaned vanilla transformer baseline for the memory-architecture path.
 - Note: it matches the original architecture family used before the retrieval branch was introduced, which makes it the correct baseline for later memory comparisons.
 
@@ -59,7 +59,7 @@ step=2000 batch_loss=1.2109 train_loss=1.2200 validation_loss=1.2162
 
 ## M-002 Static Memory Retrieval Scaffold
 
-- Script: [`memory_architecture/002_memory_retrieval.py`](../memory_architecture/002_memory_retrieval.py)
+- Script: [`memory_architecture/002_memory_retrieval.py`](../../memory_architecture/002_memory_retrieval.py)
 - Date: `2026-04-20`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
@@ -81,7 +81,7 @@ step=2000 batch_loss=1.2109 train_loss=1.2200 validation_loss=1.2162
 - Final train loss: `1.2254`
 - Final validation loss: `1.2189`
 - Wall-clock time: `256.70s`
-- Raw run log artifact: [`artifacts/memory_architecture_002_memory_retrieval_run_2026-04-20.log`](../artifacts/memory_architecture_002_memory_retrieval_run_2026-04-20.log)
+- Raw run log artifact: [`artifacts/memory_architecture_002_memory_retrieval_run_2026-04-20.log`](../../artifacts/memory_architecture_002_memory_retrieval_run_2026-04-20.log)
 - Note: this run completes Stage A only. The memory bank is learnable model state, not yet per-example recurrent runtime memory.
 - Note: because full-sequence self-attention remains intact, this run does not yet force the model to rely on memory for long-range information flow.
 - Note: against the new baseline, the retrieval scaffold ends with slightly worse validation loss while taking about `1.74x` more wall-clock time. That is still acceptable for Stage A because the goal was retrieval correctness, not quality gains yet.
@@ -104,7 +104,7 @@ step=2000 batch_loss=1.2156 train_loss=1.2254 validation_loss=1.2189
 
 ## M-003 Chunk-Local Decoder Baseline
 
-- Script: [`memory_architecture/003.py`](../memory_architecture/003.py)
+- Script: [`memory_architecture/003_chunk_local.py`](../../memory_architecture/003_chunk_local.py)
 - Date: `2026-04-20`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
@@ -127,7 +127,7 @@ step=2000 batch_loss=1.2156 train_loss=1.2254 validation_loss=1.2189
 - Final train loss: `1.3291`
 - Final validation loss: `1.3242`
 - Wall-clock time: `124.95s`
-- Raw run log artifact: [`artifacts/memory_architecture_003_chunk_local_run_2026-04-20.log`](../artifacts/memory_architecture_003_chunk_local_run_2026-04-20.log)
+- Raw run log artifact: [`artifacts/memory_architecture_003_chunk_local_run_2026-04-20.log`](../../artifacts/memory_architecture_003_chunk_local_run_2026-04-20.log)
 - Note: this is the first baseline that actually removes cross-chunk token-token attention while preserving absolute sequence positions.
 - Note: compared with the full-context vanilla baseline, chunk-local attention is about `0.1080` validation-loss worse while running slightly faster. That gap is the signal the next memory-enabled chunked model should try to recover.
 - Note: this run is the correct no-memory control for evaluating whether static or writable memory helps once long-range token attention is removed.
@@ -150,7 +150,7 @@ step=2000 batch_loss=1.3360 train_loss=1.3291 validation_loss=1.3242
 
 ## M-004 Chunk-Local Decoder With Static Memory Retrieval
 
-- Script: [`memory_architecture/004.py`](../memory_architecture/004.py)
+- Script: [`memory_architecture/004_chunk_memory_retrieval.py`](../../memory_architecture/004_chunk_memory_retrieval.py)
 - Date: `2026-04-20`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
@@ -174,7 +174,7 @@ step=2000 batch_loss=1.3360 train_loss=1.3291 validation_loss=1.3242
 - Final train loss: `1.3254`
 - Final validation loss: `1.3214`
 - Wall-clock time: `188.56s`
-- Raw run log artifact: [`artifacts/memory_architecture_004_chunk_memory_retrieval_run_2026-04-20.log`](../artifacts/memory_architecture_004_chunk_memory_retrieval_run_2026-04-20.log)
+- Raw run log artifact: [`artifacts/memory_architecture_004_chunk_memory_retrieval_run_2026-04-20.log`](../../artifacts/memory_architecture_004_chunk_memory_retrieval_run_2026-04-20.log)
 - Note: this is the first apples-to-apples test of whether read-only memory retrieval helps once long-range token-token attention has been removed.
 - Note: compared with the chunk-local no-memory baseline, static memory retrieval improves validation loss from `1.3242` to `1.3214`, a small gain of `0.0028`, while increasing wall-clock time by about `1.51x`.
 - Note: this is a real but weak positive result. The retrieval path appears to help slightly under the chunk bottleneck, but not enough yet to recover much of the `001 -> 003` gap.
@@ -197,7 +197,7 @@ step=2000 batch_loss=1.3361 train_loss=1.3254 validation_loss=1.3214
 
 ## M-003L Longer Chunk-Local Decoder Baseline
 
-- Script: [`memory_architecture/003.py`](../memory_architecture/003.py)
+- Script: [`memory_architecture/003_chunk_local.py`](../../memory_architecture/003_chunk_local.py)
 - Date: `2026-04-20`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
@@ -220,7 +220,7 @@ step=2000 batch_loss=1.3361 train_loss=1.3254 validation_loss=1.3214
 - Final train loss: `1.2287`
 - Final validation loss: `1.2301`
 - Wall-clock time: `148.58s`
-- Raw run log artifact: [`artifacts/memory_architecture_003_chunk_local_run_4000_2026-04-20.log`](../artifacts/memory_architecture_003_chunk_local_run_4000_2026-04-20.log)
+- Raw run log artifact: [`artifacts/memory_architecture_003_chunk_local_run_4000_2026-04-20.log`](../../artifacts/memory_architecture_003_chunk_local_run_4000_2026-04-20.log)
 - Note: this longer follow-up keeps improving well past 2000 steps, ending `0.0941` validation-loss better than the 2000-step chunk-local baseline.
 - Note: this longer run is the correct reference point for deciding whether the `004` memory branch has a durable advantage rather than a short-horizon one.
 
@@ -252,7 +252,7 @@ step=4000 batch_loss=1.2590 train_loss=1.2287 validation_loss=1.2301
 
 ## M-004L Longer Chunk-Local Decoder With Static Memory Retrieval
 
-- Script: [`memory_architecture/004.py`](../memory_architecture/004.py)
+- Script: [`memory_architecture/004_chunk_memory_retrieval.py`](../../memory_architecture/004_chunk_memory_retrieval.py)
 - Date: `2026-04-20`
 - Dataset: `roneneldan/TinyStories`
 - Train split: `train[:20000]`
@@ -276,7 +276,7 @@ step=4000 batch_loss=1.2590 train_loss=1.2287 validation_loss=1.2301
 - Final train loss: `1.2300`
 - Final validation loss: `1.2317`
 - Wall-clock time: `394.76s`
-- Raw run log artifact: [`artifacts/memory_architecture_004_chunk_memory_retrieval_run_4000_2026-04-20.log`](../artifacts/memory_architecture_004_chunk_memory_retrieval_run_4000_2026-04-20.log)
+- Raw run log artifact: [`artifacts/memory_architecture_004_chunk_memory_retrieval_run_4000_2026-04-20.log`](../../artifacts/memory_architecture_004_chunk_memory_retrieval_run_4000_2026-04-20.log)
 - Note: the small 2000-step gain for `004` does not hold up over the longer run. By 4000 steps, the no-memory chunk-local baseline is slightly better.
 - Note: compared with `M-003L`, static memory retrieval ends `0.0016` validation-loss worse while taking about `2.66x` more wall-clock time.
 - Note: the honest current conclusion is that read-only static memory retrieval is not yet earning its cost in this setup.
