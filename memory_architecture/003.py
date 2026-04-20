@@ -47,17 +47,21 @@ class CausalSelfAttention(nn.Module):
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
-        batch_size, sequence_len, _ = x.shape
-        return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
+        batch_size, num_chunks, chunk_size, _ = x.shape
+        return x.reshape(
+            batch_size, num_chunks, chunk_size, self.num_heads, self.head_dim
+        ).swapaxes(-1, -2)
 
     def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
-        batch_size, _, sequence_len, _ = x.shape
-        return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
+        batch_size, num_chunks, _, chunk_size, _ = x.shape
+        return x.swapaxes(-1, -2).reshape(
+            batch_size, num_chunks, chunk_size, self.num_heads * self.head_dim
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return attention outputs for one batch of embeddings."""
-        sequence_length = x.shape[1]
+        chunk_size = x.shape[-2]
 
         queries = self.split_heads(self.q_proj(x))
         keys = self.split_heads(self.k_proj(x))
@@ -67,7 +71,7 @@ class CausalSelfAttention(nn.Module):
         attention_scores = attention_scores / math.sqrt(self.head_dim)
 
         causal_mask = torch.triu(
-            torch.ones(sequence_length, sequence_length, dtype=torch.bool, device=x.device),
+            torch.ones(chunk_size, chunk_size, dtype=torch.bool, device=x.device),
             diagonal=1,
         )
         attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)
