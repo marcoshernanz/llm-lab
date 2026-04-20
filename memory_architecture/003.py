@@ -50,12 +50,12 @@ class CausalSelfAttention(nn.Module):
         batch_size, num_chunks, chunk_size, _ = x.shape
         return x.reshape(
             batch_size, num_chunks, chunk_size, self.num_heads, self.head_dim
-        ).swapaxes(-1, -2)
+        ).swapaxes(-2, -3)
 
     def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
         batch_size, num_chunks, _, chunk_size, _ = x.shape
-        return x.swapaxes(-1, -2).reshape(
+        return x.swapaxes(-2, -3).reshape(
             batch_size, num_chunks, chunk_size, self.num_heads * self.head_dim
         )
 
