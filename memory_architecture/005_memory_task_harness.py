@@ -1,19 +1,14 @@
-"""Memory architecture experiment 003: a tiny chunk-local character decoder baseline."""
+"""Memory architecture experiment 005: a tiny chunk-local delayed-recall harness."""
 
 from __future__ import annotations
 
 import math
+import random
 
 import torch
 import torch.nn.functional as F
-from datasets import load_dataset  # pyright: ignore
 from torch import nn
 
-DATASET_NAME = "roneneldan/TinyStories"
-DATASET_CONFIG = None
-TRAIN_SPLIT = "train[:20000]"
-VALIDATION_SPLIT = "validation[:2000]"
-TEXT_COLUMN = "text"
 DEVICE = "mps"
 SEED = 1337
 
@@ -31,6 +26,18 @@ LEARNING_RATE = 3e-3
 TRAIN_STEPS = 2_000
 EVAL_INTERVAL = 200
 EVAL_BATCHES = 32
+
+NUM_FACTS = 4
+NUM_KEYS = 16
+NUM_VALUES = 16
+NUM_NOISE_TOKENS = 32
+
+PAD_TOKEN = "[PAD]"
+BOS_TOKEN = "[BOS]"
+EOS_TOKEN = "[EOS]"
+STORE_TOKEN = "[STORE]"
+QUERY_TOKEN = "[QUERY]"
+ANSWER_TOKEN = "[ANSWER]"
 
 
 class CausalSelfAttention(nn.Module):
@@ -174,74 +181,122 @@ class LanguageModel(nn.Module):
         return x
 
 
-def load_text(split: str) -> str:
-    """Load one text split from Hugging Face and join it into one string."""
-    dataset = load_dataset(DATASET_NAME, DATASET_CONFIG, split=split)
-    parts = [text for text in dataset[TEXT_COLUMN] if text]
-    return "\n".join(parts)
+def build_vocab() -> tuple[list[str], dict[str, int]]:
+    """Build the small synthetic vocabulary for delayed recall."""
+    vocab_tokens = [
+        PAD_TOKEN,
+        BOS_TOKEN,
+        EOS_TOKEN,
+        STORE_TOKEN,
+        QUERY_TOKEN,
+        ANSWER_TOKEN,
+    ]
+    vocab_tokens.extend([f"K{idx}" for idx in range(NUM_KEYS)])
+    vocab_tokens.extend([f"V{idx}" for idx in range(NUM_VALUES)])
+    vocab_tokens.extend([f"N{idx}" for idx in range(NUM_NOISE_TOKENS)])
+    token_to_id = {token: idx for idx, token in enumerate(vocab_tokens)}
+    return vocab_tokens, token_to_id
 
 
-def build_vocab(train_text: str, validation_text: str) -> tuple[list[str], dict[str, int]]:
-    """Build one character vocabulary from the train and validation text."""
-    vocab_chars = sorted(set(train_text + validation_text))
-    char_to_id = {char: idx for idx, char in enumerate(vocab_chars)}
-    return vocab_chars, char_to_id
+def build_example(token_to_id: dict[str, int]) -> tuple[list[int], int]:
+    """Create one delayed key-value recall sequence and answer position."""
+    fact_tokens = [token_to_id[BOS_TOKEN]]
+    key_tokens = [token_to_id[f"K{idx}"] for idx in range(NUM_KEYS)]
+    value_tokens = [token_to_id[f"V{idx}"] for idx in range(NUM_VALUES)]
+    noise_tokens = [token_to_id[f"N{idx}"] for idx in range(NUM_NOISE_TOKENS)]
+
+    chosen_keys = random.sample(key_tokens, NUM_FACTS)
+    chosen_values = random.sample(value_tokens, NUM_FACTS)
+    key_value_pairs = list(zip(chosen_keys, chosen_values))
+
+    for key_id, value_id in key_value_pairs:
+        fact_tokens.extend([token_to_id[STORE_TOKEN], key_id, value_id])
+
+    query_key_id, query_value_id = random.choice(key_value_pairs)
+    suffix_tokens = [
+        token_to_id[QUERY_TOKEN],
+        query_key_id,
+        token_to_id[ANSWER_TOKEN],
+        query_value_id,
+        token_to_id[EOS_TOKEN],
+    ]
+
+    full_sequence_len = SEQUENCE_LEN + 1
+    filler_len = full_sequence_len - len(fact_tokens) - len(suffix_tokens)
+    if filler_len < 0:
+        raise ValueError("SEQUENCE_LEN is too small for the delayed-recall layout.")
+
+    filler_tokens = random.choices(noise_tokens, k=filler_len)
+    token_ids = fact_tokens + filler_tokens + suffix_tokens
+    answer_position = len(token_ids) - 3
+    return token_ids, answer_position
 
 
-def encode_text(text: str, char_to_id: dict[str, int]) -> torch.Tensor:
-    """Turn one text string into a tensor of character ids."""
-    return torch.tensor([char_to_id[char] for char in text], dtype=torch.long, device=DEVICE)
+def sample_batch(token_to_id: dict[str, int]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Sample delayed-recall input, target, and answer-mask tensors."""
+    inputs = torch.empty((BATCH_SIZE, SEQUENCE_LEN), dtype=torch.long, device=DEVICE)
+    targets = torch.empty((BATCH_SIZE, SEQUENCE_LEN), dtype=torch.long, device=DEVICE)
+    answer_mask = torch.zeros((BATCH_SIZE, SEQUENCE_LEN), dtype=torch.float32, device=DEVICE)
 
+    for batch_index in range(BATCH_SIZE):
+        token_ids, answer_position = build_example(token_to_id)
+        inputs[batch_index] = torch.tensor(token_ids[:-1], dtype=torch.long, device=DEVICE)
+        targets[batch_index] = torch.tensor(token_ids[1:], dtype=torch.long, device=DEVICE)
+        answer_mask[batch_index, answer_position] = 1.0
 
-def sample_batch(token_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Sample contiguous input and target windows from one token stream."""
-    max_start = token_ids.size(0) - SEQUENCE_LEN
-    starts = torch.randint(0, max_start + 1, (BATCH_SIZE,), device=DEVICE)
-    offsets = torch.arange(SEQUENCE_LEN, device=DEVICE)
-    positions = starts[:, None] + offsets[None, :]
-    inputs = token_ids[positions]
-    targets = token_ids[positions + 1]
-    return inputs, targets
+    return inputs, targets, answer_mask
 
 
 @torch.no_grad()
-def estimate_loss(model: LanguageModel, token_ids: torch.Tensor) -> float:
-    """Estimate one split loss with a few random batches."""
+def estimate_metrics(
+    model: LanguageModel,
+    token_to_id: dict[str, int],
+) -> tuple[float, float]:
+    """Estimate answer loss and answer accuracy on fresh synthetic batches."""
     losses: list[float] = []
+    accuracies: list[float] = []
     model.eval()
 
     for _ in range(EVAL_BATCHES):
-        inputs, targets = sample_batch(token_ids)
+        inputs, targets, answer_mask = sample_batch(token_to_id)
         logits = model(inputs)
-        loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+        loss = loss_fn(logits, targets, answer_mask)
+        predictions = logits.argmax(dim=-1)
+        answer_positions = answer_mask.argmax(dim=1)
+        batch_indices = torch.arange(BATCH_SIZE, device=DEVICE)
+        predicted_answers = predictions[batch_indices, answer_positions]
+        target_answers = targets[batch_indices, answer_positions]
+        accuracy = (predicted_answers == target_answers).float().mean()
         losses.append(float(loss.item()))
+        accuracies.append(float(accuracy.item()))
 
     model.train()
-    return sum(losses) / len(losses)
+    return sum(losses) / len(losses), sum(accuracies) / len(accuracies)
 
 
-def loss_fn(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    """Compute next-token cross-entropy for one batch."""
-    return F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tensor) -> torch.Tensor:
+    """Compute next-token cross-entropy only at the answer position."""
+    per_token_loss = F.cross_entropy(
+        logits.reshape(-1, logits.size(-1)),
+        targets.reshape(-1),
+        reduction="none",
+    ).reshape_as(targets)
+    return (per_token_loss * answer_mask).sum() / answer_mask.sum()
 
 
 def main() -> None:
-    """Load the dataset, train the tiny model, and print a short report."""
+    """Train the tiny chunk-local model on delayed key-value recall."""
+    random.seed(SEED)
     torch.manual_seed(SEED)
 
-    train_text = load_text(TRAIN_SPLIT)
-    validation_text = load_text(VALIDATION_SPLIT)
-    vocab_chars, char_to_id = build_vocab(train_text, validation_text)
-    train_token_ids = encode_text(train_text, char_to_id)
-    validation_token_ids = encode_text(validation_text, char_to_id)
-
-    model = LanguageModel(len(vocab_chars)).to(DEVICE)
+    vocab_tokens, token_to_id = build_vocab()
+    model = LanguageModel(len(vocab_tokens)).to(DEVICE)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
     for step in range(TRAIN_STEPS):
-        inputs, targets = sample_batch(train_token_ids)
+        inputs, targets, answer_mask = sample_batch(token_to_id)
         logits = model(inputs)
-        loss = loss_fn(logits, targets)
+        loss = loss_fn(logits, targets, answer_mask)
 
         optimizer.zero_grad()
         loss.backward()
@@ -249,13 +304,12 @@ def main() -> None:
 
         should_log = step == 0 or (step + 1) % EVAL_INTERVAL == 0 or step == TRAIN_STEPS - 1
         if should_log:
-            train_loss = estimate_loss(model, train_token_ids)
-            validation_loss = estimate_loss(model, validation_token_ids)
+            answer_loss, answer_accuracy = estimate_metrics(model, token_to_id)
             print(
                 f"step={step + 1} "
-                f"batch_loss={loss.item():.4f} "
-                f"train_loss={train_loss:.4f} "
-                f"validation_loss={validation_loss:.4f}"
+                f"batch_answer_loss={loss.item():.4f} "
+                f"eval_answer_loss={answer_loss:.4f} "
+                f"eval_answer_accuracy={answer_accuracy:.4f}"
             )
 
 
