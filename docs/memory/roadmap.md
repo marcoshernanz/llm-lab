@@ -52,13 +52,15 @@ This is the path that is most relevant to:
 
 ## Current Status
 
-As of 2026-04-20:
+As of 2026-04-23:
 
 - `001_char_decoder.py` is complete as the clean vanilla baseline.
 - `002_memory_retrieval.py` is complete as the static retrieval scaffold on top of full-sequence attention.
 - `003_chunk_local.py` is complete as the first honest chunk-local baseline.
 - `004_chunk_memory_retrieval.py` is complete as the first chunk-local model with static memory retrieval.
 - the longer `003L` and `004L` follow-up runs show that read-only static retrieval is not yet earning its cost in this setup.
+- `005_memory_task_harness.py` is complete as the first chunk-local synthetic delayed-recall benchmark.
+- `006_full_attention_task_harness.py` is complete as the matching full-attention control for that benchmark.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -66,7 +68,13 @@ That means the fixed-slot read-only line has done its job:
 - it established a fair chunk-local control,
 - and it gave a negative or at least weak result.
 
-The next work should therefore move away from “static latent table” and toward “addressable latent memory.”
+That also means the task-harness milestone has now done its job:
+
+- the delayed-recall task runs end to end,
+- the chunk-local baseline stays near chance,
+- and the full-attention control learns materially better on the same task.
+
+The next work should therefore move away from “static latent table” and toward “addressable latent memory,” but only now that the harness has a matching control.
 
 ## What This Path Is Trying To Learn
 
@@ -211,11 +219,19 @@ Exit criteria:
 - At least one tiny memory-sensitive task runs end to end.
 - `003` and later memory models can be compared on exactly the same task.
 - The task is simple enough that failure is interpretable.
+- A matching full-attention control beats the chunk-local baseline on the same task.
 
 Questions to answer:
 - Does the task truly require cross-chunk state?
 - Can a chunk-local baseline solve it without memory?
 - What kind of memory should the model need to store?
+
+Status:
+- Complete via `memory_architecture/005_memory_task_harness.py` and `memory_architecture/006_full_attention_task_harness.py`.
+
+Main lesson:
+- The delayed-recall harness is now credible enough to use for memory experiments because the chunk-local baseline stays near chance while the full-attention control learns materially better.
+- The experiment script number `006` is still part of milestone 005 validation, not the roadmap's milestone 006 architecture step.
 
 ### Milestone 006: Dense Latent Address Read Path
 Track: Addressing
@@ -402,19 +418,18 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. memory task harness,
-2. dense latent address read path,
-3. sparse neighborhood retrieval,
-4. writable values at fixed addresses,
-5. address updates or allocation,
-6. longer-context pressure test,
-7. natural-text evaluation,
-8. thesis-grade freeze.
+1. dense latent address read path,
+2. sparse neighborhood retrieval,
+3. writable values at fixed addresses,
+4. address updates or allocation,
+5. longer-context pressure test,
+6. natural-text evaluation,
+7. thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
 
-- first prove memory-sensitive tasks,
+- first prove memory-sensitive tasks with the right controls,
 - then prove latent-space reading,
 - then prove writing,
 - then test scale,
