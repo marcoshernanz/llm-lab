@@ -1,8 +1,8 @@
 # Memory Architecture Learning Log
 
-Runs recorded through 2026-04-22.
+Runs recorded through 2026-04-23.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, and finally the first synthetic delayed-recall task-harness run.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, and finally the first synthetic delayed-recall task-harness pair: the chunk-local baseline and the matching full-attention control.
 
 ## Summary
 
@@ -15,6 +15,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-003L | [`memory_architecture/003_chunk_local.py`](../../memory_architecture/003_chunk_local.py) | 4000 | 1.2287 | 1.2301 | 148.58 |
 | M-004L | [`memory_architecture/004_chunk_memory_retrieval.py`](../../memory_architecture/004_chunk_memory_retrieval.py) | 4000 | 1.2300 | 1.2317 | 394.76 |
 | M-005 | [`memory_architecture/005_memory_task_harness.py`](../../memory_architecture/005_memory_task_harness.py) | 2000 | 2.7748 | 2.7865 | 142.00 |
+| M-006 | [`memory_architecture/006_full_attention_task_harness.py`](../../memory_architecture/006_full_attention_task_harness.py) | 2000 | 1.4718 | 1.4676 | 324.00 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -339,7 +340,8 @@ step=4000 batch_loss=1.2673 train_loss=1.2300 validation_loss=1.2317
 - Raw run log artifact: [`artifacts/memory_architecture_005_memory_task_harness_run_2026-04-22.log`](../../artifacts/memory_architecture_005_memory_task_harness_run_2026-04-22.log)
 - Note: this is the first end-to-end synthetic memory-task run in the memory-architecture path.
 - Note: with `16` possible values, chance accuracy is `0.0625`, so the chunk-local baseline remains effectively at chance after `2000` steps.
-- Note: this means the harness is at least applying real cross-chunk pressure, but it is not yet a validated benchmark by itself because the matching full-attention control has not been run on the same task yet.
+- Note: viewed on its own, this run shows strong cross-chunk pressure but does not yet say whether the task is learnable by the same model family.
+- Note: `M-006` later provides that missing control and confirms that the harness is a valid benchmark rather than an unlearnable puzzle.
 
 Logged checkpoints:
 
@@ -355,4 +357,52 @@ step=1400 batch_answer_loss=2.8766 eval_answer_loss=2.8412 eval_answer_accuracy=
 step=1600 batch_answer_loss=2.7491 eval_answer_loss=2.8063 eval_answer_accuracy=0.0762
 step=1800 batch_answer_loss=2.8599 eval_answer_loss=2.8593 eval_answer_accuracy=0.0518
 step=2000 batch_answer_loss=2.7748 eval_answer_loss=2.7865 eval_answer_accuracy=0.0698
+```
+
+## M-006 Full-Attention Delayed Recall Control
+
+- Script: [`memory_architecture/006_full_attention_task_harness.py`](../../memory_architecture/006_full_attention_task_harness.py)
+- Date: `2026-04-23`
+- Task: synthetic delayed key-value recall across chunk boundaries
+- Device: `mps`
+- Sequence length: `128`
+- Embedding dim: `64`
+- Heads: `4`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: full causal self-attention over the whole sequence
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `4`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Objective: next-token cross-entropy only at the answer position
+- Final train loss: `1.4718`
+- Final validation loss: `1.4676`
+- Final validation answer accuracy: `0.2505`
+- Wall-clock time: `324.00s`
+- Raw run log artifact: [`artifacts/memory_architecture_006_full_attention_task_harness_run_2026-04-23.log`](../../artifacts/memory_architecture_006_full_attention_task_harness_run_2026-04-23.log)
+- Note: this is the matching full-attention control for the delayed-recall task harness introduced in `M-005`.
+- Note: compared with `M-005`, full attention reaches materially lower answer loss and much higher answer accuracy (`0.2505` vs `0.0698`).
+- Note: this validates the harness as a real cross-chunk benchmark: the unrestricted control can learn the task, while the chunk-local baseline remains near chance.
+- Note: the full-attention control does not solve the task completely, so the benchmark is still moderately hard rather than saturated.
+
+Logged checkpoints:
+
+```text
+step=1 batch_answer_loss=45.9602 eval_answer_loss=13.7144 eval_answer_accuracy=0.0000
+step=200 batch_answer_loss=1.8614 eval_answer_loss=1.9739 eval_answer_accuracy=0.2471
+step=400 batch_answer_loss=1.7373 eval_answer_loss=1.7348 eval_answer_accuracy=0.2402
+step=600 batch_answer_loss=1.7151 eval_answer_loss=1.7002 eval_answer_accuracy=0.2559
+step=800 batch_answer_loss=1.5385 eval_answer_loss=1.5713 eval_answer_accuracy=0.2539
+step=1000 batch_answer_loss=1.5323 eval_answer_loss=1.6006 eval_answer_accuracy=0.2505
+step=1200 batch_answer_loss=1.3885 eval_answer_loss=1.5385 eval_answer_accuracy=0.2529
+step=1400 batch_answer_loss=1.5486 eval_answer_loss=1.5397 eval_answer_accuracy=0.2344
+step=1600 batch_answer_loss=1.4159 eval_answer_loss=1.4959 eval_answer_accuracy=0.2612
+step=1800 batch_answer_loss=1.5126 eval_answer_loss=1.5522 eval_answer_accuracy=0.2417
+step=2000 batch_answer_loss=1.4718 eval_answer_loss=1.4676 eval_answer_accuracy=0.2505
 ```
