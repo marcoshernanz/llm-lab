@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import random
-from typing import cast
 
 import torch
 import torch.nn.functional as F
@@ -276,7 +275,6 @@ def main() -> None:
 
     vocab_tokens, token_to_id = build_vocab()
     model = LanguageModel(len(vocab_tokens)).to(DEVICE)
-    model = cast(LanguageModel, torch.compile(model))
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
     for step in range(TRAIN_STEPS):
