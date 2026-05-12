@@ -1,4 +1,4 @@
-"""Memory architecture experiment 006: a tiny full-attention delayed-recall harness."""
+"""Memory architecture experiment 005: a tiny chunk-local delayed-recall harness."""
 
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ from torch import nn
 DEVICE = "mps"
 SEED = 1337
 
+CHUNK_SIZE = 16
 SEQUENCE_LEN = 128
+assert SEQUENCE_LEN % CHUNK_SIZE == 0
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
@@ -21,7 +23,7 @@ NUM_BLOCKS = 4
 
 BATCH_SIZE = 64
 LEARNING_RATE = 3e-3
-TRAIN_STEPS = 2_000
+TRAIN_STEPS = 4_000
 EVAL_INTERVAL = 200
 EVAL_BATCHES = 32
 
@@ -39,7 +41,7 @@ ANSWER_TOKEN = "[ANSWER]"
 
 
 class CausalSelfAttention(nn.Module):
-    """Apply masked multi-head self-attention over one sequence."""
+    """Apply masked multi-head self-attention inside each chunk."""
 
     def __init__(self):
         """Create the query, key, value, and output projections."""
@@ -53,17 +55,21 @@ class CausalSelfAttention(nn.Module):
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
-        batch_size, sequence_len, _ = x.shape
-        return x.reshape(batch_size, sequence_len, self.num_heads, self.head_dim).swapaxes(1, 2)
+        batch_size, num_chunks, chunk_size, _ = x.shape
+        return x.reshape(
+            batch_size, num_chunks, chunk_size, self.num_heads, self.head_dim
+        ).swapaxes(-2, -3)
 
     def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
-        batch_size, _, sequence_len, _ = x.shape
-        return x.swapaxes(1, 2).reshape(batch_size, sequence_len, self.num_heads * self.head_dim)
+        batch_size, num_chunks, _, chunk_size, _ = x.shape
+        return x.swapaxes(-2, -3).reshape(
+            batch_size, num_chunks, chunk_size, self.num_heads * self.head_dim
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return attention outputs for one batch of embeddings."""
-        sequence_length = x.shape[1]
+        _, _, chunk_size, _ = x.shape
 
         queries = self.split_heads(self.q_proj(x))
         keys = self.split_heads(self.k_proj(x))
@@ -73,7 +79,7 @@ class CausalSelfAttention(nn.Module):
         attention_scores = attention_scores / math.sqrt(self.head_dim)
 
         causal_mask = torch.triu(
-            torch.ones(sequence_length, sequence_length, dtype=torch.bool, device=x.device),
+            torch.ones(chunk_size, chunk_size, dtype=torch.bool, device=x.device),
             diagonal=1,
         )
         attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)
@@ -153,16 +159,26 @@ class LanguageModel(nn.Module):
     def __init__(self, vocab_size: int):
         """Create the embeddings and decoder."""
         super().__init__()
+        self.vocab_size = vocab_size
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
         self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
         self.decoder = Decoder()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
-        positions = torch.arange(x.size(1), device=x.device)
-        x = self.token_embedding(x) + self.position_embedding(positions)
+        batch_size, sequence_len = x.shape
+        num_chunks = sequence_len // CHUNK_SIZE
+        positions = torch.arange(sequence_len, device=x.device)
+        position_embeddings = self.position_embedding(positions).reshape(
+            1, num_chunks, CHUNK_SIZE, EMBEDDING_DIM
+        )
+
+        x = x.reshape(batch_size, num_chunks, CHUNK_SIZE)
+        x = self.token_embedding(x) + position_embeddings
         x = self.decoder(x)
-        return x @ self.token_embedding.weight.T
+        x = x @ self.token_embedding.weight.T
+        x = x.reshape(batch_size, sequence_len, self.vocab_size)
+        return x
 
 
 def build_vocab() -> tuple[list[str], dict[str, int]]:
@@ -269,7 +285,7 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tens
 
 
 def main() -> None:
-    """Train the tiny full-attention model on delayed key-value recall."""
+    """Train the tiny chunk-local model on delayed key-value recall."""
     random.seed(SEED)
     torch.manual_seed(SEED)
 
