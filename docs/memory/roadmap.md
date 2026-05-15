@@ -62,6 +62,7 @@ As of 2026-05-15:
 - `005_memory_task_harness.py` is complete as the first chunk-local synthetic delayed-recall benchmark.
 - `006_full_attention_task_harness.py` is complete as the matching full-attention control for that benchmark.
 - `007_dense_latent_address_read.py` is complete as the first dense latent-address read path on the delayed-recall benchmark.
+- `008_writable_fixed_address_memory.py` is complete as the first writable fixed-address memory model on the delayed-recall benchmark.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -80,8 +81,13 @@ The dense latent-address read milestone has also done its job:
 - the address-space read path runs end to end,
 - and read-only address memory does not solve a task that requires per-example runtime storage.
 
-The next formal roadmap step is sparse neighborhood retrieval.
-The next likely behavioral step is writable values at fixed addresses, because the current benchmark requires the model to store facts that change per sequence.
+The writable fixed-address milestone gives the first strong positive result:
+
+- runtime memory values are updated across chunks,
+- answer accuracy jumps from the near-chance `005`/`007` level to about the full-attention-control level,
+- and the result shows that the missing ingredient was runtime writing, not more static read capacity.
+
+The next roadmap step is sparse neighborhood retrieval as an addressing and efficiency comparison against the dense writable read path.
 
 ## What This Path Is Trying To Learn
 
@@ -115,8 +121,8 @@ The stronger long-term direction is:
 
 - a latent address space,
 - explicit geometric or similarity-based retrieval,
-- sparse neighborhood lookup when justified,
-- and eventually writable memory contents that persist across chunks or segments.
+- writable memory contents that persist across chunks or segments,
+- and sparse neighborhood lookup once there is useful runtime memory to retrieve from.
 
 In plain terms:
 
@@ -125,7 +131,7 @@ In plain terms:
 
 ## Milestones
 
-The first seven milestones already exist in code and are part of the roadmap.
+The first eight milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -313,52 +319,41 @@ Status:
 Main lesson:
 - Dense latent-address reading is implemented, but read-only memory remains near the chunk-local baseline on delayed recall.
 - This is expected because the task's key-value facts are sampled per sequence and cannot be stored in static learned memory values.
-- The result supports moving toward either sparse retrieval as an addressing comparison or writable values as the first serious attempt to improve delayed-recall behavior.
+- The result supports moving to writable values next; sparse retrieval is more informative after the model has useful runtime memory to retrieve from.
 
-### Milestone 008: Sparse Neighborhood Retrieval
-Track: Addressing
-
-Goal:
-- Make retrieval local in address space rather than dense over the whole bank.
-
-Candidate retrieval rules:
-- top-k nearest addresses,
-- soft neighborhood over a radius-like kernel,
-- or a differentiable approximation that becomes sparse enough to matter.
-
-Why this comes after dense retrieval:
-- Dense retrieval is easier to debug and differentiate.
-- Sparse retrieval should be introduced only after the dense version is understood.
-
-Exit criteria:
-- The model retrieves only a small neighborhood of memory entries.
-- The sparse read path remains numerically stable.
-- Runtime and quality can be compared against dense retrieval honestly.
-
-Questions to answer:
-- Does sparse retrieval actually help, or only make the model harder to train?
-- Is the best neighborhood defined by top-k, thresholding, or a learned temperature?
-- How does sparsity affect gradient quality?
-
-### Milestone 009: Writable Values At Fixed Addresses
+### Milestone 008: Writable Values At Fixed Addresses
 Track: Writing
 
 Goal:
 - Introduce online memory state without yet changing the address system itself.
 
 What changes:
-- Memory addresses stay fixed.
+- Memory addresses stay fixed and learned.
 - Memory values become per-example runtime state.
-- After each chunk, the model writes updated values back into memory.
-
-Why this milestone is important:
-- It isolates the first real memory-writing question:
-  can the model store useful content over time while keeping addressing stable?
+- The model updates memory values after each chunk.
+- Later chunks can read from memory values written by earlier chunks.
 
 What stays fixed:
-- Address geometry.
-- Read path.
-- Small model.
+- Same delayed-recall task harness.
+- Same chunk-local token attention.
+- Same dense address read rule from milestone 007.
+- No address updates or allocation yet.
+
+Why this milestone is next:
+- The current benchmark samples new key-value facts for every sequence.
+- A static read-only memory cannot store those per-example facts.
+- Writable values are the smallest change that gives the model a real cross-chunk state path.
+
+Suggested first implementation:
+- Start from `007_dense_latent_address_read.py`.
+- Process the sequence chunk by chunk instead of all chunks at once.
+- Initialize runtime memory values as zeros with shape `[batch, memory_slots, embedding_dim]`.
+- For each chunk:
+  - run local token processing,
+  - read from the current runtime memory values,
+  - compute a chunk summary,
+  - write an update back into the runtime memory values.
+- Keep addresses global learned parameters.
 
 Exit criteria:
 - Memory values are updated across chunks.
@@ -369,6 +364,50 @@ Questions to answer:
 - What chunk summary should be written?
 - Should updates be additive, interpolated, or overwrite-based?
 - How selective should the write weights be?
+- Should the model read before writing, after writing, or both?
+- Does runtime memory improve answer accuracy beyond the near-chance `005` and `007` baselines?
+
+Status:
+- Complete via `memory_architecture/008_writable_fixed_address_memory.py`.
+
+Main lesson:
+- Writable fixed-address memory is the first strong positive result on the delayed-recall harness.
+- It improves answer accuracy from the near-chance read-only result `M-007` (`0.0698`) to `0.2480`.
+- It nearly matches the full-attention control `M-006` (`0.2505`), while preserving chunk-local token attention.
+- This supports the working hypothesis that runtime memory writing matters more than static read-only retrieval for this benchmark.
+
+### Milestone 009: Sparse Neighborhood Retrieval
+Track: Addressing
+
+Goal:
+- Make retrieval local in address space rather than dense over the whole bank.
+
+Candidate retrieval rules:
+- top-k nearest addresses,
+- soft neighborhood over a radius-like kernel,
+- or a differentiable approximation that becomes sparse enough to matter.
+
+Why this comes after writable values:
+- Dense retrieval is already understood well enough for the current scale.
+- Sparse retrieval is easier to interpret once memory values contain per-example state.
+- A sparse read-only model would mostly test efficiency, not the missing memory behavior.
+
+What stays fixed:
+- Writable runtime memory values.
+- Address geometry.
+- Small model.
+- Same task harness and controls.
+
+Exit criteria:
+- The model retrieves only a small neighborhood of memory entries.
+- The sparse read path remains numerically stable.
+- Runtime and quality can be compared against dense writable retrieval honestly.
+
+Questions to answer:
+- Does sparse retrieval actually help, or only make the model harder to train?
+- Is the best neighborhood defined by top-k, thresholding, or a learned temperature?
+- How does sparsity affect gradient quality?
+- Does sparse retrieval preserve any behavioral gain from writable dense memory?
 
 ### Milestone 010: Address Updates Or Allocation
 Track: Writing + Addressing
@@ -470,12 +509,11 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 008: sparse neighborhood retrieval,
-2. milestone 009: writable values at fixed addresses,
-3. milestone 010: address updates or allocation,
-4. milestone 011: longer-context pressure test,
-5. milestone 012: natural-text evaluation,
-6. milestone 013: thesis-grade freeze.
+1. milestone 009: sparse neighborhood retrieval,
+2. milestone 010: address updates or allocation,
+3. milestone 011: longer-context pressure test,
+4. milestone 012: natural-text evaluation,
+5. milestone 013: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
@@ -483,6 +521,7 @@ It keeps the research disciplined:
 - first prove memory-sensitive tasks with the right controls,
 - then prove latent-space reading,
 - then prove writing,
+- then compare sparse retrieval once there is useful runtime memory,
 - then test scale,
 - then package the result honestly.
 
