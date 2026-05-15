@@ -52,7 +52,7 @@ This is the path that is most relevant to:
 
 ## Current Status
 
-As of 2026-04-23:
+As of 2026-05-15:
 
 - `001_char_decoder.py` is complete as the clean vanilla baseline.
 - `002_memory_retrieval.py` is complete as the static retrieval scaffold on top of full-sequence attention.
@@ -61,6 +61,7 @@ As of 2026-04-23:
 - the longer `003L` and `004L` follow-up runs show that read-only static retrieval is not yet earning its cost in this setup.
 - `005_memory_task_harness.py` is complete as the first chunk-local synthetic delayed-recall benchmark.
 - `006_full_attention_task_harness.py` is complete as the matching full-attention control for that benchmark.
+- `007_dense_latent_address_read.py` is complete as the first dense latent-address read path on the delayed-recall benchmark.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -74,7 +75,13 @@ That also means the task-harness/control pair has now done its job:
 - the chunk-local baseline stays near chance,
 - and the full-attention control learns materially better on the same task.
 
-The next work should therefore move away from “static latent table” and toward “addressable latent memory,” but only now that the harness has a matching control.
+The dense latent-address read milestone has also done its job:
+
+- the address-space read path runs end to end,
+- and read-only address memory does not solve a task that requires per-example runtime storage.
+
+The next formal roadmap step is sparse neighborhood retrieval.
+The next likely behavioral step is writable values at fixed addresses, because the current benchmark requires the model to store facts that change per sequence.
 
 ## What This Path Is Trying To Learn
 
@@ -118,7 +125,7 @@ In plain terms:
 
 ## Milestones
 
-The first six milestones already exist in code and are part of the roadmap.
+The first seven milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -300,6 +307,14 @@ Questions to answer:
 - Should address dimension equal model dimension?
 - Does this behave differently from the earlier static key-value table in practice?
 
+Status:
+- Complete via `memory_architecture/007_dense_latent_address_read.py`.
+
+Main lesson:
+- Dense latent-address reading is implemented, but read-only memory remains near the chunk-local baseline on delayed recall.
+- This is expected because the task's key-value facts are sampled per sequence and cannot be stored in static learned memory values.
+- The result supports moving toward either sparse retrieval as an addressing comparison or writable values as the first serious attempt to improve delayed-recall behavior.
+
 ### Milestone 008: Sparse Neighborhood Retrieval
 Track: Addressing
 
@@ -455,13 +470,12 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 007: dense latent address read path,
-2. milestone 008: sparse neighborhood retrieval,
-3. milestone 009: writable values at fixed addresses,
-4. milestone 010: address updates or allocation,
-5. milestone 011: longer-context pressure test,
-6. milestone 012: natural-text evaluation,
-7. milestone 013: thesis-grade freeze.
+1. milestone 008: sparse neighborhood retrieval,
+2. milestone 009: writable values at fixed addresses,
+3. milestone 010: address updates or allocation,
+4. milestone 011: longer-context pressure test,
+5. milestone 012: natural-text evaluation,
+6. milestone 013: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
