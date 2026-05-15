@@ -1,4 +1,4 @@
-"""Memory architecture experiment 005: a tiny chunk-local delayed-recall harness."""
+"""Memory architecture experiment 007: dense latent address reads on delayed recall."""
 
 from __future__ import annotations
 
@@ -18,6 +18,9 @@ assert SEQUENCE_LEN % CHUNK_SIZE == 0
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
+ADDRESS_DIM = 32
+NUM_MEMORY_SLOTS = 64
+READ_TEMPERATURE = 0.25
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 
@@ -89,6 +92,32 @@ class CausalSelfAttention(nn.Module):
         return self.out_proj(attended_values)
 
 
+class DenseLatentAddressRead(nn.Module):
+    """Read memory values by comparing token queries to latent addresses."""
+
+    def __init__(self):
+        """Create the token-to-address query and output projections."""
+        super().__init__()
+        self.q_proj = nn.Linear(EMBEDDING_DIM, ADDRESS_DIM, bias=False)
+        self.out_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_addresses: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> torch.Tensor:
+        """Return memory read residuals."""
+        queries = F.normalize(self.q_proj(x), dim=-1)
+        addresses = F.normalize(memory_addresses, dim=-1)
+
+        read_scores = queries @ addresses.T
+        read_scores = read_scores / READ_TEMPERATURE
+        read_weights = F.softmax(read_scores, dim=-1)
+        read_values = read_weights @ memory_values
+        return self.out_proj(read_values)
+
+
 class FeedForward(nn.Module):
     """Project up, apply a nonlinearity, and project back down."""
 
@@ -120,19 +149,27 @@ class RMSNorm(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    """Apply one pre-norm attention block followed by one MLP block."""
+    """Apply local attention, dense memory reading, and one MLP block."""
 
     def __init__(self):
-        """Create the norms, attention, and feed-forward sublayers."""
+        """Create the norms, attention, memory, and feed-forward sublayers."""
         super().__init__()
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
+        self.memory_read_norm = RMSNorm()
+        self.memory_read = DenseLatentAddressRead()
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_addresses: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> torch.Tensor:
         """Return the residual output of one decoder block."""
         x = x + self.attention(self.attention_norm(x))
+        x = x + self.memory_read(self.memory_read_norm(x), memory_addresses, memory_values)
         x = x + self.feed_forward(self.feed_forward_norm(x))
         return x
 
@@ -143,13 +180,15 @@ class Decoder(nn.Module):
     def __init__(self) -> None:
         """Create the block stack."""
         super().__init__()
+        self.memory_addresses = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, ADDRESS_DIM))
+        self.memory_values = nn.Parameter(0.02 * torch.randn(NUM_MEMORY_SLOTS, EMBEDDING_DIM))
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
         self.out_norm = RMSNorm()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run the full decoder stack."""
         for block in self.blocks:
-            x = block(x)
+            x = block(x, self.memory_addresses, self.memory_values)
         return self.out_norm(x)
 
 
@@ -285,7 +324,7 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tens
 
 
 def main() -> None:
-    """Train the tiny chunk-local model on delayed key-value recall."""
+    """Train the dense latent address read model on delayed key-value recall."""
     random.seed(SEED)
     torch.manual_seed(SEED)
 
