@@ -1,4 +1,4 @@
-"""Memory architecture experiment 007: dense latent address reads on delayed recall."""
+"""Memory architecture experiment 008: writable fixed-address memory on delayed recall."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ assert EMBEDDING_DIM % NUM_HEADS == 0
 ADDRESS_DIM = 32
 NUM_MEMORY_SLOTS = 64
 READ_TEMPERATURE = 0.25
+WRITE_TEMPERATURE = 0.25
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 
@@ -44,7 +45,7 @@ ANSWER_TOKEN = "[ANSWER]"
 
 
 class CausalSelfAttention(nn.Module):
-    """Apply masked multi-head self-attention inside each chunk."""
+    """Apply masked multi-head self-attention inside one chunk."""
 
     def __init__(self):
         """Create the query, key, value, and output projections."""
@@ -58,21 +59,17 @@ class CausalSelfAttention(nn.Module):
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
-        batch_size, num_chunks, chunk_size, _ = x.shape
-        return x.reshape(
-            batch_size, num_chunks, chunk_size, self.num_heads, self.head_dim
-        ).swapaxes(-2, -3)
+        batch_size, chunk_size, _ = x.shape
+        return x.reshape(batch_size, chunk_size, self.num_heads, self.head_dim).swapaxes(1, 2)
 
     def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
-        batch_size, num_chunks, _, chunk_size, _ = x.shape
-        return x.swapaxes(-2, -3).reshape(
-            batch_size, num_chunks, chunk_size, self.num_heads * self.head_dim
-        )
+        batch_size, _, chunk_size, _ = x.shape
+        return x.swapaxes(1, 2).reshape(batch_size, chunk_size, self.num_heads * self.head_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Return attention outputs for one batch of embeddings."""
-        _, _, chunk_size, _ = x.shape
+        """Return attention outputs for one batch of chunk embeddings."""
+        chunk_size = x.shape[1]
 
         queries = self.split_heads(self.q_proj(x))
         keys = self.split_heads(self.k_proj(x))
@@ -93,7 +90,7 @@ class CausalSelfAttention(nn.Module):
 
 
 class DenseLatentAddressRead(nn.Module):
-    """Read memory values by comparing token queries to latent addresses."""
+    """Read runtime memory values by comparing token queries to latent addresses."""
 
     def __init__(self):
         """Create the token-to-address query and output projections."""
@@ -107,7 +104,7 @@ class DenseLatentAddressRead(nn.Module):
         memory_addresses: torch.Tensor,
         memory_values: torch.Tensor,
     ) -> torch.Tensor:
-        """Return memory read residuals."""
+        """Return memory read residuals for one chunk."""
         queries = F.normalize(self.q_proj(x), dim=-1)
         addresses = F.normalize(memory_addresses, dim=-1)
 
@@ -116,6 +113,43 @@ class DenseLatentAddressRead(nn.Module):
         read_weights = F.softmax(read_scores, dim=-1)
         read_values = read_weights @ memory_values
         return self.out_proj(read_values)
+
+
+class FixedAddressMemoryWrite(nn.Module):
+    """Write chunk states into per-example memory values at fixed addresses."""
+
+    def __init__(self):
+        """Create projections for write addresses, values, and gates."""
+        super().__init__()
+        self.q_proj = nn.Linear(EMBEDDING_DIM, ADDRESS_DIM, bias=False)
+        self.value_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.gate_proj = nn.Linear(EMBEDDING_DIM, 1)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_addresses: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> torch.Tensor:
+        """Return memory values after an interpolated token-level write."""
+        write_queries = F.normalize(self.q_proj(x), dim=-1)
+        addresses = F.normalize(memory_addresses, dim=-1)
+
+        write_scores = write_queries @ addresses.T
+        write_scores = write_scores / WRITE_TEMPERATURE
+        write_weights = F.softmax(write_scores, dim=-1)
+        write_gates = torch.sigmoid(self.gate_proj(x))
+        write_weights = write_weights * write_gates
+
+        value_updates = self.value_proj(x)
+        slot_update_weight = write_weights.sum(dim=1)
+        slot_update_sum = write_weights.transpose(1, 2) @ value_updates
+        slot_updates = slot_update_sum / slot_update_weight.clamp_min(1e-6).unsqueeze(-1)
+        slot_gates = 1.0 - torch.exp(-slot_update_weight)
+
+        return memory_values * (
+            1.0 - slot_gates.unsqueeze(-1)
+        ) + slot_updates * slot_gates.unsqueeze(-1)
 
 
 class FeedForward(nn.Module):
@@ -149,7 +183,7 @@ class RMSNorm(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    """Apply local attention, dense memory reading, and one MLP block."""
+    """Apply local attention, memory reading, and one MLP block."""
 
     def __init__(self):
         """Create the norms, attention, memory, and feed-forward sublayers."""
@@ -175,25 +209,35 @@ class DecoderBlock(nn.Module):
 
 
 class Decoder(nn.Module):
-    """Stack several decoder blocks and finish with one output norm."""
+    """Stack decoder blocks and update runtime memory after each chunk."""
 
     def __init__(self) -> None:
-        """Create the block stack."""
+        """Create the block stack, fixed addresses, and write module."""
         super().__init__()
-        self.memory_addresses = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, ADDRESS_DIM))
-        self.memory_values = nn.Parameter(0.02 * torch.randn(NUM_MEMORY_SLOTS, EMBEDDING_DIM))
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
         self.out_norm = RMSNorm()
+        self.memory_addresses = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, ADDRESS_DIM))
+        self.memory_write_norm = RMSNorm()
+        self.memory_write = FixedAddressMemoryWrite()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the full decoder stack."""
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run one chunk and return updated runtime memory values."""
         for block in self.blocks:
-            x = block(x, self.memory_addresses, self.memory_values)
-        return self.out_norm(x)
+            x = block(x, self.memory_addresses, memory_values)
+
+        x = self.out_norm(x)
+        memory_values = self.memory_write(
+            self.memory_write_norm(x), self.memory_addresses, memory_values
+        )
+        return x, memory_values
 
 
 class LanguageModel(nn.Module):
-    """Embed tokens, apply the decoder, and predict next-token logits."""
+    """Embed tokens, process chunks with writable memory, and predict logits."""
 
     def __init__(self, vocab_size: int):
         """Create the embeddings and decoder."""
@@ -214,7 +258,14 @@ class LanguageModel(nn.Module):
 
         x = x.reshape(batch_size, num_chunks, CHUNK_SIZE)
         x = self.token_embedding(x) + position_embeddings
-        x = self.decoder(x)
+
+        memory_values = x.new_zeros(batch_size, NUM_MEMORY_SLOTS, EMBEDDING_DIM)
+        chunk_outputs: list[torch.Tensor] = []
+        for chunk_index in range(num_chunks):
+            chunk_output, memory_values = self.decoder(x[:, chunk_index], memory_values)
+            chunk_outputs.append(chunk_output)
+
+        x = torch.stack(chunk_outputs, dim=1)
         x = x @ self.token_embedding.weight.T
         x = x.reshape(batch_size, sequence_len, self.vocab_size)
         return x
@@ -324,7 +375,7 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tens
 
 
 def main() -> None:
-    """Train the dense latent address read model on delayed key-value recall."""
+    """Train the writable fixed-address memory model on delayed key-value recall."""
     random.seed(SEED)
     torch.manual_seed(SEED)
 
