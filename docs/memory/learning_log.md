@@ -1,8 +1,8 @@
 # Memory Architecture Learning Log
 
-Runs recorded through 2026-04-23.
+Runs recorded through 2026-05-15.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, and finally the first synthetic delayed-recall task-harness pair: the chunk-local baseline and the matching full-attention control.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, and finally the first dense latent-address read path.
 
 ## Summary
 
@@ -16,6 +16,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-004L | [`memory_architecture/004_chunk_memory_retrieval.py`](../../memory_architecture/004_chunk_memory_retrieval.py) | 4000 | 1.2300 | 1.2317 | 394.76 |
 | M-005 | [`memory_architecture/005_memory_task_harness.py`](../../memory_architecture/005_memory_task_harness.py) | 2000 | 2.7748 | 2.7865 | 142.00 |
 | M-006 | [`memory_architecture/006_full_attention_task_harness.py`](../../memory_architecture/006_full_attention_task_harness.py) | 2000 | 1.4718 | 1.4676 | 324.00 |
+| M-007 | [`memory_architecture/007_dense_latent_address_read.py`](../../memory_architecture/007_dense_latent_address_read.py) | 2000 | 2.7774 | 2.7890 | ~191 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -405,4 +406,58 @@ step=1400 batch_answer_loss=1.5486 eval_answer_loss=1.5397 eval_answer_accuracy=
 step=1600 batch_answer_loss=1.4159 eval_answer_loss=1.4959 eval_answer_accuracy=0.2612
 step=1800 batch_answer_loss=1.5126 eval_answer_loss=1.5522 eval_answer_accuracy=0.2417
 step=2000 batch_answer_loss=1.4718 eval_answer_loss=1.4676 eval_answer_accuracy=0.2505
+```
+
+## M-007 Dense Latent Address Read Path
+
+- Script: [`memory_architecture/007_dense_latent_address_read.py`](../../memory_architecture/007_dense_latent_address_read.py)
+- Date: `2026-05-15`
+- Task: synthetic delayed key-value recall across chunk boundaries
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Address dim: `32`
+- Memory slots: `64`
+- Read temperature: `0.25`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk plus dense latent address reads in every decoder block
+- Addressing mechanism: token states project into a normalized address-query space and read values from normalized learned memory addresses through dense softmax similarity
+- Memory write mechanism: none; memory addresses and values are learned model parameters, not per-example runtime state
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `4`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Objective: next-token cross-entropy only at the answer position
+- Final train loss: `2.7774`
+- Final validation loss: `2.7890`
+- Final validation answer accuracy: `0.0698`
+- Wall-clock time: approximately `191s` based on the tool session duration
+- Raw run log artifact: [`artifacts/memory_architecture_007_dense_latent_address_read_run_2026-05-15.log`](../../artifacts/memory_architecture_007_dense_latent_address_read_run_2026-05-15.log)
+- Note: this is the first explicit latent-address read-path experiment in the memory-architecture roadmap.
+- Note: compared with `M-005`, answer accuracy remains unchanged (`0.0698` vs `0.0698`) and validation loss is effectively unchanged (`2.7890` vs `2.7865`).
+- Note: the result matches the expected limitation of read-only memory on this task: it cannot store per-example key-value facts introduced earlier in the same sequence.
+- Note: this keeps the key conclusion simple: dense latent-address reading is wired in, but the first likely opportunity for a behavioral gain remains writable per-example memory.
+
+Logged checkpoints:
+
+```text
+step=1 batch_answer_loss=45.1942 eval_answer_loss=14.5212 eval_answer_accuracy=0.0000
+step=200 batch_answer_loss=2.8760 eval_answer_loss=2.8356 eval_answer_accuracy=0.0688
+step=400 batch_answer_loss=2.7722 eval_answer_loss=2.8678 eval_answer_accuracy=0.0732
+step=600 batch_answer_loss=2.9588 eval_answer_loss=2.9197 eval_answer_accuracy=0.0596
+step=800 batch_answer_loss=2.8109 eval_answer_loss=2.8296 eval_answer_accuracy=0.0610
+step=1000 batch_answer_loss=2.8821 eval_answer_loss=2.8897 eval_answer_accuracy=0.0693
+step=1200 batch_answer_loss=2.7397 eval_answer_loss=2.8525 eval_answer_accuracy=0.0605
+step=1400 batch_answer_loss=2.8799 eval_answer_loss=2.8416 eval_answer_accuracy=0.0596
+step=1600 batch_answer_loss=2.7509 eval_answer_loss=2.8029 eval_answer_accuracy=0.0762
+step=1800 batch_answer_loss=2.8519 eval_answer_loss=2.8505 eval_answer_accuracy=0.0518
+step=2000 batch_answer_loss=2.7774 eval_answer_loss=2.7890 eval_answer_accuracy=0.0698
 ```

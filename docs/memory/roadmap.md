@@ -52,7 +52,7 @@ This is the path that is most relevant to:
 
 ## Current Status
 
-As of 2026-04-23:
+As of 2026-05-15:
 
 - `001_char_decoder.py` is complete as the clean vanilla baseline.
 - `002_memory_retrieval.py` is complete as the static retrieval scaffold on top of full-sequence attention.
@@ -61,6 +61,7 @@ As of 2026-04-23:
 - the longer `003L` and `004L` follow-up runs show that read-only static retrieval is not yet earning its cost in this setup.
 - `005_memory_task_harness.py` is complete as the first chunk-local synthetic delayed-recall benchmark.
 - `006_full_attention_task_harness.py` is complete as the matching full-attention control for that benchmark.
+- `007_dense_latent_address_read.py` is complete as the first dense latent-address read path on the delayed-recall benchmark.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -68,13 +69,19 @@ That means the fixed-slot read-only line has done its job:
 - it established a fair chunk-local control,
 - and it gave a negative or at least weak result.
 
-That also means the task-harness milestone has now done its job:
+That also means the task-harness/control pair has now done its job:
 
-- the delayed-recall task runs end to end,
+- the delayed-recall task runs end to end under a chunk-local bottleneck,
 - the chunk-local baseline stays near chance,
 - and the full-attention control learns materially better on the same task.
 
-The next work should therefore move away from “static latent table” and toward “addressable latent memory,” but only now that the harness has a matching control.
+The dense latent-address read milestone has also done its job:
+
+- the address-space read path runs end to end,
+- and read-only address memory does not solve a task that requires per-example runtime storage.
+
+The next formal roadmap step is sparse neighborhood retrieval.
+The next likely behavioral step is writable values at fixed addresses, because the current benchmark requires the model to store facts that change per sequence.
 
 ## What This Path Is Trying To Learn
 
@@ -118,7 +125,7 @@ In plain terms:
 
 ## Milestones
 
-The first four milestones already exist in code and are part of the roadmap.
+The first seven milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -219,7 +226,6 @@ Exit criteria:
 - At least one tiny memory-sensitive task runs end to end.
 - `003` and later memory models can be compared on exactly the same task.
 - The task is simple enough that failure is interpretable.
-- A matching full-attention control beats the chunk-local baseline on the same task.
 
 Questions to answer:
 - Does the task truly require cross-chunk state?
@@ -227,13 +233,51 @@ Questions to answer:
 - What kind of memory should the model need to store?
 
 Status:
-- Complete via `memory_architecture/005_memory_task_harness.py` and `memory_architecture/006_full_attention_task_harness.py`.
+- Complete via `memory_architecture/005_memory_task_harness.py`.
 
 Main lesson:
-- The delayed-recall harness is now credible enough to use for memory experiments because the chunk-local baseline stays near chance while the full-attention control learns materially better.
-- The experiment script number `006` is still part of milestone 005 validation, not the roadmap's milestone 006 architecture step.
+- The delayed-recall harness creates a clear cross-chunk pressure point: the chunk-local baseline stays near chance.
+- Viewed alone, this still leaves one ambiguity: the task might be unlearnable or poorly specified rather than specifically blocked by chunk-local attention.
 
-### Milestone 006: Dense Latent Address Read Path
+### Milestone 006: Full-Attention Delayed-Recall Control
+Track: Evaluation control
+
+Goal:
+- Prove that the delayed-recall task from milestone 005 is learnable when the model has a direct cross-token information path.
+
+What changes:
+- Replace chunk-local self-attention with full causal self-attention over the whole sequence.
+
+What stays fixed:
+- Same synthetic delayed-recall data generator.
+- Same vocabulary and sequence length.
+- Same tiny model size.
+- Same answer-position-only objective.
+- No memory branch yet.
+
+Why this milestone matters:
+- It separates two different failure modes:
+  - the chunk-local model cannot access the stored facts,
+  - or the task itself is flawed or too hard for this model family.
+- If full attention learns while chunk-local attention stays near chance, the harness is a credible memory benchmark.
+
+Exit criteria:
+- A matching full-attention control beats the chunk-local baseline on the same delayed-recall task.
+- The result is reported with answer loss, answer accuracy, and wall-clock cost.
+
+Questions to answer:
+- Does unrestricted causal attention make the task materially easier?
+- Is the gap large enough to justify using this harness for future memory models?
+- Is the full-attention result an upper reference point or already close to saturation?
+
+Status:
+- Complete via `memory_architecture/006_full_attention_task_harness.py`.
+
+Main lesson:
+- The delayed-recall harness is credible enough to use for memory experiments because the chunk-local baseline stays near chance while the full-attention control learns materially better.
+- `006` is therefore not a memory architecture step. It is the control that makes the next memory architecture steps interpretable.
+
+### Milestone 007: Dense Latent Address Read Path
 Track: Addressing
 
 Goal:
@@ -256,14 +300,22 @@ Why this milestone matters:
 
 Exit criteria:
 - Retrieval runs correctly and is explainable in terms of address-space geometry.
-- The model can be compared honestly against `003` on the task harness from milestone 005.
+- The model can be compared honestly against the chunk-local and full-attention controls from milestones 005 and 006.
 
 Questions to answer:
 - Is dot-product similarity enough, or is an explicit distance kernel more interpretable here?
 - Should address dimension equal model dimension?
 - Does this behave differently from the earlier static key-value table in practice?
 
-### Milestone 007: Sparse Neighborhood Retrieval
+Status:
+- Complete via `memory_architecture/007_dense_latent_address_read.py`.
+
+Main lesson:
+- Dense latent-address reading is implemented, but read-only memory remains near the chunk-local baseline on delayed recall.
+- This is expected because the task's key-value facts are sampled per sequence and cannot be stored in static learned memory values.
+- The result supports moving toward either sparse retrieval as an addressing comparison or writable values as the first serious attempt to improve delayed-recall behavior.
+
+### Milestone 008: Sparse Neighborhood Retrieval
 Track: Addressing
 
 Goal:
@@ -288,7 +340,7 @@ Questions to answer:
 - Is the best neighborhood defined by top-k, thresholding, or a learned temperature?
 - How does sparsity affect gradient quality?
 
-### Milestone 008: Writable Values At Fixed Addresses
+### Milestone 009: Writable Values At Fixed Addresses
 Track: Writing
 
 Goal:
@@ -318,7 +370,7 @@ Questions to answer:
 - Should updates be additive, interpolated, or overwrite-based?
 - How selective should the write weights be?
 
-### Milestone 009: Address Updates Or Allocation
+### Milestone 010: Address Updates Or Allocation
 Track: Writing + Addressing
 
 Goal:
@@ -344,7 +396,7 @@ Questions to answer:
 - How should collisions be handled?
 - What does memory allocation mean when memory size is bounded?
 
-### Milestone 010: Longer-Context Pressure Test
+### Milestone 011: Longer-Context Pressure Test
 Track: Scaling
 
 Goal:
@@ -366,7 +418,7 @@ Questions to answer:
 - Does the address space stay usable at larger memory counts?
 - Does runtime scale acceptably?
 
-### Milestone 011: Natural-Text Evaluation Pass
+### Milestone 012: Natural-Text Evaluation Pass
 Track: External validity
 
 Goal:
@@ -388,7 +440,7 @@ Questions to answer:
 - Does success on synthetic tasks transfer at all?
 - Is the memory system learning semantic state or only benchmark tricks?
 
-### Milestone 012: Thesis-Grade Freeze
+### Milestone 013: Thesis-Grade Freeze
 Track: Research packaging
 
 Goal:
@@ -418,13 +470,12 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. dense latent address read path,
-2. sparse neighborhood retrieval,
-3. writable values at fixed addresses,
-4. address updates or allocation,
-5. longer-context pressure test,
-6. natural-text evaluation,
-7. thesis-grade freeze.
+1. milestone 008: sparse neighborhood retrieval,
+2. milestone 009: writable values at fixed addresses,
+3. milestone 010: address updates or allocation,
+4. milestone 011: longer-context pressure test,
+5. milestone 012: natural-text evaluation,
+6. milestone 013: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
