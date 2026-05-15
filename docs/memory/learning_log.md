@@ -2,7 +2,7 @@
 
 Runs recorded through 2026-05-15.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, and finally the first dense latent-address read path.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, and finally the first writable fixed-address memory run.
 
 ## Summary
 
@@ -17,6 +17,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-005 | [`memory_architecture/005_memory_task_harness.py`](../../memory_architecture/005_memory_task_harness.py) | 2000 | 2.7748 | 2.7865 | 142.00 |
 | M-006 | [`memory_architecture/006_full_attention_task_harness.py`](../../memory_architecture/006_full_attention_task_harness.py) | 2000 | 1.4718 | 1.4676 | 324.00 |
 | M-007 | [`memory_architecture/007_dense_latent_address_read.py`](../../memory_architecture/007_dense_latent_address_read.py) | 2000 | 2.7774 | 2.7890 | ~191 |
+| M-008 | [`memory_architecture/008_writable_fixed_address_memory.py`](../../memory_architecture/008_writable_fixed_address_memory.py) | 2000 | 1.5239 | 1.4868 | ~294 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -460,4 +461,60 @@ step=1400 batch_answer_loss=2.8799 eval_answer_loss=2.8416 eval_answer_accuracy=
 step=1600 batch_answer_loss=2.7509 eval_answer_loss=2.8029 eval_answer_accuracy=0.0762
 step=1800 batch_answer_loss=2.8519 eval_answer_loss=2.8505 eval_answer_accuracy=0.0518
 step=2000 batch_answer_loss=2.7774 eval_answer_loss=2.7890 eval_answer_accuracy=0.0698
+```
+
+## M-008 Writable Fixed-Address Memory
+
+- Script: [`memory_architecture/008_writable_fixed_address_memory.py`](../../memory_architecture/008_writable_fixed_address_memory.py)
+- Date: `2026-05-15`
+- Task: synthetic delayed key-value recall across chunk boundaries
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Address dim: `32`
+- Memory slots: `64`
+- Read temperature: `0.25`
+- Write temperature: `0.25`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk plus dense latent address reads in every decoder block
+- Addressing mechanism: fixed learned memory addresses shared across the batch
+- Memory write mechanism: per-example runtime memory values initialized to zero, updated after each chunk through token-level interpolated writes
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `4`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Objective: next-token cross-entropy only at the answer position
+- Final train loss: `1.5239`
+- Final validation loss: `1.4868`
+- Final validation answer accuracy: `0.2480`
+- Wall-clock time: approximately `294s` based on the tool session duration
+- Raw run log artifact: [`artifacts/memory_architecture_008_writable_fixed_address_memory_run_2026-05-15.log`](../../artifacts/memory_architecture_008_writable_fixed_address_memory_run_2026-05-15.log)
+- Note: this is the first positive memory-architecture result on the delayed-recall harness.
+- Note: compared with the chunk-local no-memory baseline `M-005`, answer accuracy improves from `0.0698` to `0.2480`.
+- Note: compared with read-only dense address memory `M-007`, answer accuracy improves from `0.0698` to `0.2480` with the same fixed-address read idea plus runtime writes.
+- Note: the result is close to the full-attention control `M-006` (`0.2505`), suggesting that writable per-example memory recovers most of the cross-chunk information path on this task.
+- Note: the result supports the roadmap decision to treat writing as the main mechanism and sparse retrieval as a later addressing and efficiency comparison.
+
+Logged checkpoints:
+
+```text
+step=1 batch_answer_loss=45.0865 eval_answer_loss=13.4784 eval_answer_accuracy=0.0000
+step=200 batch_answer_loss=2.8383 eval_answer_loss=2.8186 eval_answer_accuracy=0.0845
+step=400 batch_answer_loss=2.5533 eval_answer_loss=2.5778 eval_answer_accuracy=0.1533
+step=600 batch_answer_loss=1.9067 eval_answer_loss=1.8815 eval_answer_accuracy=0.2358
+step=800 batch_answer_loss=1.5826 eval_answer_loss=1.6764 eval_answer_accuracy=0.2407
+step=1000 batch_answer_loss=1.6539 eval_answer_loss=1.7469 eval_answer_accuracy=0.2324
+step=1200 batch_answer_loss=1.4782 eval_answer_loss=1.6020 eval_answer_accuracy=0.2500
+step=1400 batch_answer_loss=1.5696 eval_answer_loss=1.5729 eval_answer_accuracy=0.2339
+step=1600 batch_answer_loss=1.4170 eval_answer_loss=1.5455 eval_answer_accuracy=0.2373
+step=1800 batch_answer_loss=1.5138 eval_answer_loss=1.5430 eval_answer_accuracy=0.2417
+step=2000 batch_answer_loss=1.5239 eval_answer_loss=1.4868 eval_answer_accuracy=0.2480
 ```
