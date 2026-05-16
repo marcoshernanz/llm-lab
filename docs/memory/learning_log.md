@@ -1,8 +1,8 @@
 # Memory Architecture Learning Log
 
-Runs recorded through 2026-05-15.
+Runs recorded through 2026-05-16.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, and finally the first writable fixed-address memory run.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, and finally the first sparse top-k retrieval run over writable memory.
 
 ## Summary
 
@@ -18,6 +18,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-006 | [`memory_architecture/006_full_attention_task_harness.py`](../../memory_architecture/006_full_attention_task_harness.py) | 2000 | 1.4718 | 1.4676 | 324.00 |
 | M-007 | [`memory_architecture/007_dense_latent_address_read.py`](../../memory_architecture/007_dense_latent_address_read.py) | 2000 | 2.7774 | 2.7890 | ~191 |
 | M-008 | [`memory_architecture/008_writable_fixed_address_memory.py`](../../memory_architecture/008_writable_fixed_address_memory.py) | 2000 | 1.5239 | 1.4868 | ~294 |
+| M-009 | [`memory_architecture/009_sparse_neighborhood_retrieval.py`](../../memory_architecture/009_sparse_neighborhood_retrieval.py) | 2000 | 1.5324 | 1.4789 | ~589 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -517,4 +518,61 @@ step=1400 batch_answer_loss=1.5696 eval_answer_loss=1.5729 eval_answer_accuracy=
 step=1600 batch_answer_loss=1.4170 eval_answer_loss=1.5455 eval_answer_accuracy=0.2373
 step=1800 batch_answer_loss=1.5138 eval_answer_loss=1.5430 eval_answer_accuracy=0.2417
 step=2000 batch_answer_loss=1.5239 eval_answer_loss=1.4868 eval_answer_accuracy=0.2480
+```
+
+## M-009 Sparse Neighborhood Retrieval
+
+- Script: [`memory_architecture/009_sparse_neighborhood_retrieval.py`](../../memory_architecture/009_sparse_neighborhood_retrieval.py)
+- Date: `2026-05-16`
+- Task: synthetic delayed key-value recall across chunk boundaries
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Address dim: `32`
+- Memory slots: `64`
+- Top-k memory reads: `8`
+- Read temperature: `0.25`
+- Write temperature: `0.25`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk plus sparse top-k latent address reads in every decoder block
+- Addressing mechanism: fixed learned memory addresses shared across the batch
+- Memory write mechanism: same per-example runtime memory write mechanism as `M-008`
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `4`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Objective: next-token cross-entropy only at the answer position
+- Final train loss: `1.5324`
+- Final validation loss: `1.4789`
+- Final validation answer accuracy: `0.2510`
+- Wall-clock time: approximately `589s` based on the tool session duration
+- Raw run log artifact: [`artifacts/memory_architecture_009_sparse_neighborhood_retrieval_run_2026-05-16.log`](../../artifacts/memory_architecture_009_sparse_neighborhood_retrieval_run_2026-05-16.log)
+- Note: this run reads only `8` of `64` memory slots per token.
+- Note: final answer accuracy is essentially tied with dense writable memory `M-008` (`0.2480`) and the full-attention control `M-006` (`0.2505`).
+- Note: this supports the idea that the learned address geometry is already local enough for top-k retrieval on this small benchmark.
+- Note: the naive sparse top-k implementation is slower than dense retrieval at this scale, so this is a behavioral win but not yet a runtime win.
+- Note: the next mechanism question should be address updates or allocation, not another read-only retrieval variant.
+
+Logged checkpoints:
+
+```text
+step=1 batch_answer_loss=45.8409 eval_answer_loss=14.3480 eval_answer_accuracy=0.0000
+step=200 batch_answer_loss=2.8002 eval_answer_loss=2.7864 eval_answer_accuracy=0.0845
+step=400 batch_answer_loss=1.7162 eval_answer_loss=1.8900 eval_answer_accuracy=0.2500
+step=600 batch_answer_loss=1.6753 eval_answer_loss=1.6685 eval_answer_accuracy=0.2451
+step=800 batch_answer_loss=1.5262 eval_answer_loss=1.5686 eval_answer_accuracy=0.2554
+step=1000 batch_answer_loss=1.6235 eval_answer_loss=1.6478 eval_answer_accuracy=0.2417
+step=1200 batch_answer_loss=1.4243 eval_answer_loss=1.5872 eval_answer_accuracy=0.2397
+step=1400 batch_answer_loss=1.5775 eval_answer_loss=1.5374 eval_answer_accuracy=0.2349
+step=1600 batch_answer_loss=1.4107 eval_answer_loss=1.5123 eval_answer_accuracy=0.2422
+step=1800 batch_answer_loss=1.4641 eval_answer_loss=1.5311 eval_answer_accuracy=0.2368
+step=2000 batch_answer_loss=1.5324 eval_answer_loss=1.4789 eval_answer_accuracy=0.2510
 ```
