@@ -52,7 +52,7 @@ This is the path that is most relevant to:
 
 ## Current Status
 
-As of 2026-05-15:
+As of 2026-05-16:
 
 - `001_char_decoder.py` is complete as the clean vanilla baseline.
 - `002_memory_retrieval.py` is complete as the static retrieval scaffold on top of full-sequence attention.
@@ -63,6 +63,7 @@ As of 2026-05-15:
 - `006_full_attention_task_harness.py` is complete as the matching full-attention control for that benchmark.
 - `007_dense_latent_address_read.py` is complete as the first dense latent-address read path on the delayed-recall benchmark.
 - `008_writable_fixed_address_memory.py` is complete as the first writable fixed-address memory model on the delayed-recall benchmark.
+- `009_sparse_neighborhood_retrieval.py` is complete as the first sparse top-k read model over writable memory.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -87,7 +88,13 @@ The writable fixed-address milestone gives the first strong positive result:
 - answer accuracy jumps from the near-chance `005`/`007` level to about the full-attention-control level,
 - and the result shows that the missing ingredient was runtime writing, not more static read capacity.
 
-The next roadmap step is sparse neighborhood retrieval as an addressing and efficiency comparison against the dense writable read path.
+The sparse neighborhood milestone shows that the read path can be made local without losing the behavioral gain:
+
+- each token reads only `8` of `64` memory slots,
+- final answer accuracy stays essentially tied with dense writable memory and full attention,
+- and the naive sparse implementation is slower at this scale, so the win is mechanistic rather than computational for now.
+
+The next roadmap step is address updates or allocation.
 
 ## What This Path Is Trying To Learn
 
@@ -131,7 +138,7 @@ In plain terms:
 
 ## Milestones
 
-The first eight milestones already exist in code and are part of the roadmap.
+The first nine milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -409,6 +416,15 @@ Questions to answer:
 - How does sparsity affect gradient quality?
 - Does sparse retrieval preserve any behavioral gain from writable dense memory?
 
+Status:
+- Complete via `memory_architecture/009_sparse_neighborhood_retrieval.py`.
+
+Main lesson:
+- Sparse top-k reads preserve the writable-memory behavior on the delayed-recall harness.
+- With `8` reads out of `64` slots, final answer accuracy reaches `0.2510`, essentially tied with dense writable memory `M-008` (`0.2480`) and the full-attention control `M-006` (`0.2505`).
+- The naive sparse top-k implementation is slower than dense retrieval at this small scale, so the current result is about address locality, not runtime efficiency.
+- The next useful mechanism question is whether memory addresses can be updated or allocated, because fixed addresses are now doing enough to justify testing address dynamics.
+
 ### Milestone 010: Address Updates Or Allocation
 Track: Writing + Addressing
 
@@ -509,11 +525,10 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 009: sparse neighborhood retrieval,
-2. milestone 010: address updates or allocation,
-3. milestone 011: longer-context pressure test,
-4. milestone 012: natural-text evaluation,
-5. milestone 013: thesis-grade freeze.
+1. milestone 010: address updates or allocation,
+2. milestone 011: longer-context pressure test,
+3. milestone 012: natural-text evaluation,
+4. milestone 013: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
@@ -522,6 +537,7 @@ It keeps the research disciplined:
 - then prove latent-space reading,
 - then prove writing,
 - then compare sparse retrieval once there is useful runtime memory,
+- then test whether addresses can move or be allocated,
 - then test scale,
 - then package the result honestly.
 
