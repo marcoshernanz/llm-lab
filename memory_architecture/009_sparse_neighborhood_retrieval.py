@@ -118,23 +118,10 @@ class SparseLatentAddressRead(nn.Module):
         )
         read_weights = F.softmax(top_scores, dim=-1)
 
-        batch_size, chunk_size, _ = x.shape
-        expanded_memory_values = memory_values.unsqueeze(1).expand(
-            batch_size,
-            chunk_size,
-            NUM_MEMORY_SLOTS,
-            EMBEDDING_DIM,
-        )
-        selected_memory_values = expanded_memory_values.gather(
-            dim=2,
-            index=top_indices.unsqueeze(-1).expand(
-                batch_size,
-                chunk_size,
-                TOP_K_MEMORY_READS,
-                EMBEDDING_DIM,
-            ),
-        )
-        read_values = (read_weights.unsqueeze(-1) * selected_memory_values).sum(dim=2)
+        batch_size, _, _ = x.shape
+        batch_indices = torch.arange(batch_size, device=x.device).view(batch_size, 1, 1)
+        selected_memory_values = memory_values[batch_indices, top_indices]
+        read_values = (read_weights[..., None] * selected_memory_values).sum(dim=2)
         return self.out_proj(read_values)
 
 
@@ -167,12 +154,10 @@ class FixedAddressMemoryWrite(nn.Module):
         value_updates = self.value_proj(x)
         slot_update_weight = write_weights.sum(dim=1)
         slot_update_sum = write_weights.transpose(1, 2) @ value_updates
-        slot_updates = slot_update_sum / slot_update_weight.clamp_min(1e-6).unsqueeze(-1)
+        slot_updates = slot_update_sum / slot_update_weight.clamp_min(1e-6)[..., None]
         slot_gates = 1.0 - torch.exp(-slot_update_weight)
 
-        return memory_values * (
-            1.0 - slot_gates.unsqueeze(-1)
-        ) + slot_updates * slot_gates.unsqueeze(-1)
+        return torch.lerp(memory_values, slot_updates, slot_gates[..., None])
 
 
 class FeedForward(nn.Module):
