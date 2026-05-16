@@ -1,4 +1,4 @@
-"""Memory architecture experiment 008: writable fixed-address memory on delayed recall."""
+"""Memory architecture experiment 009: sparse memory reads on delayed recall."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
 ADDRESS_DIM = 32
 NUM_MEMORY_SLOTS = 64
+TOP_K_MEMORY_READS = 8
 READ_TEMPERATURE = 0.25
 WRITE_TEMPERATURE = 0.25
 HIDDEN_DIM = 256
@@ -89,8 +90,8 @@ class CausalSelfAttention(nn.Module):
         return self.out_proj(attended_values)
 
 
-class DenseLatentAddressRead(nn.Module):
-    """Read runtime memory values by comparing token queries to latent addresses."""
+class SparseLatentAddressRead(nn.Module):
+    """Read runtime memory values from each token's nearest address slots."""
 
     def __init__(self):
         """Create the token-to-address query and output projections."""
@@ -104,14 +105,36 @@ class DenseLatentAddressRead(nn.Module):
         memory_addresses: torch.Tensor,
         memory_values: torch.Tensor,
     ) -> torch.Tensor:
-        """Return memory read residuals for one chunk."""
+        """Return sparse top-k memory read residuals for one chunk."""
         queries = F.normalize(self.q_proj(x), dim=-1)
         addresses = F.normalize(memory_addresses, dim=-1)
 
         read_scores = queries @ addresses.T
         read_scores = read_scores / READ_TEMPERATURE
-        read_weights = F.softmax(read_scores, dim=-1)
-        read_values = read_weights @ memory_values
+        top_scores, top_indices = torch.topk(
+            read_scores,
+            k=TOP_K_MEMORY_READS,
+            dim=-1,
+        )
+        read_weights = F.softmax(top_scores, dim=-1)
+
+        batch_size, chunk_size, _ = x.shape
+        expanded_memory_values = memory_values.unsqueeze(1).expand(
+            batch_size,
+            chunk_size,
+            NUM_MEMORY_SLOTS,
+            EMBEDDING_DIM,
+        )
+        selected_memory_values = expanded_memory_values.gather(
+            dim=2,
+            index=top_indices.unsqueeze(-1).expand(
+                batch_size,
+                chunk_size,
+                TOP_K_MEMORY_READS,
+                EMBEDDING_DIM,
+            ),
+        )
+        read_values = (read_weights.unsqueeze(-1) * selected_memory_values).sum(dim=2)
         return self.out_proj(read_values)
 
 
@@ -191,7 +214,7 @@ class DecoderBlock(nn.Module):
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
         self.memory_read_norm = RMSNorm()
-        self.memory_read = DenseLatentAddressRead()
+        self.memory_read = SparseLatentAddressRead()
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
 
@@ -375,7 +398,7 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tens
 
 
 def main() -> None:
-    """Train the writable fixed-address memory model on delayed key-value recall."""
+    """Train the sparse writable-memory model on delayed key-value recall."""
     random.seed(SEED)
     torch.manual_seed(SEED)
 
