@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" fill="none">
+  <rect width="900" height="400" fill="white"/>
+  <line x1="64" y1="24" x2="64" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <line x1="64" y1="356" x2="876" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <text x="64" y="16" fill="#24292f" font-family="monospace" font-size="14">Memory experiment loss vs. step</text>
+  <text x="64" y="388" fill="#57606a" font-family="monospace" font-size="12">step 1 to 2000</text>
+  <text x="12" y="28" fill="#57606a" font-family="monospace" font-size="12">45.6868</text>
+  <text x="12" y="360" fill="#57606a" font-family="monospace" font-size="12">2.6886</text>
+  <polyline points="64.00,24.00 144.83,355.11 226.08,355.46 307.32,355.64 388.56,355.73 469.80,355.78 551.04,355.99 632.28,355.87 713.52,355.87 794.76,355.82 876.00,356.00" stroke="#2563eb" stroke-width="2" fill="none"/>
+  <polyline points="64.00,237.22 144.83,355.27 226.08,355.37 307.32,355.73 388.56,355.82 469.80,355.75 551.04,355.91 632.28,355.93 713.52,355.92 794.76,355.92 876.00,355.96" stroke="#dc2626" stroke-width="2" fill="none"/>
+  <circle cx="876.00" cy="356.00" r="3" fill="#2563eb"/>
+  <circle cx="876.00" cy="355.96" r="3" fill="#dc2626"/>
+  <line x1="585" y1="14" x2="667" y2="14" stroke="#2563eb" stroke-width="2"/>
+  <text x="675" y="18" fill="#57606a" font-family="monospace" font-size="12">batch answer loss</text>
+  <line x1="585" y1="34" x2="667" y2="34" stroke="#dc2626" stroke-width="2"/>
+  <text x="675" y="38" fill="#57606a" font-family="monospace" font-size="12">eval answer loss</text>
+</svg>

@@ -2,7 +2,7 @@
 
 Runs recorded through 2026-05-17.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, and the first runtime-address-state control.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, the first runtime-address-state control, and the first bounded address-drift run.
 
 ## Summary
 
@@ -19,10 +19,11 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-007 | [`memory_architecture/007_dense_latent_address_read.py`](../../memory_architecture/007_dense_latent_address_read.py) | 2000 | 2.7774 | 2.7890 | ~191 |
 | M-008 | [`memory_architecture/008_writable_fixed_address_memory.py`](../../memory_architecture/008_writable_fixed_address_memory.py) | 2000 | 1.5239 | 1.4868 | ~294 |
 | M-009 | [`memory_architecture/009_sparse_neighborhood_retrieval.py`](../../memory_architecture/009_sparse_neighborhood_retrieval.py) | 2000 | 1.5324 | 1.4789 | ~589 |
-| M-010 | [`memory_architecture/010_binding_sensitive_task_harness.py`](../../memory_architecture/010_binding_sensitive_task_harness.py) | 2000 | 2.6886 | 2.6931 | ~330 |
-| M-011 | [`memory_architecture/011_full_attention_binding_sensitive_task_harness.py`](../../memory_architecture/011_full_attention_binding_sensitive_task_harness.py) | 2000 | 1.3798 | 1.3752 | ~210 |
-| M-012 | [`memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py`](../../memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py) | 2000 | 1.8869 | 1.8672 | ~460 |
-| M-013 | [`memory_architecture/013_runtime_address_state_control.py`](../../memory_architecture/013_runtime_address_state_control.py) | 2000 | 1.6760 | 1.6433 | ~490 |
+| M-010 | [`memory_architecture/010_binding_sensitive_task_harness.py`](../../memory_architecture/010_binding_sensitive_task_harness.py) | 2000 | 2.6886 | 2.6931 | 375 |
+| M-011 | [`memory_architecture/011_full_attention_binding_sensitive_task_harness.py`](../../memory_architecture/011_full_attention_binding_sensitive_task_harness.py) | 2000 | 1.3586 | 1.3634 | 437 |
+| M-012 | [`memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py`](../../memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py) | 2000 | 1.6581 | 1.6525 | 1043 |
+| M-013 | [`memory_architecture/013_runtime_address_state_control.py`](../../memory_architecture/013_runtime_address_state_control.py) | 2000 | 1.6848 | 1.6620 | 581 |
+| M-014 | [`memory_architecture/014_bounded_address_drift.py`](../../memory_architecture/014_bounded_address_drift.py) | 2000 | 1.6322 | 1.6022 | 630 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -612,29 +613,19 @@ step=2000 batch_answer_loss=1.5324 eval_answer_loss=1.4789 eval_answer_accuracy=
 - Final validation loss: `2.6931`
 - Final validation exact answer accuracy: `0.0715`
 - Final validation candidate-value accuracy: `0.4387`
-- Wall-clock time: approximately `330s` based on the tool session duration
-- Raw run log artifact: [`artifacts/memory_architecture_010_binding_sensitive_task_harness_run_2026-05-17.log`](../../artifacts/memory_architecture_010_binding_sensitive_task_harness_run_2026-05-17.log)
+- Wall-clock time: `375s`
+- Metric CSV artifact: [`metrics.csv`](../../artifacts/memory_experiments/010_binding_sensitive_task_harness/20260517_200258_026740/metrics.csv)
+- Loss curve artifact: [`loss_curve.svg`](../../artifacts/memory_experiments/010_binding_sensitive_task_harness/20260517_200258_026740/loss_curve.svg)
+- Accuracy curve artifact: [`accuracy_curve.svg`](../../artifacts/memory_experiments/010_binding_sensitive_task_harness/20260517_200258_026740/accuracy_curve.svg)
+
+![M-010 loss curve](../../artifacts/memory_experiments/010_binding_sensitive_task_harness/20260517_200258_026740/loss_curve.svg)
+
+![M-010 accuracy curve](../../artifacts/memory_experiments/010_binding_sensitive_task_harness/20260517_200258_026740/accuracy_curve.svg)
+
 - Note: this script is intentionally copied from `M-005` and modified in place, so the diff shows the benchmark changes clearly.
 - Note: every stored key is queried once, giving `8` answer positions per sequence instead of `1`.
 - Note: exact answer accuracy stays near random value-token behavior and below the `0.1250` candidate-guessing baseline.
 - Note: this confirms that the multi-query suffix does not give the chunk-local model a shortcut.
-
-Logged checkpoints:
-
-```text
-candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
-step=1 batch_answer_loss=45.6868 eval_answer_loss=18.0727 eval_exact_answer_accuracy=0.0082 eval_candidate_value_accuracy=0.0740
-step=200 batch_answer_loss=2.8036 eval_answer_loss=2.7825 eval_exact_answer_accuracy=0.0642 eval_candidate_value_accuracy=0.4727
-step=400 batch_answer_loss=2.7591 eval_answer_loss=2.7705 eval_exact_answer_accuracy=0.0707 eval_candidate_value_accuracy=0.4458
-step=600 batch_answer_loss=2.7346 eval_answer_loss=2.7238 eval_exact_answer_accuracy=0.0662 eval_candidate_value_accuracy=0.4401
-step=800 batch_answer_loss=2.7233 eval_answer_loss=2.7116 eval_exact_answer_accuracy=0.0678 eval_candidate_value_accuracy=0.4389
-step=1000 batch_answer_loss=2.7168 eval_answer_loss=2.7210 eval_exact_answer_accuracy=0.0697 eval_candidate_value_accuracy=0.4384
-step=1200 batch_answer_loss=2.6900 eval_answer_loss=2.6997 eval_exact_answer_accuracy=0.0693 eval_candidate_value_accuracy=0.4415
-step=1400 batch_answer_loss=2.7060 eval_answer_loss=2.6974 eval_exact_answer_accuracy=0.0669 eval_candidate_value_accuracy=0.4410
-step=1600 batch_answer_loss=2.7054 eval_answer_loss=2.6984 eval_exact_answer_accuracy=0.0667 eval_candidate_value_accuracy=0.4390
-step=1800 batch_answer_loss=2.7113 eval_answer_loss=2.6992 eval_exact_answer_accuracy=0.0701 eval_candidate_value_accuracy=0.4359
-step=2000 batch_answer_loss=2.6886 eval_answer_loss=2.6931 eval_exact_answer_accuracy=0.0715 eval_candidate_value_accuracy=0.4387
-```
 
 ## M-011 Multi-Query Full-Attention Binding Control
 
@@ -662,32 +653,22 @@ step=2000 batch_answer_loss=2.6886 eval_answer_loss=2.6931 eval_exact_answer_acc
 - Random-value exact-answer baseline: `0.0625`
 - Random-value candidate-value baseline: `0.5000`
 - Metrics: exact answer accuracy and candidate-value accuracy over all answer positions
-- Final train loss: `1.3798`
-- Final validation loss: `1.3752`
-- Final validation exact answer accuracy: `0.3431`
+- Final train loss: `1.3586`
+- Final validation loss: `1.3634`
+- Final validation exact answer accuracy: `0.3384`
 - Final validation candidate-value accuracy: `1.0000`
-- Wall-clock time: approximately `210s` based on the tool session duration
-- Raw run log artifact: [`artifacts/memory_architecture_011_full_attention_binding_sensitive_task_harness_run_2026-05-17.log`](../../artifacts/memory_architecture_011_full_attention_binding_sensitive_task_harness_run_2026-05-17.log)
+- Wall-clock time: `437s`
+- Metric CSV artifact: [`metrics.csv`](../../artifacts/memory_experiments/011_full_attention_binding_sensitive_task_harness/20260517_201014_485698/metrics.csv)
+- Loss curve artifact: [`loss_curve.svg`](../../artifacts/memory_experiments/011_full_attention_binding_sensitive_task_harness/20260517_201014_485698/loss_curve.svg)
+- Accuracy curve artifact: [`accuracy_curve.svg`](../../artifacts/memory_experiments/011_full_attention_binding_sensitive_task_harness/20260517_201014_485698/accuracy_curve.svg)
+
+![M-011 loss curve](../../artifacts/memory_experiments/011_full_attention_binding_sensitive_task_harness/20260517_201014_485698/loss_curve.svg)
+
+![M-011 accuracy curve](../../artifacts/memory_experiments/011_full_attention_binding_sensitive_task_harness/20260517_201014_485698/accuracy_curve.svg)
+
 - Note: this script is intentionally copied from `M-006` and modified with the same multi-query benchmark changes used in `M-010`.
 - Note: full attention is a positive exact-binding control on this benchmark.
-- Note: exact answer accuracy is clearly above the `0.1250` candidate-guessing baseline.
-
-Logged checkpoints:
-
-```text
-candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
-step=1 batch_answer_loss=46.7399 eval_answer_loss=21.0576 eval_exact_answer_accuracy=0.0076 eval_candidate_value_accuracy=0.0615
-step=200 batch_answer_loss=2.7849 eval_answer_loss=2.7445 eval_exact_answer_accuracy=0.1039 eval_candidate_value_accuracy=0.8438
-step=400 batch_answer_loss=1.8739 eval_answer_loss=1.8553 eval_exact_answer_accuracy=0.2838 eval_candidate_value_accuracy=0.9939
-step=600 batch_answer_loss=1.5662 eval_answer_loss=1.5345 eval_exact_answer_accuracy=0.3220 eval_candidate_value_accuracy=0.9996
-step=800 batch_answer_loss=1.4778 eval_answer_loss=1.4721 eval_exact_answer_accuracy=0.3357 eval_candidate_value_accuracy=1.0000
-step=1000 batch_answer_loss=1.3725 eval_answer_loss=1.4180 eval_exact_answer_accuracy=0.3402 eval_candidate_value_accuracy=1.0000
-step=1200 batch_answer_loss=1.4212 eval_answer_loss=1.4091 eval_exact_answer_accuracy=0.3388 eval_candidate_value_accuracy=1.0000
-step=1400 batch_answer_loss=1.3829 eval_answer_loss=1.3969 eval_exact_answer_accuracy=0.3366 eval_candidate_value_accuracy=1.0000
-step=1600 batch_answer_loss=1.4018 eval_answer_loss=1.3843 eval_exact_answer_accuracy=0.3389 eval_candidate_value_accuracy=1.0000
-step=1800 batch_answer_loss=1.3978 eval_answer_loss=1.3963 eval_exact_answer_accuracy=0.3411 eval_candidate_value_accuracy=1.0000
-step=2000 batch_answer_loss=1.3798 eval_answer_loss=1.3752 eval_exact_answer_accuracy=0.3431 eval_candidate_value_accuracy=1.0000
-```
+- Note: exact answer accuracy remains clearly above the `0.1250` candidate-guessing baseline.
 
 ## M-012 Sparse Writable Memory On Multi-Query Binding
 
@@ -723,32 +704,22 @@ step=2000 batch_answer_loss=1.3798 eval_answer_loss=1.3752 eval_exact_answer_acc
 - Random-value exact-answer baseline: `0.0625`
 - Random-value candidate-value baseline: `0.5000`
 - Metrics: exact answer accuracy and candidate-value accuracy over all answer positions
-- Final train loss: `1.8869`
-- Final validation loss: `1.8672`
-- Final validation exact answer accuracy: `0.2134`
+- Final train loss: `1.6581`
+- Final validation loss: `1.6525`
+- Final validation exact answer accuracy: `0.2384`
 - Final validation candidate-value accuracy: `1.0000`
-- Wall-clock time: approximately `460s` based on the tool session duration
-- Raw run log artifact: [`artifacts/memory_architecture_012_sparse_memory_binding_sensitive_task_harness_run_2026-05-17.log`](../../artifacts/memory_architecture_012_sparse_memory_binding_sensitive_task_harness_run_2026-05-17.log)
+- Wall-clock time: `1043s`
+- Metric CSV artifact: [`metrics.csv`](../../artifacts/memory_experiments/012_sparse_memory_binding_sensitive_task_harness/20260517_202737_990016/metrics.csv)
+- Loss curve artifact: [`loss_curve.svg`](../../artifacts/memory_experiments/012_sparse_memory_binding_sensitive_task_harness/20260517_202737_990016/loss_curve.svg)
+- Accuracy curve artifact: [`accuracy_curve.svg`](../../artifacts/memory_experiments/012_sparse_memory_binding_sensitive_task_harness/20260517_202737_990016/accuracy_curve.svg)
+
+![M-012 loss curve](../../artifacts/memory_experiments/012_sparse_memory_binding_sensitive_task_harness/20260517_202737_990016/loss_curve.svg)
+
+![M-012 accuracy curve](../../artifacts/memory_experiments/012_sparse_memory_binding_sensitive_task_harness/20260517_202737_990016/accuracy_curve.svg)
+
 - Note: this script is intentionally copied from `M-009` and modified with the same multi-query benchmark changes used in `M-010`.
 - Note: sparse writable memory beats the chunk-local baseline and candidate-guessing baseline on exact binding.
-- Note: it remains below the full-attention control, so the memory mechanism is useful but still loses binding information.
-
-Logged checkpoints:
-
-```text
-candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
-step=1 batch_answer_loss=43.5510 eval_answer_loss=17.9221 eval_exact_answer_accuracy=0.0233 eval_candidate_value_accuracy=0.1960
-step=200 batch_answer_loss=2.8037 eval_answer_loss=2.7766 eval_exact_answer_accuracy=0.0737 eval_candidate_value_accuracy=0.5126
-step=400 batch_answer_loss=2.7315 eval_answer_loss=2.7217 eval_exact_answer_accuracy=0.0860 eval_candidate_value_accuracy=0.5445
-step=600 batch_answer_loss=2.2053 eval_answer_loss=2.1998 eval_exact_answer_accuracy=0.1539 eval_candidate_value_accuracy=0.9807
-step=800 batch_answer_loss=1.9606 eval_answer_loss=1.9629 eval_exact_answer_accuracy=0.1580 eval_candidate_value_accuracy=1.0000
-step=1000 batch_answer_loss=1.9206 eval_answer_loss=1.9274 eval_exact_answer_accuracy=0.1612 eval_candidate_value_accuracy=1.0000
-step=1200 batch_answer_loss=1.9247 eval_answer_loss=1.9076 eval_exact_answer_accuracy=0.1575 eval_candidate_value_accuracy=1.0000
-step=1400 batch_answer_loss=1.9171 eval_answer_loss=1.8975 eval_exact_answer_accuracy=0.1580 eval_candidate_value_accuracy=1.0000
-step=1600 batch_answer_loss=1.8920 eval_answer_loss=1.9112 eval_exact_answer_accuracy=0.1597 eval_candidate_value_accuracy=1.0000
-step=1800 batch_answer_loss=1.8932 eval_answer_loss=1.8955 eval_exact_answer_accuracy=0.1633 eval_candidate_value_accuracy=1.0000
-step=2000 batch_answer_loss=1.8869 eval_answer_loss=1.8672 eval_exact_answer_accuracy=0.2134 eval_candidate_value_accuracy=1.0000
-```
+- Note: the refreshed CSV-backed run lands close to `M-013`, confirming that the runtime-address control is not a materially different mechanism by itself.
 
 ## M-013 Runtime Address State Control
 
@@ -785,31 +756,78 @@ step=2000 batch_answer_loss=1.8869 eval_answer_loss=1.8672 eval_exact_answer_acc
 - Random-value exact-answer baseline: `0.0625`
 - Random-value candidate-value baseline: `0.5000`
 - Metrics: exact answer accuracy and candidate-value accuracy over all answer positions
-- Final train loss: `1.6760`
-- Final validation loss: `1.6433`
-- Final validation exact answer accuracy: `0.2380`
+- Final train loss: `1.6848`
+- Final validation loss: `1.6620`
+- Final validation exact answer accuracy: `0.2395`
 - Final validation candidate-value accuracy: `1.0000`
-- Wall-clock time: approximately `490s` based on the tool session duration
-- Raw run log artifact: [`artifacts/memory_architecture_013_runtime_address_state_control_run_2026-05-17.log`](../../artifacts/memory_architecture_013_runtime_address_state_control_run_2026-05-17.log)
+- Wall-clock time: `581s`
+- Metric CSV artifact: [`metrics.csv`](../../artifacts/memory_experiments/013_runtime_address_state_control/20260517_203718_539713/metrics.csv)
+- Loss curve artifact: [`loss_curve.svg`](../../artifacts/memory_experiments/013_runtime_address_state_control/20260517_203718_539713/loss_curve.svg)
+- Accuracy curve artifact: [`accuracy_curve.svg`](../../artifacts/memory_experiments/013_runtime_address_state_control/20260517_203718_539713/accuracy_curve.svg)
+
+![M-013 loss curve](../../artifacts/memory_experiments/013_runtime_address_state_control/20260517_203718_539713/loss_curve.svg)
+
+![M-013 accuracy curve](../../artifacts/memory_experiments/013_runtime_address_state_control/20260517_203718_539713/accuracy_curve.svg)
+
 - Note: this script is intentionally copied from `M-012` so the only mechanism change is address state representation.
 - Note: reads and writes now consume batched runtime addresses instead of a global `[memory_slots, address_dim]` table.
-- Note: the runtime addresses are created from the learned base table at the start of each chunk forward pass and are not updated yet.
-- Note: final exact answer accuracy is close to, and slightly above, `M-012` (`0.2380` vs `0.2134`), so the address-state API change does not collapse behavior.
+- Note: final exact answer accuracy is effectively tied with refreshed `M-012` (`0.2395` vs `0.2384`), so the address-state API change does not collapse or materially alter behavior.
 - Note: this gives a clean starting point for `M-014`, where the same runtime address tensor can be updated deliberately.
 
-Logged checkpoints:
+## M-014 Bounded Address Drift
 
-```text
-candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
-step=1 batch_answer_loss=43.5510 eval_answer_loss=17.9221 eval_exact_answer_accuracy=0.0233 eval_candidate_value_accuracy=0.1960
-step=200 batch_answer_loss=2.8039 eval_answer_loss=2.7767 eval_exact_answer_accuracy=0.0744 eval_candidate_value_accuracy=0.5116
-step=400 batch_answer_loss=2.7299 eval_answer_loss=2.7213 eval_exact_answer_accuracy=0.0859 eval_candidate_value_accuracy=0.5474
-step=600 batch_answer_loss=2.1994 eval_answer_loss=2.2070 eval_exact_answer_accuracy=0.1552 eval_candidate_value_accuracy=0.9777
-step=800 batch_answer_loss=2.0307 eval_answer_loss=2.0146 eval_exact_answer_accuracy=0.1580 eval_candidate_value_accuracy=1.0000
-step=1000 batch_answer_loss=1.9180 eval_answer_loss=1.9240 eval_exact_answer_accuracy=0.1565 eval_candidate_value_accuracy=1.0000
-step=1200 batch_answer_loss=1.9233 eval_answer_loss=1.9176 eval_exact_answer_accuracy=0.1573 eval_candidate_value_accuracy=1.0000
-step=1400 batch_answer_loss=1.9163 eval_answer_loss=1.9134 eval_exact_answer_accuracy=0.1598 eval_candidate_value_accuracy=1.0000
-step=1600 batch_answer_loss=1.9127 eval_answer_loss=1.9113 eval_exact_answer_accuracy=0.1602 eval_candidate_value_accuracy=1.0000
-step=1800 batch_answer_loss=1.7783 eval_answer_loss=1.7774 eval_exact_answer_accuracy=0.2343 eval_candidate_value_accuracy=1.0000
-step=2000 batch_answer_loss=1.6760 eval_answer_loss=1.6433 eval_exact_answer_accuracy=0.2380 eval_candidate_value_accuracy=1.0000
-```
+- Script: [`memory_architecture/014_bounded_address_drift.py`](../../memory_architecture/014_bounded_address_drift.py)
+- Date: `2026-05-17`
+- Task: binding-sensitive synthetic delayed key-value recall with one query for each stored fact
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Address dim: `32`
+- Memory slots: `64`
+- Top-k memory reads: `8`
+- Read temperature: `0.25`
+- Write temperature: `0.25`
+- Address update scale: `0.05`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk plus sparse top-k latent address reads in every decoder block
+- Addressing mechanism: learned base address table expanded into per-example runtime addresses with shape `[batch, memory_slots, address_dim]`
+- Address update mechanism: token states predict bounded address deltas; slot-level address deltas are averaged with the same write weights used for memory values, gated by slot write strength, scaled by `0.05`, and normalized after the update
+- Memory write mechanism: same per-example runtime memory value write mechanism as `M-013`
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `8`
+- Queries per sequence: `8`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Candidate-guess exact-answer baseline: `0.1250`
+- Random-value exact-answer baseline: `0.0625`
+- Random-value candidate-value baseline: `0.5000`
+- Metrics: exact answer accuracy, candidate-value accuracy, and mean address movement over all chunks
+- Final train loss: `1.6322`
+- Final validation loss: `1.6022`
+- Final validation exact answer accuracy: `0.2996`
+- Final validation candidate-value accuracy: `0.9999`
+- Final mean address movement: `0.013766`
+- Wall-clock time: `630s`
+- Metric CSV artifact: [`metrics.csv`](../../artifacts/memory_experiments/014_bounded_address_drift/20260517_204749_390056/metrics.csv)
+- Loss curve artifact: [`loss_curve.svg`](../../artifacts/memory_experiments/014_bounded_address_drift/20260517_204749_390056/loss_curve.svg)
+- Accuracy curve artifact: [`accuracy_curve.svg`](../../artifacts/memory_experiments/014_bounded_address_drift/20260517_204749_390056/accuracy_curve.svg)
+- Address movement curve artifact: [`address_movement_curve.svg`](../../artifacts/memory_experiments/014_bounded_address_drift/20260517_204749_390056/address_movement_curve.svg)
+
+![M-014 loss curve](../../artifacts/memory_experiments/014_bounded_address_drift/20260517_204749_390056/loss_curve.svg)
+
+![M-014 accuracy curve](../../artifacts/memory_experiments/014_bounded_address_drift/20260517_204749_390056/accuracy_curve.svg)
+
+![M-014 address movement curve](../../artifacts/memory_experiments/014_bounded_address_drift/20260517_204749_390056/address_movement_curve.svg)
+
+- Note: this script is intentionally copied from `M-013` so the isolated new mechanism is bounded runtime address movement.
+- Note: address movement is nonzero and bounded; final mean address movement is `0.013766`.
+- Note: the refreshed run beats both `M-012` (`0.2384`) and `M-013` (`0.2395`) on exact binding while still trailing full attention `M-011` (`0.3384`).
+- Note: this overturns the earlier single-run negative read of `M-014`; we should treat the result as promising but not settled until `M-015` ablates movement scale and disabled movement.

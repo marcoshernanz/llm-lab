@@ -68,6 +68,7 @@ As of 2026-05-17:
 - `011_full_attention_binding_sensitive_task_harness.py` is complete as the matching multi-query full-attention control.
 - `012_sparse_memory_binding_sensitive_task_harness.py` is complete as the sparse writable memory run on the multi-query binding benchmark.
 - `013_runtime_address_state_control.py` is complete as the control that turns fixed addresses into per-example runtime address state without moving addresses yet.
+- `014_bounded_address_drift.py` is complete as the first bounded runtime address movement experiment.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -117,7 +118,14 @@ The runtime address state control has also done its job:
 
 - reads and writes now consume batched runtime addresses,
 - the addresses are still copied from the learned base table and not updated,
-- and final exact answer accuracy stays close to the fixed-address sparse-memory run (`0.2380` for `M-013` vs `0.2134` for `M-012`).
+- and final exact answer accuracy stays close to the fixed-address sparse-memory run (`0.2395` for `M-013` vs `0.2384` for `M-012`).
+
+The first bounded address-drift run is now a promising but unsettled positive result:
+
+- runtime addresses move by a small nonzero amount and stay numerically stable,
+- final mean address movement is `0.013766`,
+- final exact answer accuracy improves to `0.2996`, above both `M-012` (`0.2384`) and `M-013` (`0.2395`),
+- and candidate-value accuracy remains effectively saturated at `0.9999`.
 
 ## What This Path Is Trying To Learn
 
@@ -141,6 +149,7 @@ The second and third are the real research frontier for this path.
 - Prefer differentiable retrieval first, then sparse or hard retrieval once the dense version is understood.
 - Keep honest controls. A memory model should be compared against the right no-memory baseline, not just against a weaker unrelated model.
 - Treat runtime cost and memory cost as first-class results, not footnotes.
+- Use `lib/memory_plotting.py` for synthetic memory-run metric CSVs and SVG curves, so ablations are compared from structured artifacts rather than copied terminal logs.
 - Do not let “it probably works at scale” replace mechanism-level evidence.
 
 ## Working Hypothesis
@@ -161,7 +170,7 @@ In plain terms:
 
 ## Milestones
 
-The first thirteen milestones already exist in code and are part of the roadmap.
+The first fourteen milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -502,7 +511,7 @@ Status:
 
 Main lesson:
 - Full attention is a positive exact-binding control on the multi-query benchmark.
-- Final exact answer accuracy is `0.3431`, clearly above the `0.1250` candidate-guessing baseline.
+- Final exact answer accuracy is `0.3384`, clearly above the `0.1250` candidate-guessing baseline.
 - Final candidate-value accuracy is `1.0000`.
 
 ### Milestone 012: Sparse Writable Memory On Multi-Query Binding
@@ -532,7 +541,7 @@ Status:
 
 Main lesson:
 - Sparse writable memory beats the chunk-local baseline and candidate guessing on exact binding.
-- Final exact answer accuracy is `0.2134`, compared with `0.0715` for chunk-local and `0.3431` for full attention.
+- Final exact answer accuracy is `0.2384`, compared with `0.0715` for chunk-local and `0.3384` for full attention.
 - Final candidate-value accuracy is `1.0000`.
 - The memory path is useful, but still loses exact binding information relative to full attention.
 
@@ -574,7 +583,7 @@ Status:
 
 Main lesson:
 - Making addresses batched runtime state does not collapse the sparse-memory model.
-- Final exact answer accuracy is `0.2380`, close to and slightly above `M-012` at `0.2134`.
+- Final exact answer accuracy is `0.2395`, effectively tied with `M-012` at `0.2384`.
 - Final candidate-value accuracy remains `1.0000`.
 - This validates the address-state API change before adding real address movement.
 
@@ -603,7 +612,7 @@ Why this milestone matters:
 
 Exit criteria:
 - Address updates run without numerical collapse.
-- Accuracy is compared against `M-012` (`0.2134`) and `M-013` (`0.2380`).
+- Accuracy is compared against `M-012` (`0.2384`) and `M-013` (`0.2395`).
 - There is at least one simple inspection of address movement magnitude over training or during evaluation.
 
 Questions to answer:
@@ -611,15 +620,24 @@ Questions to answer:
 - Do addresses actually move, or does the model learn to keep them fixed?
 - Are moved addresses more useful than fixed learned addresses on this task?
 
+Status:
+- Complete via `memory_architecture/014_bounded_address_drift.py`.
+
+Main lesson:
+- Bounded address movement runs without numerical collapse and produces nonzero movement.
+- Final mean address movement is `0.013766`.
+- Final exact answer accuracy is `0.2996`, better than `M-012` (`0.2384`) and `M-013` (`0.2395`), while final candidate-value accuracy remains effectively saturated at `0.9999`.
+- In this form, moving addresses appears stable and promising, but the next step should test whether movement itself caused the gain.
+
 ### Milestone 015: Address Drift Controls And Ablations
 Track: Evaluation + Addressing
 
 Goal:
-- Determine whether address movement itself is responsible for any observed behavior.
+- Determine whether address movement itself is responsible for the M-014 improvement.
 
 Candidate controls:
 - freeze address updates after initialization,
-- use a much smaller address-update scale,
+- use a much smaller address-update scale, such as `0.005` or `0.01`,
 - detach address-update gradients through the write path,
 - or update addresses with gates disabled.
 
@@ -741,12 +759,11 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 014: bounded address drift,
-2. milestone 015: address drift controls and ablations,
-3. milestone 016: bounded slot allocation,
-4. milestone 017: longer-context pressure test,
-5. milestone 018: natural-text evaluation,
-6. milestone 019: thesis-grade freeze.
+1. milestone 015: address drift controls and ablations,
+2. milestone 016: bounded slot allocation,
+3. milestone 017: longer-context pressure test,
+4. milestone 018: natural-text evaluation,
+5. milestone 019: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:

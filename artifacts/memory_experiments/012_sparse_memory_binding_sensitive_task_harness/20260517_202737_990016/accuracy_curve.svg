@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" fill="none">
+  <rect width="900" height="400" fill="white"/>
+  <line x1="64" y1="24" x2="64" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <line x1="64" y1="356" x2="876" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <text x="64" y="16" fill="#24292f" font-family="monospace" font-size="14">Memory experiment accuracy vs. step</text>
+  <text x="64" y="388" fill="#57606a" font-family="monospace" font-size="12">step 1 to 2000</text>
+  <text x="12" y="28" fill="#57606a" font-family="monospace" font-size="12">1.0000</text>
+  <text x="12" y="360" fill="#57606a" font-family="monospace" font-size="12">0.0000</text>
+  <polyline points="64.00,348.28 144.83,331.46 226.08,327.14 307.32,304.94 388.56,302.58 469.80,302.18 551.04,302.87 632.28,302.40 713.52,302.65 794.76,277.92 876.00,276.85" stroke="#059669" stroke-width="2" fill="none"/>
+  <polyline points="64.00,290.93 144.83,185.66 226.08,175.17 307.32,33.73 388.56,24.00 469.80,24.00 551.04,24.00 632.28,24.00 713.52,24.00 794.76,24.00 876.00,24.00" stroke="#7c3aed" stroke-width="2" fill="none"/>
+  <line x1="64.00" y1="314.50" x2="876.00" y2="314.50" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <line x1="64.00" y1="335.25" x2="876.00" y2="335.25" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <line x1="64.00" y1="190.00" x2="876.00" y2="190.00" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <circle cx="876.00" cy="276.85" r="3" fill="#059669"/>
+  <circle cx="876.00" cy="24.00" r="3" fill="#7c3aed"/>
+  <line x1="585" y1="14" x2="667" y2="14" stroke="#059669" stroke-width="2"/>
+  <text x="675" y="18" fill="#57606a" font-family="monospace" font-size="12">exact answer</text>
+  <line x1="585" y1="34" x2="667" y2="34" stroke="#7c3aed" stroke-width="2"/>
+  <text x="675" y="38" fill="#57606a" font-family="monospace" font-size="12">candidate value</text>
+  <line x1="585" y1="54" x2="667" y2="54" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="675" y="58" fill="#57606a" font-family="monospace" font-size="12">candidate guess exact</text>
+  <line x1="585" y1="74" x2="667" y2="74" stroke="#64748b" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="675" y="78" fill="#57606a" font-family="monospace" font-size="12">random value exact</text>
+  <line x1="585" y1="94" x2="667" y2="94" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="675" y="98" fill="#57606a" font-family="monospace" font-size="12">random value candidate</text>
+</svg>

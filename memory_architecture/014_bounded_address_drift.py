@@ -1,4 +1,4 @@
-"""Memory architecture experiment 010: multi-query chunk-local binding benchmark."""
+"""Memory architecture experiment 014: bounded runtime address drift."""
 
 from __future__ import annotations
 
@@ -21,6 +21,12 @@ assert SEQUENCE_LEN % CHUNK_SIZE == 0
 EMBEDDING_DIM = 64
 NUM_HEADS = 4
 assert EMBEDDING_DIM % NUM_HEADS == 0
+ADDRESS_DIM = 32
+NUM_MEMORY_SLOTS = 64
+TOP_K_MEMORY_READS = 8
+READ_TEMPERATURE = 0.25
+WRITE_TEMPERATURE = 0.25
+ADDRESS_UPDATE_SCALE = 0.05
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 
@@ -47,7 +53,7 @@ ANSWER_TOKEN = "[ANSWER]"
 
 
 class CausalSelfAttention(nn.Module):
-    """Apply masked multi-head self-attention inside each chunk."""
+    """Apply masked multi-head self-attention inside one chunk."""
 
     def __init__(self):
         """Create the query, key, value, and output projections."""
@@ -61,21 +67,17 @@ class CausalSelfAttention(nn.Module):
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape embeddings into separate attention heads."""
-        batch_size, num_chunks, chunk_size, _ = x.shape
-        return x.reshape(
-            batch_size, num_chunks, chunk_size, self.num_heads, self.head_dim
-        ).swapaxes(-2, -3)
+        batch_size, chunk_size, _ = x.shape
+        return x.reshape(batch_size, chunk_size, self.num_heads, self.head_dim).swapaxes(1, 2)
 
     def merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """Merge attention heads back into one embedding axis."""
-        batch_size, num_chunks, _, chunk_size, _ = x.shape
-        return x.swapaxes(-2, -3).reshape(
-            batch_size, num_chunks, chunk_size, self.num_heads * self.head_dim
-        )
+        batch_size, _, chunk_size, _ = x.shape
+        return x.swapaxes(1, 2).reshape(batch_size, chunk_size, self.num_heads * self.head_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Return attention outputs for one batch of embeddings."""
-        _, _, chunk_size, _ = x.shape
+        """Return attention outputs for one batch of chunk embeddings."""
+        chunk_size = x.shape[1]
 
         queries = self.split_heads(self.q_proj(x))
         keys = self.split_heads(self.k_proj(x))
@@ -93,6 +95,87 @@ class CausalSelfAttention(nn.Module):
         attention_weights = F.softmax(attention_scores, dim=-1)
         attended_values = self.merge_heads(attention_weights @ values)
         return self.out_proj(attended_values)
+
+
+class SparseLatentAddressRead(nn.Module):
+    """Read runtime memory values from each token's nearest runtime address slots."""
+
+    def __init__(self):
+        """Create the token-to-address query and output projections."""
+        super().__init__()
+        self.q_proj = nn.Linear(EMBEDDING_DIM, ADDRESS_DIM, bias=False)
+        self.out_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_addresses: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> torch.Tensor:
+        """Return sparse top-k memory read residuals for one chunk."""
+        queries = F.normalize(self.q_proj(x), dim=-1)
+        addresses = F.normalize(memory_addresses, dim=-1)
+
+        read_scores = queries @ addresses.transpose(1, 2)
+        read_scores = read_scores / READ_TEMPERATURE
+        top_scores, top_indices = torch.topk(
+            read_scores,
+            k=TOP_K_MEMORY_READS,
+            dim=-1,
+        )
+        read_weights = F.softmax(top_scores, dim=-1)
+
+        batch_size, _, _ = x.shape
+        batch_indices = torch.arange(batch_size, device=x.device).view(batch_size, 1, 1)
+        selected_memory_values = memory_values[batch_indices, top_indices]
+        read_values = (read_weights[..., None] * selected_memory_values).sum(dim=2)
+        return self.out_proj(read_values)
+
+
+class RuntimeMemoryWrite(nn.Module):
+    """Write memory values and move runtime addresses by a bounded amount."""
+
+    def __init__(self):
+        """Create projections for write addresses, values, and gates."""
+        super().__init__()
+        self.q_proj = nn.Linear(EMBEDDING_DIM, ADDRESS_DIM, bias=False)
+        self.value_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.address_delta_proj = nn.Linear(EMBEDDING_DIM, ADDRESS_DIM, bias=False)
+        self.gate_proj = nn.Linear(EMBEDDING_DIM, 1)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_addresses: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return updated memory values, addresses, and mean address movement."""
+        write_queries = F.normalize(self.q_proj(x), dim=-1)
+        addresses = F.normalize(memory_addresses, dim=-1)
+
+        write_scores = write_queries @ addresses.transpose(1, 2)
+        write_scores = write_scores / WRITE_TEMPERATURE
+        write_weights = F.softmax(write_scores, dim=-1)
+        write_gates = torch.sigmoid(self.gate_proj(x))
+        write_weights = write_weights * write_gates
+
+        value_updates = self.value_proj(x)
+        slot_update_weight = write_weights.sum(dim=1)
+        slot_update_sum = write_weights.transpose(1, 2) @ value_updates
+        slot_updates = slot_update_sum / slot_update_weight.clamp_min(1e-6)[..., None]
+        slot_gates = 1.0 - torch.exp(-slot_update_weight)
+        memory_values = torch.lerp(memory_values, slot_updates, slot_gates[..., None])
+
+        address_delta_values = torch.tanh(self.address_delta_proj(x))
+        slot_delta_sum = write_weights.transpose(1, 2) @ address_delta_values
+        slot_deltas = slot_delta_sum / slot_update_weight.clamp_min(1e-6)[..., None]
+        memory_addresses = F.normalize(
+            memory_addresses + ADDRESS_UPDATE_SCALE * slot_gates[..., None] * slot_deltas,
+            dim=-1,
+        )
+        address_movement = (memory_addresses - addresses).norm(dim=-1).mean()
+
+        return memory_values, memory_addresses, address_movement
 
 
 class FeedForward(nn.Module):
@@ -126,41 +209,62 @@ class RMSNorm(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    """Apply one pre-norm attention block followed by one MLP block."""
+    """Apply local attention, memory reading, and one MLP block."""
 
     def __init__(self):
-        """Create the norms, attention, and feed-forward sublayers."""
+        """Create the norms, attention, memory, and feed-forward sublayers."""
         super().__init__()
         self.attention_norm = RMSNorm()
         self.attention = CausalSelfAttention()
+        self.memory_read_norm = RMSNorm()
+        self.memory_read = SparseLatentAddressRead()
         self.feed_forward_norm = RMSNorm()
         self.feed_forward = FeedForward()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_addresses: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> torch.Tensor:
         """Return the residual output of one decoder block."""
         x = x + self.attention(self.attention_norm(x))
+        x = x + self.memory_read(self.memory_read_norm(x), memory_addresses, memory_values)
         x = x + self.feed_forward(self.feed_forward_norm(x))
         return x
 
 
 class Decoder(nn.Module):
-    """Stack several decoder blocks and finish with one output norm."""
+    """Stack decoder blocks and update runtime memory after each chunk."""
 
     def __init__(self) -> None:
-        """Create the block stack."""
+        """Create the block stack, base addresses, and write module."""
         super().__init__()
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
         self.out_norm = RMSNorm()
+        self.memory_addresses = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, ADDRESS_DIM))
+        self.memory_write_norm = RMSNorm()
+        self.memory_write = RuntimeMemoryWrite()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the full decoder stack."""
+    def forward(
+        self,
+        x: torch.Tensor,
+        memory_addresses: torch.Tensor,
+        memory_values: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run one chunk and return updated runtime memory state."""
         for block in self.blocks:
-            x = block(x)
-        return self.out_norm(x)
+            x = block(x, memory_addresses, memory_values)
+
+        x = self.out_norm(x)
+        memory_values, memory_addresses, address_movement = self.memory_write(
+            self.memory_write_norm(x), memory_addresses, memory_values
+        )
+        return x, memory_values, memory_addresses, address_movement
 
 
 class LanguageModel(nn.Module):
-    """Embed tokens, apply the decoder, and predict next-token logits."""
+    """Embed tokens, process chunks with drifting-address memory, and predict logits."""
 
     def __init__(self, vocab_size: int):
         """Create the embeddings and decoder."""
@@ -169,6 +273,7 @@ class LanguageModel(nn.Module):
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
         self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
         self.decoder = Decoder()
+        self.last_address_movement = torch.tensor(0.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
@@ -181,7 +286,25 @@ class LanguageModel(nn.Module):
 
         x = x.reshape(batch_size, num_chunks, CHUNK_SIZE)
         x = self.token_embedding(x) + position_embeddings
-        x = self.decoder(x)
+
+        memory_values = x.new_zeros(batch_size, NUM_MEMORY_SLOTS, EMBEDDING_DIM)
+        memory_addresses = F.normalize(
+            self.decoder.memory_addresses.unsqueeze(0).expand(batch_size, -1, -1).clone(),
+            dim=-1,
+        )
+        address_movements = []
+        chunk_outputs: list[torch.Tensor] = []
+        for chunk_index in range(num_chunks):
+            chunk_output, memory_values, memory_addresses, address_movement = self.decoder(
+                x[:, chunk_index],
+                memory_addresses,
+                memory_values,
+            )
+            address_movements.append(address_movement)
+            chunk_outputs.append(chunk_output)
+
+        self.last_address_movement = torch.stack(address_movements).mean().detach()
+        x = torch.stack(chunk_outputs, dim=1)
         x = x @ self.token_embedding.weight.T
         x = x.reshape(batch_size, sequence_len, self.vocab_size)
         return x
@@ -282,11 +405,12 @@ def answer_metrics(
 def estimate_metrics(
     model: LanguageModel,
     token_to_id: dict[str, int],
-) -> tuple[float, float, float]:
-    """Estimate answer loss, exact accuracy, and candidate accuracy."""
+) -> tuple[float, float, float, float]:
+    """Estimate answer loss, exact accuracy, candidate accuracy, and address movement."""
     losses: list[float] = []
     exact_accuracies: list[float] = []
     candidate_accuracies: list[float] = []
+    address_movements: list[float] = []
     model.eval()
 
     for _ in range(EVAL_BATCHES):
@@ -302,12 +426,14 @@ def estimate_metrics(
         losses.append(float(loss.item()))
         exact_accuracies.append(exact_accuracy)
         candidate_accuracies.append(candidate_accuracy)
+        address_movements.append(float(model.last_address_movement.item()))
 
     model.train()
     return (
         sum(losses) / len(losses),
         sum(exact_accuracies) / len(exact_accuracies),
         sum(candidate_accuracies) / len(candidate_accuracies),
+        sum(address_movements) / len(address_movements),
     )
 
 
@@ -322,7 +448,7 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tens
 
 
 def main() -> None:
-    """Train the chunk-local model on multi-query binding recall."""
+    """Train the bounded-address-drift model on multi-query binding recall."""
     random.seed(SEED)
     torch.manual_seed(SEED)
 
@@ -351,13 +477,17 @@ def main() -> None:
 
         should_log = step == 0 or (step + 1) % EVAL_INTERVAL == 0 or step == TRAIN_STEPS - 1
         if should_log:
-            answer_loss, exact_accuracy, candidate_accuracy = estimate_metrics(model, token_to_id)
+            answer_loss, exact_accuracy, candidate_accuracy, address_movement = estimate_metrics(
+                model,
+                token_to_id,
+            )
             metric_tracker.log(
                 step=step + 1,
                 batch_answer_loss=loss.item(),
                 eval_answer_loss=answer_loss,
                 eval_exact_answer_accuracy=exact_accuracy,
                 eval_candidate_value_accuracy=candidate_accuracy,
+                eval_mean_address_movement=address_movement,
             )
 
     artifacts = metric_tracker.save(script_path=Path(__file__))
