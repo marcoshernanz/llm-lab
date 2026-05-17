@@ -1,0 +1,12 @@
+candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
+step=1 batch_answer_loss=43.5510 eval_answer_loss=17.9221 eval_exact_answer_accuracy=0.0233 eval_candidate_value_accuracy=0.1960
+step=200 batch_answer_loss=2.8037 eval_answer_loss=2.7766 eval_exact_answer_accuracy=0.0737 eval_candidate_value_accuracy=0.5126
+step=400 batch_answer_loss=2.7315 eval_answer_loss=2.7217 eval_exact_answer_accuracy=0.0860 eval_candidate_value_accuracy=0.5445
+step=600 batch_answer_loss=2.2053 eval_answer_loss=2.1998 eval_exact_answer_accuracy=0.1539 eval_candidate_value_accuracy=0.9807
+step=800 batch_answer_loss=1.9606 eval_answer_loss=1.9629 eval_exact_answer_accuracy=0.1580 eval_candidate_value_accuracy=1.0000
+step=1000 batch_answer_loss=1.9206 eval_answer_loss=1.9274 eval_exact_answer_accuracy=0.1612 eval_candidate_value_accuracy=1.0000
+step=1200 batch_answer_loss=1.9247 eval_answer_loss=1.9076 eval_exact_answer_accuracy=0.1575 eval_candidate_value_accuracy=1.0000
+step=1400 batch_answer_loss=1.9171 eval_answer_loss=1.8975 eval_exact_answer_accuracy=0.1580 eval_candidate_value_accuracy=1.0000
+step=1600 batch_answer_loss=1.8920 eval_answer_loss=1.9112 eval_exact_answer_accuracy=0.1597 eval_candidate_value_accuracy=1.0000
+step=1800 batch_answer_loss=1.8932 eval_answer_loss=1.8955 eval_exact_answer_accuracy=0.1633 eval_candidate_value_accuracy=1.0000
+step=2000 batch_answer_loss=1.8869 eval_answer_loss=1.8672 eval_exact_answer_accuracy=0.2134 eval_candidate_value_accuracy=1.0000
