@@ -67,6 +67,7 @@ As of 2026-05-17:
 - `010_binding_sensitive_task_harness.py` is complete as the multi-query chunk-local binding baseline.
 - `011_full_attention_binding_sensitive_task_harness.py` is complete as the matching multi-query full-attention control.
 - `012_sparse_memory_binding_sensitive_task_harness.py` is complete as the sparse writable memory run on the multi-query binding benchmark.
+- `013_runtime_address_state_control.py` is complete as the control that turns fixed addresses into per-example runtime address state without moving addresses yet.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -112,6 +113,12 @@ The multi-query binding benchmark is now the main synthetic benchmark:
 - full attention learns exact binding above candidate guessing,
 - and sparse writable memory beats the no-memory baseline while still trailing full attention.
 
+The runtime address state control has also done its job:
+
+- reads and writes now consume batched runtime addresses,
+- the addresses are still copied from the learned base table and not updated,
+- and final exact answer accuracy stays close to the fixed-address sparse-memory run (`0.2380` for `M-013` vs `0.2134` for `M-012`).
+
 ## What This Path Is Trying To Learn
 
 There are really three different questions here:
@@ -154,7 +161,7 @@ In plain terms:
 
 ## Milestones
 
-The first twelve milestones already exist in code and are part of the roadmap.
+The first thirteen milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -562,6 +569,15 @@ Questions to answer:
 - Are there any hidden assumptions in the current code that require global shared addresses?
 - Is the code still easy enough to explain before adding address movement?
 
+Status:
+- Complete via `memory_architecture/013_runtime_address_state_control.py`.
+
+Main lesson:
+- Making addresses batched runtime state does not collapse the sparse-memory model.
+- Final exact answer accuracy is `0.2380`, close to and slightly above `M-012` at `0.2134`.
+- Final candidate-value accuracy remains `1.0000`.
+- This validates the address-state API change before adding real address movement.
+
 ### Milestone 014: Bounded Address Drift
 Track: Writing + Addressing
 
@@ -587,7 +603,7 @@ Why this milestone matters:
 
 Exit criteria:
 - Address updates run without numerical collapse.
-- Accuracy is compared against `M-012` and `M-013`.
+- Accuracy is compared against `M-012` (`0.2134`) and `M-013` (`0.2380`).
 - There is at least one simple inspection of address movement magnitude over training or during evaluation.
 
 Questions to answer:
@@ -725,13 +741,12 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 013: runtime address state control,
-2. milestone 014: bounded address drift,
-3. milestone 015: address drift controls and ablations,
-4. milestone 016: bounded slot allocation,
-5. milestone 017: longer-context pressure test,
-6. milestone 018: natural-text evaluation,
-7. milestone 019: thesis-grade freeze.
+1. milestone 014: bounded address drift,
+2. milestone 015: address drift controls and ablations,
+3. milestone 016: bounded slot allocation,
+4. milestone 017: longer-context pressure test,
+5. milestone 018: natural-text evaluation,
+6. milestone 019: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
