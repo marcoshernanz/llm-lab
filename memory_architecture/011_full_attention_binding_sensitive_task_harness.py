@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 import random
 
 import torch
 import torch.nn.functional as F
 from torch import nn
+
+from lib.memory_plotting import MemoryMetricTracker
 
 DEVICE = "mps"
 SEED = 1337
@@ -310,6 +313,11 @@ def main() -> None:
     vocab_tokens, token_to_id = build_vocab()
     model = LanguageModel(len(vocab_tokens)).to(DEVICE)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    metric_tracker = MemoryMetricTracker(
+        candidate_guess_exact_baseline=CANDIDATE_GUESS_BASELINE,
+        random_value_exact_baseline=RANDOM_VALUE_EXACT_BASELINE,
+        random_value_candidate_baseline=RANDOM_VALUE_CANDIDATE_BASELINE,
+    )
     print(
         f"candidate_guess_exact_baseline={CANDIDATE_GUESS_BASELINE:.4f} "
         f"random_value_exact_baseline={RANDOM_VALUE_EXACT_BASELINE:.4f} "
@@ -328,13 +336,17 @@ def main() -> None:
         should_log = step == 0 or (step + 1) % EVAL_INTERVAL == 0 or step == TRAIN_STEPS - 1
         if should_log:
             answer_loss, exact_accuracy, candidate_accuracy = estimate_metrics(model, token_to_id)
-            print(
-                f"step={step + 1} "
-                f"batch_answer_loss={loss.item():.4f} "
-                f"eval_answer_loss={answer_loss:.4f} "
-                f"eval_exact_answer_accuracy={exact_accuracy:.4f} "
-                f"eval_candidate_value_accuracy={candidate_accuracy:.4f}"
+            metric_tracker.log(
+                step=step + 1,
+                batch_answer_loss=loss.item(),
+                eval_answer_loss=answer_loss,
+                eval_exact_answer_accuracy=exact_accuracy,
+                eval_candidate_value_accuracy=candidate_accuracy,
             )
+
+    artifacts = metric_tracker.save(script_path=Path(__file__))
+    for artifact_name, artifact_path in artifacts.items():
+        print(f"{artifact_name}={artifact_path}")
 
 
 if __name__ == "__main__":
