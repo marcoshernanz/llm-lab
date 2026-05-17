@@ -52,7 +52,7 @@ This is the path that is most relevant to:
 
 ## Current Status
 
-As of 2026-05-16:
+As of 2026-05-17:
 
 - `001_char_decoder.py` is complete as the clean vanilla baseline.
 - `002_memory_retrieval.py` is complete as the static retrieval scaffold on top of full-sequence attention.
@@ -64,6 +64,9 @@ As of 2026-05-16:
 - `007_dense_latent_address_read.py` is complete as the first dense latent-address read path on the delayed-recall benchmark.
 - `008_writable_fixed_address_memory.py` is complete as the first writable fixed-address memory model on the delayed-recall benchmark.
 - `009_sparse_neighborhood_retrieval.py` is complete as the first sparse top-k read model over writable memory.
+- `010_binding_sensitive_task_harness.py` is complete as the multi-query chunk-local binding baseline.
+- `011_full_attention_binding_sensitive_task_harness.py` is complete as the matching multi-query full-attention control.
+- `012_sparse_memory_binding_sensitive_task_harness.py` is complete as the sparse writable memory run on the multi-query binding benchmark.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -94,7 +97,20 @@ The sparse neighborhood milestone shows that the read path can be made local wit
 - final answer accuracy stays essentially tied with dense writable memory and full attention,
 - and the naive sparse implementation is slower at this scale, so the win is mechanistic rather than computational for now.
 
-The next roadmap step is address updates or allocation.
+The old delayed-recall benchmark exposed a weakness:
+
+- with `4` stored facts, guessing among stored candidate values gives `1 / 4 = 0.25` exact accuracy,
+- the strongest full-attention and writable-memory runs clustered around that value,
+- so the old benchmark could not separate true key-value binding from candidate-set recovery.
+
+The multi-query binding benchmark is now the main synthetic benchmark:
+
+- each example stores `8` key-value facts,
+- every stored key is queried once,
+- exact answer accuracy and candidate-value accuracy are reported separately,
+- chunk-local stays near random value-token behavior,
+- full attention learns exact binding above candidate guessing,
+- and sparse writable memory beats the no-memory baseline while still trailing full attention.
 
 ## What This Path Is Trying To Learn
 
@@ -138,7 +154,7 @@ In plain terms:
 
 ## Milestones
 
-The first nine milestones already exist in code and are part of the roadmap.
+The first twelve milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -423,35 +439,219 @@ Main lesson:
 - Sparse top-k reads preserve the writable-memory behavior on the delayed-recall harness.
 - With `8` reads out of `64` slots, final answer accuracy reaches `0.2510`, essentially tied with dense writable memory `M-008` (`0.2480`) and the full-attention control `M-006` (`0.2505`).
 - The naive sparse top-k implementation is slower than dense retrieval at this small scale, so the current result is about address locality, not runtime efficiency.
-- The next useful mechanism question is whether memory addresses can be updated or allocated, because fixed addresses are now doing enough to justify testing address dynamics.
+- This result later motivated the multi-query benchmark reset because `0.2510` is too close to the `1 / 4 = 0.25` candidate-guessing baseline.
 
-### Milestone 010: Address Updates Or Allocation
+### Milestone 010: Multi-Query Chunk-Local Binding Baseline
+Track: Baseline
+
+Goal:
+- Replace the old single-query delayed-recall benchmark with the multi-query binding benchmark.
+
+What changes:
+- Start from `005_memory_task_harness.py`.
+- Store `8` key-value facts instead of `4`.
+- Query every stored key once, so each sequence has `8` answer positions.
+- Report exact answer accuracy and candidate-value accuracy separately.
+
+What stays fixed:
+- Same chunk-local architecture as `M-005`.
+- Same sequence length, chunk size, optimizer, model size, and synthetic vocabulary.
+- No cross-chunk attention and no memory path.
+
+Why this milestone matters:
+- The old benchmark allowed candidate-set recovery to look like useful memory.
+- This benchmark makes exact key-value binding visible.
+- It gives the memory model a fair no-memory baseline on the final benchmark.
+
+Status:
+- Complete via `memory_architecture/010_binding_sensitive_task_harness.py`.
+
+Main lesson:
+- Chunk-local attention does not solve the multi-query binding task.
+- Final exact answer accuracy is `0.0715`, close to random value-token behavior and below the `1 / 8 = 0.125` candidate-guessing baseline.
+- Final candidate-value accuracy is `0.4387`, below the `8 / 16 = 0.5000` random candidate-value baseline.
+
+### Milestone 011: Multi-Query Full-Attention Binding Control
+Track: Control
+
+Goal:
+- Establish that the final benchmark is learnable when the model has direct attention access to all stored facts.
+
+What changes:
+- Start from `006_full_attention_task_harness.py`.
+- Apply the same multi-query benchmark changes used in `M-010`.
+- Report exact answer accuracy and candidate-value accuracy separately.
+
+What stays fixed:
+- Same full-attention architecture as `M-006`.
+- Same model size, optimizer, sequence length, and vocabulary as `M-010`.
+
+Why this milestone matters:
+- A memory model should not be judged on a task that full attention cannot learn.
+- Full attention is the positive control for exact binding.
+
+Status:
+- Complete via `memory_architecture/011_full_attention_binding_sensitive_task_harness.py`.
+
+Main lesson:
+- Full attention is a positive exact-binding control on the multi-query benchmark.
+- Final exact answer accuracy is `0.3431`, clearly above the `0.1250` candidate-guessing baseline.
+- Final candidate-value accuracy is `1.0000`.
+
+### Milestone 012: Sparse Writable Memory On Multi-Query Binding
 Track: Writing + Addressing
 
 Goal:
-- Let the model change where memories live, not only what values they contain.
+- Rerun the strongest current memory mechanism on the final multi-query binding benchmark.
 
-Candidate mechanisms:
-- update existing address vectors,
-- allocate new addresses from a controller,
-- merge into nearby addresses,
-- or use a bounded free-list / replacement rule.
+What changes:
+- Start from `009_sparse_neighborhood_retrieval.py`.
+- Apply the same multi-query benchmark changes used in `M-010`.
+- Keep sparse top-k reads and writable runtime memory values.
+- Report exact answer accuracy and candidate-value accuracy separately.
 
-Why this is later:
-- Changing addresses and values at the same time is much harder to interpret.
-- This step should only happen after fixed-address writable memory is understood.
+What stays fixed:
+- Chunk-local token attention.
+- Fixed learned memory addresses.
+- Runtime writable memory values.
+- Sparse top-k read setting: `8` of `64` slots.
+
+Why this milestone matters:
+- This is the first real test of whether sparse writable memory learned binding rather than only candidate-set recovery.
+- It creates the fixed-address memory baseline that address dynamics must beat.
+
+Status:
+- Complete via `memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py`.
+
+Main lesson:
+- Sparse writable memory beats the chunk-local baseline and candidate guessing on exact binding.
+- Final exact answer accuracy is `0.2134`, compared with `0.0715` for chunk-local and `0.3431` for full attention.
+- Final candidate-value accuracy is `1.0000`.
+- The memory path is useful, but still loses exact binding information relative to full attention.
+
+### Milestone 013: Runtime Address State Control
+Track: Addressing
+
+Goal:
+- Convert global fixed addresses into per-example runtime address state without allowing the addresses to move yet.
+
+What changes:
+- Start from `012_sparse_memory_binding_sensitive_task_harness.py`.
+- Keep the learned base address table.
+- At the start of each forward pass, copy the base addresses into runtime addresses with shape `[batch, memory_slots, address_dim]`.
+- Make the read and write paths consume runtime addresses instead of only the global address table.
+
+What does not change:
+- Runtime addresses are not updated yet.
+- Memory values still update as in milestone 012.
+- Sparse top-k reads stay fixed at `8` of `64` slots.
+- Same multi-query binding benchmark and controls.
+
+Why this milestone matters:
+- It isolates the tensor and API change needed for dynamic addresses.
+- If this control changes behavior, the later dynamic-address results would be hard to interpret.
+- The expected result is near-equivalence with milestone 012.
 
 Exit criteria:
-- The model can modify or allocate addresses without immediate collapse.
-- The address space remains interpretable enough to visualize and inspect.
-- There is evidence this buys something beyond fixed-address writable values.
+- Runtime addresses are threaded through reads and writes correctly.
+- The model remains numerically stable.
+- Final accuracy stays close to `M-012` rather than collapsing.
+
+Questions to answer:
+- Does merely making addresses batched/runtime state change the result?
+- Are there any hidden assumptions in the current code that require global shared addresses?
+- Is the code still easy enough to explain before adding address movement?
+
+### Milestone 014: Bounded Address Drift
+Track: Writing + Addressing
+
+Goal:
+- Let existing memory slots move slightly in address space while keeping the number of slots fixed.
+
+What changes:
+- Runtime addresses now update after each chunk.
+- Each updated address is old address plus a small learned delta.
+- Addresses are normalized after the update so the similarity geometry remains bounded.
+- Address updates should be gated by write strength, so slots that receive no meaningful write do not drift arbitrarily.
+
+What stays fixed:
+- Same memory size.
+- Same writable memory values.
+- Same sparse top-k read.
+- Same multi-query binding benchmark.
+- No slot creation, deletion, free list, or replacement rule yet.
+
+Why this milestone matters:
+- It tests the first real address-dynamics question without introducing allocation.
+- It answers whether address movement helps the model organize memory or destabilizes retrieval.
+
+Exit criteria:
+- Address updates run without numerical collapse.
+- Accuracy is compared against `M-012` and `M-013`.
+- There is at least one simple inspection of address movement magnitude over training or during evaluation.
 
 Questions to answer:
 - Does address drift destroy retrieval stability?
-- How should collisions be handled?
-- What does memory allocation mean when memory size is bounded?
+- Do addresses actually move, or does the model learn to keep them fixed?
+- Are moved addresses more useful than fixed learned addresses on this task?
 
-### Milestone 011: Longer-Context Pressure Test
+### Milestone 015: Address Drift Controls And Ablations
+Track: Evaluation + Addressing
+
+Goal:
+- Determine whether address movement itself is responsible for any observed behavior.
+
+Candidate controls:
+- freeze address updates after initialization,
+- use a much smaller address-update scale,
+- detach address-update gradients through the write path,
+- or update addresses with gates disabled.
+
+Why this milestone matters:
+- A dynamic-address model can appear to work for the wrong reason.
+- Before adding allocation, we need to know whether address drift is useful, harmless, or actively avoided by the model.
+
+Exit criteria:
+- At least two targeted controls are run against milestone 014.
+- The learning log clearly states whether address movement earned its complexity.
+- The next allocation step is either justified or explicitly deprioritized.
+
+Questions to answer:
+- Is address movement doing real work, or is the value memory still carrying everything?
+- How sensitive is the model to address-update scale?
+- Does the learned system prefer stable addresses even when movement is available?
+
+### Milestone 016: Bounded Slot Allocation
+Track: Writing + Addressing
+
+Goal:
+- Let the model choose when a memory slot should represent a new memory rather than only updating an existing one.
+
+What changes:
+- Add a bounded usage or freshness signal per memory slot.
+- Let the writer choose between updating an existing nearby slot and overwriting a low-usage slot.
+- When a slot is overwritten, update both its value and its runtime address.
+
+What stays fixed:
+- Memory size remains bounded.
+- Retrieval remains sparse top-k.
+- The task harness stays synthetic and controlled.
+
+Why this comes after drift:
+- Allocation changes both where a memory lives and whether old content is preserved.
+- It should only be tested after address drift has been isolated.
+
+Exit criteria:
+- The model can use bounded allocation without immediate collapse.
+- Collisions and overwrites are measurable.
+- There is evidence this buys something beyond fixed slots or simple address drift.
+
+Questions to answer:
+- What does memory allocation mean when memory size is bounded?
+- How should collisions be handled?
+- Does allocation improve behavior, or only add instability?
+
+### Milestone 017: Longer-Context Pressure Test
 Track: Scaling
 
 Goal:
@@ -473,7 +673,7 @@ Questions to answer:
 - Does the address space stay usable at larger memory counts?
 - Does runtime scale acceptably?
 
-### Milestone 012: Natural-Text Evaluation Pass
+### Milestone 018: Natural-Text Evaluation Pass
 Track: External validity
 
 Goal:
@@ -495,7 +695,7 @@ Questions to answer:
 - Does success on synthetic tasks transfer at all?
 - Is the memory system learning semantic state or only benchmark tricks?
 
-### Milestone 013: Thesis-Grade Freeze
+### Milestone 019: Thesis-Grade Freeze
 Track: Research packaging
 
 Goal:
@@ -525,10 +725,13 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 010: address updates or allocation,
-2. milestone 011: longer-context pressure test,
-3. milestone 012: natural-text evaluation,
-4. milestone 013: thesis-grade freeze.
+1. milestone 013: runtime address state control,
+2. milestone 014: bounded address drift,
+3. milestone 015: address drift controls and ablations,
+4. milestone 016: bounded slot allocation,
+5. milestone 017: longer-context pressure test,
+6. milestone 018: natural-text evaluation,
+7. milestone 019: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
@@ -537,6 +740,7 @@ It keeps the research disciplined:
 - then prove latent-space reading,
 - then prove writing,
 - then compare sparse retrieval once there is useful runtime memory,
+- then tighten the benchmark so exact binding is measured directly,
 - then test whether addresses can move or be allocated,
 - then test scale,
 - then package the result honestly.
