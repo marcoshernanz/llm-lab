@@ -2,7 +2,7 @@
 
 Runs recorded through 2026-05-17.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, and finally the multi-query binding-sensitive benchmark/control/memory comparison.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, and the first runtime-address-state control.
 
 ## Summary
 
@@ -22,6 +22,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-010 | [`memory_architecture/010_binding_sensitive_task_harness.py`](../../memory_architecture/010_binding_sensitive_task_harness.py) | 2000 | 2.6886 | 2.6931 | ~330 |
 | M-011 | [`memory_architecture/011_full_attention_binding_sensitive_task_harness.py`](../../memory_architecture/011_full_attention_binding_sensitive_task_harness.py) | 2000 | 1.3798 | 1.3752 | ~210 |
 | M-012 | [`memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py`](../../memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py) | 2000 | 1.8869 | 1.8672 | ~460 |
+| M-013 | [`memory_architecture/013_runtime_address_state_control.py`](../../memory_architecture/013_runtime_address_state_control.py) | 2000 | 1.6760 | 1.6433 | ~490 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -747,4 +748,68 @@ step=1400 batch_answer_loss=1.9171 eval_answer_loss=1.8975 eval_exact_answer_acc
 step=1600 batch_answer_loss=1.8920 eval_answer_loss=1.9112 eval_exact_answer_accuracy=0.1597 eval_candidate_value_accuracy=1.0000
 step=1800 batch_answer_loss=1.8932 eval_answer_loss=1.8955 eval_exact_answer_accuracy=0.1633 eval_candidate_value_accuracy=1.0000
 step=2000 batch_answer_loss=1.8869 eval_answer_loss=1.8672 eval_exact_answer_accuracy=0.2134 eval_candidate_value_accuracy=1.0000
+```
+
+## M-013 Runtime Address State Control
+
+- Script: [`memory_architecture/013_runtime_address_state_control.py`](../../memory_architecture/013_runtime_address_state_control.py)
+- Date: `2026-05-17`
+- Task: binding-sensitive synthetic delayed key-value recall with one query for each stored fact
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Address dim: `32`
+- Memory slots: `64`
+- Top-k memory reads: `8`
+- Read temperature: `0.25`
+- Write temperature: `0.25`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk plus sparse top-k latent address reads in every decoder block
+- Addressing mechanism: learned base address table expanded into per-example runtime addresses with shape `[batch, memory_slots, address_dim]`
+- Address update mechanism: none; runtime addresses do not move in this control
+- Memory write mechanism: same per-example runtime memory value write mechanism as `M-012`
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `8`
+- Queries per sequence: `8`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Candidate-guess exact-answer baseline: `0.1250`
+- Random-value exact-answer baseline: `0.0625`
+- Random-value candidate-value baseline: `0.5000`
+- Metrics: exact answer accuracy and candidate-value accuracy over all answer positions
+- Final train loss: `1.6760`
+- Final validation loss: `1.6433`
+- Final validation exact answer accuracy: `0.2380`
+- Final validation candidate-value accuracy: `1.0000`
+- Wall-clock time: approximately `490s` based on the tool session duration
+- Raw run log artifact: [`artifacts/memory_architecture_013_runtime_address_state_control_run_2026-05-17.log`](../../artifacts/memory_architecture_013_runtime_address_state_control_run_2026-05-17.log)
+- Note: this script is intentionally copied from `M-012` so the only mechanism change is address state representation.
+- Note: reads and writes now consume batched runtime addresses instead of a global `[memory_slots, address_dim]` table.
+- Note: the runtime addresses are created from the learned base table at the start of each chunk forward pass and are not updated yet.
+- Note: final exact answer accuracy is close to, and slightly above, `M-012` (`0.2380` vs `0.2134`), so the address-state API change does not collapse behavior.
+- Note: this gives a clean starting point for `M-014`, where the same runtime address tensor can be updated deliberately.
+
+Logged checkpoints:
+
+```text
+candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
+step=1 batch_answer_loss=43.5510 eval_answer_loss=17.9221 eval_exact_answer_accuracy=0.0233 eval_candidate_value_accuracy=0.1960
+step=200 batch_answer_loss=2.8039 eval_answer_loss=2.7767 eval_exact_answer_accuracy=0.0744 eval_candidate_value_accuracy=0.5116
+step=400 batch_answer_loss=2.7299 eval_answer_loss=2.7213 eval_exact_answer_accuracy=0.0859 eval_candidate_value_accuracy=0.5474
+step=600 batch_answer_loss=2.1994 eval_answer_loss=2.2070 eval_exact_answer_accuracy=0.1552 eval_candidate_value_accuracy=0.9777
+step=800 batch_answer_loss=2.0307 eval_answer_loss=2.0146 eval_exact_answer_accuracy=0.1580 eval_candidate_value_accuracy=1.0000
+step=1000 batch_answer_loss=1.9180 eval_answer_loss=1.9240 eval_exact_answer_accuracy=0.1565 eval_candidate_value_accuracy=1.0000
+step=1200 batch_answer_loss=1.9233 eval_answer_loss=1.9176 eval_exact_answer_accuracy=0.1573 eval_candidate_value_accuracy=1.0000
+step=1400 batch_answer_loss=1.9163 eval_answer_loss=1.9134 eval_exact_answer_accuracy=0.1598 eval_candidate_value_accuracy=1.0000
+step=1600 batch_answer_loss=1.9127 eval_answer_loss=1.9113 eval_exact_answer_accuracy=0.1602 eval_candidate_value_accuracy=1.0000
+step=1800 batch_answer_loss=1.7783 eval_answer_loss=1.7774 eval_exact_answer_accuracy=0.2343 eval_candidate_value_accuracy=1.0000
+step=2000 batch_answer_loss=1.6760 eval_answer_loss=1.6433 eval_exact_answer_accuracy=0.2380 eval_candidate_value_accuracy=1.0000
 ```
