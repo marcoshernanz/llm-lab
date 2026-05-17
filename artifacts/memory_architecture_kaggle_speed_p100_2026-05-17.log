@@ -1,0 +1,72 @@
+[{"stream_name":"stdout","time":6.667636767,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 838.3/838.3 MB 255.5 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":9.393524829,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 23.2/23.2 MB 275.8 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":9.721226379,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 875.6/875.6 kB 20.8 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":9.884073211,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13.1/13.1 MB 264.3 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":17.466041983,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 663.9/663.9 MB 63.1 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":21.888654386,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 417.9/417.9 MB 37.4 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":24.121013445,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 168.4/168.4 MB 187.4 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":25.026685006,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 58.1/58.1 MB 187.2 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":25.990194465,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 128.2/128.2 MB 185.1 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":27.555107032,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 204.1/204.1 MB 184.5 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":32.523904289,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 147.8/147.8 MB 191.4 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":33.151296137,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 99.1/99.1 kB 274.0 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":33.908017515,"data":"     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 209.6/209.6 MB 344.5 MB/s eta 0:00:00\n"}
+,{"stream_name":"stdout","time":34.90361945,"data":"   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.2/6.2 MB 71.7 MB/s eta 0:00:00\n"}
+,{"stream_name":"stderr","time":137.071672435,"data":"ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.\n"}
+,{"stream_name":"stderr","time":137.071760545,"data":"torchaudio 2.10.0+cu128 requires torch==2.10.0, but you have torch 2.5.1+cu118 which is incompatible.\n"}
+,{"stream_name":"stderr","time":137.07176542,"data":"torchvision 0.25.0+cu128 requires torch==2.10.0, but you have torch 2.5.1+cu118 which is incompatible.\n"}
+,{"stream_name":"stdout","time":139.621999009,"data":"torch_version=2.5.1+cu118\n"}
+,{"stream_name":"stdout","time":139.654069883,"data":"cuda_available=True\n"}
+,{"stream_name":"stdout","time":139.67097203,"data":"cuda_device_count=1\n"}
+,{"stream_name":"stdout","time":139.672396213,"data":"cuda_device_0=Tesla P100-PCIE-16GB memory_gb=15.89\n"}
+,{"stream_name":"stdout","time":139.672440524,"data":"experiment_start=m010_chunk_local source=memory_architecture/010_binding_sensitive_task_harness.py\n"}
+,{"stream_name":"stdout","time":141.029132541,"data":"candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000\n"}
+,{"stream_name":"stdout","time":141.926490904,"data":"step=1 batch_answer_loss=45.6868 eval_answer_loss=18.0727 eval_exact_answer_accuracy=0.0082 eval_candidate_value_accuracy=0.0740\n"}
+,{"stream_name":"stdout","time":148.047063205,"data":"step=200 batch_answer_loss=2.8036 eval_answer_loss=2.7825 eval_exact_answer_accuracy=0.0642 eval_candidate_value_accuracy=0.4727\n"}
+,{"stream_name":"stdout","time":154.205941181,"data":"step=400 batch_answer_loss=2.7591 eval_answer_loss=2.7705 eval_exact_answer_accuracy=0.0707 eval_candidate_value_accuracy=0.4458\n"}
+,{"stream_name":"stdout","time":160.358806034,"data":"step=600 batch_answer_loss=2.7346 eval_answer_loss=2.7238 eval_exact_answer_accuracy=0.0662 eval_candidate_value_accuracy=0.4401\n"}
+,{"stream_name":"stdout","time":166.570540978,"data":"step=800 batch_answer_loss=2.7233 eval_answer_loss=2.7116 eval_exact_answer_accuracy=0.0678 eval_candidate_value_accuracy=0.4389\n"}
+,{"stream_name":"stdout","time":172.74938407,"data":"step=1000 batch_answer_loss=2.7168 eval_answer_loss=2.7210 eval_exact_answer_accuracy=0.0700 eval_candidate_value_accuracy=0.4390\n"}
+,{"stream_name":"stdout","time":178.853187318,"data":"step=1200 batch_answer_loss=2.6900 eval_answer_loss=2.6997 eval_exact_answer_accuracy=0.0693 eval_candidate_value_accuracy=0.4415\n"}
+,{"stream_name":"stdout","time":185.086848638,"data":"step=1400 batch_answer_loss=2.7060 eval_answer_loss=2.6974 eval_exact_answer_accuracy=0.0669 eval_candidate_value_accuracy=0.4410\n"}
+,{"stream_name":"stdout","time":191.257416334,"data":"step=1600 batch_answer_loss=2.7054 eval_answer_loss=2.6984 eval_exact_answer_accuracy=0.0667 eval_candidate_value_accuracy=0.4390\n"}
+,{"stream_name":"stdout","time":197.382537319,"data":"step=1800 batch_answer_loss=2.7113 eval_answer_loss=2.6992 eval_exact_answer_accuracy=0.0701 eval_candidate_value_accuracy=0.4359\n"}
+,{"stream_name":"stdout","time":203.542775007,"data":"step=2000 batch_answer_loss=2.6886 eval_answer_loss=2.6931 eval_exact_answer_accuracy=0.0715 eval_candidate_value_accuracy=0.4388\n"}
+,{"stream_name":"stdout","time":203.543677714,"data":"experiment_done=m010_chunk_local seconds=63.867 steps_per_second=31.3150 final='step=2000 batch_answer_loss=2.6886 eval_answer_loss=2.6931 eval_exact_answer_accuracy=0.0715 eval_candidate_value_accuracy=0.4388'\n"}
+,{"stream_name":"stdout","time":203.543693605,"data":"experiment_start=m011_full_attention source=memory_architecture/011_full_attention_binding_sensitive_task_harness.py\n"}
+,{"stream_name":"stdout","time":203.552801925,"data":"candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000\n"}
+,{"stream_name":"stdout","time":204.189115032,"data":"step=1 batch_answer_loss=46.7399 eval_answer_loss=21.0576 eval_exact_answer_accuracy=0.0076 eval_candidate_value_accuracy=0.0615\n"}
+,{"stream_name":"stdout","time":210.53664501,"data":"step=200 batch_answer_loss=2.7849 eval_answer_loss=2.7445 eval_exact_answer_accuracy=0.1039 eval_candidate_value_accuracy=0.8438\n"}
+,{"stream_name":"stdout","time":216.961212018,"data":"step=400 batch_answer_loss=1.8739 eval_answer_loss=1.8553 eval_exact_answer_accuracy=0.2838 eval_candidate_value_accuracy=0.9940\n"}
+,{"stream_name":"stdout","time":223.367251562,"data":"step=600 batch_answer_loss=1.5721 eval_answer_loss=1.5437 eval_exact_answer_accuracy=0.3248 eval_candidate_value_accuracy=0.9996\n"}
+,{"stream_name":"stdout","time":229.775082493,"data":"step=800 batch_answer_loss=1.5082 eval_answer_loss=1.5401 eval_exact_answer_accuracy=0.3260 eval_candidate_value_accuracy=0.9998\n"}
+,{"stream_name":"stdout","time":236.231343045,"data":"step=1000 batch_answer_loss=1.3887 eval_answer_loss=1.4206 eval_exact_answer_accuracy=0.3319 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":242.757263411,"data":"step=1200 batch_answer_loss=1.4167 eval_answer_loss=1.4018 eval_exact_answer_accuracy=0.3483 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":249.21947606,"data":"step=1400 batch_answer_loss=1.3722 eval_answer_loss=1.3831 eval_exact_answer_accuracy=0.3387 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":255.680495536,"data":"step=1600 batch_answer_loss=1.4588 eval_answer_loss=1.4184 eval_exact_answer_accuracy=0.3385 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":262.159646269,"data":"step=1800 batch_answer_loss=1.3738 eval_answer_loss=1.3771 eval_exact_answer_accuracy=0.3368 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":268.683762469,"data":"step=2000 batch_answer_loss=1.3507 eval_answer_loss=1.3632 eval_exact_answer_accuracy=0.3412 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":268.684493855,"data":"experiment_done=m011_full_attention seconds=65.137 steps_per_second=30.7044 final='step=2000 batch_answer_loss=1.3507 eval_answer_loss=1.3632 eval_exact_answer_accuracy=0.3412 eval_candidate_value_accuracy=1.0000'\n"}
+,{"stream_name":"stdout","time":268.68451277,"data":"experiment_start=m012_sparse_memory source=memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py\n"}
+,{"stream_name":"stdout","time":268.695520425,"data":"candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000\n"}
+,{"stream_name":"stdout","time":270.826906629,"data":"step=1 batch_answer_loss=43.5510 eval_answer_loss=17.9221 eval_exact_answer_accuracy=0.0233 eval_candidate_value_accuracy=0.1960\n"}
+,{"stream_name":"stdout","time":305.689260096,"data":"step=200 batch_answer_loss=2.8038 eval_answer_loss=2.7768 eval_exact_answer_accuracy=0.0740 eval_candidate_value_accuracy=0.5119\n"}
+,{"stream_name":"stdout","time":340.619063135,"data":"step=400 batch_answer_loss=2.7369 eval_answer_loss=2.7272 eval_exact_answer_accuracy=0.0855 eval_candidate_value_accuracy=0.5466\n"}
+,{"stream_name":"stdout","time":375.552541534,"data":"step=600 batch_answer_loss=2.2415 eval_answer_loss=2.2011 eval_exact_answer_accuracy=0.1577 eval_candidate_value_accuracy=0.9952\n"}
+,{"stream_name":"stdout","time":409.991332408,"data":"step=800 batch_answer_loss=1.9577 eval_answer_loss=1.9519 eval_exact_answer_accuracy=0.1600 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":444.798967144,"data":"step=1000 batch_answer_loss=1.9168 eval_answer_loss=1.9273 eval_exact_answer_accuracy=0.1624 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":479.156322852,"data":"step=1200 batch_answer_loss=1.9206 eval_answer_loss=1.9151 eval_exact_answer_accuracy=0.1589 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":513.016106642,"data":"step=1400 batch_answer_loss=1.9089 eval_answer_loss=1.8991 eval_exact_answer_accuracy=0.1588 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":546.459048889,"data":"step=1600 batch_answer_loss=1.8944 eval_answer_loss=1.9084 eval_exact_answer_accuracy=0.1591 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":579.847300802,"data":"step=1800 batch_answer_loss=1.8970 eval_answer_loss=1.9031 eval_exact_answer_accuracy=0.1639 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":613.390800617,"data":"step=2000 batch_answer_loss=1.8926 eval_answer_loss=1.8934 eval_exact_answer_accuracy=0.1651 eval_candidate_value_accuracy=1.0000\n"}
+,{"stream_name":"stdout","time":613.394331098,"data":"experiment_done=m012_sparse_memory seconds=344.705 steps_per_second=5.8021 final='step=2000 batch_answer_loss=1.8926 eval_answer_loss=1.8934 eval_exact_answer_accuracy=0.1651 eval_candidate_value_accuracy=1.0000'\n"}
+,{"stream_name":"stdout","time":613.394636188,"data":"all_experiments_done total_seconds=473.722\n"}
+,{"stream_name":"stdout","time":613.394649339,"data":"results_path=/kaggle/working/artifacts/memory_architecture_speed/speed_results.json\n"}
+,{"stream_name":"stderr","time":615.899037937,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":615.899068903,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":616.112548078,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":616.112575366,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":616.714521056,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":617.864209275,"data":"[NbConvertApp] Writing 386342 bytes to __results__.html\n"}
+]

@@ -1,0 +1,59 @@
+{
+  "total_seconds": 473.721824726,
+  "results": [
+    {
+      "name": "m010_chunk_local",
+      "source": "memory_architecture/010_binding_sensitive_task_harness.py",
+      "device": "cuda",
+      "train_steps": 2000,
+      "eval_interval": 200,
+      "eval_batches": 32,
+      "seconds": 63.867210313999976,
+      "steps_per_second": 31.314973523457486,
+      "final_line": "step=2000 batch_answer_loss=2.6886 eval_answer_loss=2.6931 eval_exact_answer_accuracy=0.0715 eval_candidate_value_accuracy=0.4388",
+      "final_metrics": {
+        "step": 2000,
+        "batch_answer_loss": 2.6886,
+        "eval_answer_loss": 2.6931,
+        "eval_exact_answer_accuracy": 0.0715,
+        "eval_candidate_value_accuracy": 0.4388
+      }
+    },
+    {
+      "name": "m011_full_attention",
+      "source": "memory_architecture/011_full_attention_binding_sensitive_task_harness.py",
+      "device": "cuda",
+      "train_steps": 2000,
+      "eval_interval": 200,
+      "eval_batches": 32,
+      "seconds": 65.13729309299993,
+      "steps_per_second": 30.70437694032657,
+      "final_line": "step=2000 batch_answer_loss=1.3507 eval_answer_loss=1.3632 eval_exact_answer_accuracy=0.3412 eval_candidate_value_accuracy=1.0000",
+      "final_metrics": {
+        "step": 2000,
+        "batch_answer_loss": 1.3507,
+        "eval_answer_loss": 1.3632,
+        "eval_exact_answer_accuracy": 0.3412,
+        "eval_candidate_value_accuracy": 1.0
+      }
+    },
+    {
+      "name": "m012_sparse_memory",
+      "source": "memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py",
+      "device": "cuda",
+      "train_steps": 2000,
+      "eval_interval": 200,
+      "eval_batches": 32,
+      "seconds": 344.7047308790002,
+      "steps_per_second": 5.80206716310502,
+      "final_line": "step=2000 batch_answer_loss=1.8926 eval_answer_loss=1.8934 eval_exact_answer_accuracy=0.1651 eval_candidate_value_accuracy=1.0000",
+      "final_metrics": {
+        "step": 2000,
+        "batch_answer_loss": 1.8926,
+        "eval_answer_loss": 1.8934,
+        "eval_exact_answer_accuracy": 0.1651,
+        "eval_candidate_value_accuracy": 1.0
+      }
+    }
+  ]
+}
