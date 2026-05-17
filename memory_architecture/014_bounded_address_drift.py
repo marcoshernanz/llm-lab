@@ -1,4 +1,4 @@
-"""Memory architecture experiment 013: runtime address state control."""
+"""Memory architecture experiment 014: bounded runtime address drift."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ NUM_MEMORY_SLOTS = 64
 TOP_K_MEMORY_READS = 8
 READ_TEMPERATURE = 0.25
 WRITE_TEMPERATURE = 0.25
+ADDRESS_UPDATE_SCALE = 0.05
 HIDDEN_DIM = 256
 NUM_BLOCKS = 4
 
@@ -128,14 +129,15 @@ class SparseLatentAddressRead(nn.Module):
         return self.out_proj(read_values)
 
 
-class RuntimeAddressMemoryWrite(nn.Module):
-    """Write chunk states into per-example memory values at runtime addresses."""
+class RuntimeMemoryWrite(nn.Module):
+    """Write memory values and move runtime addresses by a bounded amount."""
 
     def __init__(self):
         """Create projections for write addresses, values, and gates."""
         super().__init__()
         self.q_proj = nn.Linear(EMBEDDING_DIM, ADDRESS_DIM, bias=False)
         self.value_proj = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
+        self.address_delta_proj = nn.Linear(EMBEDDING_DIM, ADDRESS_DIM, bias=False)
         self.gate_proj = nn.Linear(EMBEDDING_DIM, 1)
 
     def forward(
@@ -143,8 +145,8 @@ class RuntimeAddressMemoryWrite(nn.Module):
         x: torch.Tensor,
         memory_addresses: torch.Tensor,
         memory_values: torch.Tensor,
-    ) -> torch.Tensor:
-        """Return memory values after an interpolated token-level write."""
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return updated memory values, addresses, and mean address movement."""
         write_queries = F.normalize(self.q_proj(x), dim=-1)
         addresses = F.normalize(memory_addresses, dim=-1)
 
@@ -159,8 +161,18 @@ class RuntimeAddressMemoryWrite(nn.Module):
         slot_update_sum = write_weights.transpose(1, 2) @ value_updates
         slot_updates = slot_update_sum / slot_update_weight.clamp_min(1e-6)[..., None]
         slot_gates = 1.0 - torch.exp(-slot_update_weight)
+        memory_values = torch.lerp(memory_values, slot_updates, slot_gates[..., None])
 
-        return torch.lerp(memory_values, slot_updates, slot_gates[..., None])
+        address_delta_values = torch.tanh(self.address_delta_proj(x))
+        slot_delta_sum = write_weights.transpose(1, 2) @ address_delta_values
+        slot_deltas = slot_delta_sum / slot_update_weight.clamp_min(1e-6)[..., None]
+        memory_addresses = F.normalize(
+            memory_addresses + ADDRESS_UPDATE_SCALE * slot_gates[..., None] * slot_deltas,
+            dim=-1,
+        )
+        address_movement = (memory_addresses - addresses).norm(dim=-1).mean()
+
+        return memory_values, memory_addresses, address_movement
 
 
 class FeedForward(nn.Module):
@@ -229,29 +241,27 @@ class Decoder(nn.Module):
         self.out_norm = RMSNorm()
         self.memory_addresses = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, ADDRESS_DIM))
         self.memory_write_norm = RMSNorm()
-        self.memory_write = RuntimeAddressMemoryWrite()
+        self.memory_write = RuntimeMemoryWrite()
 
     def forward(
         self,
         x: torch.Tensor,
+        memory_addresses: torch.Tensor,
         memory_values: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Run one chunk and return updated runtime memory values."""
-        batch_size = x.shape[0]
-        memory_addresses = self.memory_addresses.unsqueeze(0).expand(batch_size, -1, -1)
-
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run one chunk and return updated runtime memory state."""
         for block in self.blocks:
             x = block(x, memory_addresses, memory_values)
 
         x = self.out_norm(x)
-        memory_values = self.memory_write(
+        memory_values, memory_addresses, address_movement = self.memory_write(
             self.memory_write_norm(x), memory_addresses, memory_values
         )
-        return x, memory_values
+        return x, memory_values, memory_addresses, address_movement
 
 
 class LanguageModel(nn.Module):
-    """Embed tokens, process chunks with writable memory, and predict logits."""
+    """Embed tokens, process chunks with drifting-address memory, and predict logits."""
 
     def __init__(self, vocab_size: int):
         """Create the embeddings and decoder."""
@@ -260,6 +270,7 @@ class LanguageModel(nn.Module):
         self.token_embedding = nn.Embedding(vocab_size, EMBEDDING_DIM)
         self.position_embedding = nn.Embedding(SEQUENCE_LEN, EMBEDDING_DIM)
         self.decoder = Decoder()
+        self.last_address_movement = torch.tensor(0.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return next-token logits for one batch of token ids."""
@@ -274,11 +285,22 @@ class LanguageModel(nn.Module):
         x = self.token_embedding(x) + position_embeddings
 
         memory_values = x.new_zeros(batch_size, NUM_MEMORY_SLOTS, EMBEDDING_DIM)
+        memory_addresses = F.normalize(
+            self.decoder.memory_addresses.unsqueeze(0).expand(batch_size, -1, -1).clone(),
+            dim=-1,
+        )
+        address_movements = []
         chunk_outputs: list[torch.Tensor] = []
         for chunk_index in range(num_chunks):
-            chunk_output, memory_values = self.decoder(x[:, chunk_index], memory_values)
+            chunk_output, memory_values, memory_addresses, address_movement = self.decoder(
+                x[:, chunk_index],
+                memory_addresses,
+                memory_values,
+            )
+            address_movements.append(address_movement)
             chunk_outputs.append(chunk_output)
 
+        self.last_address_movement = torch.stack(address_movements).mean().detach()
         x = torch.stack(chunk_outputs, dim=1)
         x = x @ self.token_embedding.weight.T
         x = x.reshape(batch_size, sequence_len, self.vocab_size)
@@ -380,11 +402,12 @@ def answer_metrics(
 def estimate_metrics(
     model: LanguageModel,
     token_to_id: dict[str, int],
-) -> tuple[float, float, float]:
-    """Estimate answer loss, exact accuracy, and candidate accuracy."""
+) -> tuple[float, float, float, float]:
+    """Estimate answer loss, exact accuracy, candidate accuracy, and address movement."""
     losses: list[float] = []
     exact_accuracies: list[float] = []
     candidate_accuracies: list[float] = []
+    address_movements: list[float] = []
     model.eval()
 
     for _ in range(EVAL_BATCHES):
@@ -400,12 +423,14 @@ def estimate_metrics(
         losses.append(float(loss.item()))
         exact_accuracies.append(exact_accuracy)
         candidate_accuracies.append(candidate_accuracy)
+        address_movements.append(float(model.last_address_movement.item()))
 
     model.train()
     return (
         sum(losses) / len(losses),
         sum(exact_accuracies) / len(exact_accuracies),
         sum(candidate_accuracies) / len(candidate_accuracies),
+        sum(address_movements) / len(address_movements),
     )
 
 
@@ -420,7 +445,7 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tens
 
 
 def main() -> None:
-    """Train the runtime-address control model on multi-query binding recall."""
+    """Train the bounded-address-drift model on multi-query binding recall."""
     random.seed(SEED)
     torch.manual_seed(SEED)
 
@@ -444,13 +469,17 @@ def main() -> None:
 
         should_log = step == 0 or (step + 1) % EVAL_INTERVAL == 0 or step == TRAIN_STEPS - 1
         if should_log:
-            answer_loss, exact_accuracy, candidate_accuracy = estimate_metrics(model, token_to_id)
+            answer_loss, exact_accuracy, candidate_accuracy, address_movement = estimate_metrics(
+                model,
+                token_to_id,
+            )
             print(
                 f"step={step + 1} "
                 f"batch_answer_loss={loss.item():.4f} "
                 f"eval_answer_loss={answer_loss:.4f} "
                 f"eval_exact_answer_accuracy={exact_accuracy:.4f} "
-                f"eval_candidate_value_accuracy={candidate_accuracy:.4f}"
+                f"eval_candidate_value_accuracy={candidate_accuracy:.4f} "
+                f"eval_mean_address_movement={address_movement:.6f}"
             )
 
 
