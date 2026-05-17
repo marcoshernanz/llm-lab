@@ -1,8 +1,8 @@
 # Memory Architecture Learning Log
 
-Runs recorded through 2026-05-16.
+Runs recorded through 2026-05-17.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, and finally the first sparse top-k retrieval run over writable memory.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, and finally the multi-query binding-sensitive benchmark/control/memory comparison.
 
 ## Summary
 
@@ -19,6 +19,9 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-007 | [`memory_architecture/007_dense_latent_address_read.py`](../../memory_architecture/007_dense_latent_address_read.py) | 2000 | 2.7774 | 2.7890 | ~191 |
 | M-008 | [`memory_architecture/008_writable_fixed_address_memory.py`](../../memory_architecture/008_writable_fixed_address_memory.py) | 2000 | 1.5239 | 1.4868 | ~294 |
 | M-009 | [`memory_architecture/009_sparse_neighborhood_retrieval.py`](../../memory_architecture/009_sparse_neighborhood_retrieval.py) | 2000 | 1.5324 | 1.4789 | ~589 |
+| M-010 | [`memory_architecture/010_binding_sensitive_task_harness.py`](../../memory_architecture/010_binding_sensitive_task_harness.py) | 2000 | 2.6886 | 2.6931 | ~330 |
+| M-011 | [`memory_architecture/011_full_attention_binding_sensitive_task_harness.py`](../../memory_architecture/011_full_attention_binding_sensitive_task_harness.py) | 2000 | 1.3798 | 1.3752 | ~210 |
+| M-012 | [`memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py`](../../memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py) | 2000 | 1.8869 | 1.8672 | ~460 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -559,7 +562,7 @@ step=2000 batch_answer_loss=1.5239 eval_answer_loss=1.4868 eval_answer_accuracy=
 - Note: final answer accuracy is essentially tied with dense writable memory `M-008` (`0.2480`) and the full-attention control `M-006` (`0.2505`).
 - Note: this supports the idea that the learned address geometry is already local enough for top-k retrieval on this small benchmark.
 - Note: the naive sparse top-k implementation is slower than dense retrieval at this scale, so this is a behavioral win but not yet a runtime win.
-- Note: the next mechanism question should be address updates or allocation, not another read-only retrieval variant.
+- Note: this result later motivated the multi-query benchmark reset because `0.2510` is too close to the `1 / 4 = 0.25` candidate-guessing baseline.
 
 Logged checkpoints:
 
@@ -575,4 +578,173 @@ step=1400 batch_answer_loss=1.5775 eval_answer_loss=1.5374 eval_answer_accuracy=
 step=1600 batch_answer_loss=1.4107 eval_answer_loss=1.5123 eval_answer_accuracy=0.2422
 step=1800 batch_answer_loss=1.4641 eval_answer_loss=1.5311 eval_answer_accuracy=0.2368
 step=2000 batch_answer_loss=1.5324 eval_answer_loss=1.4789 eval_answer_accuracy=0.2510
+```
+
+## M-010 Multi-Query Chunk-Local Binding Baseline
+
+- Script: [`memory_architecture/010_binding_sensitive_task_harness.py`](../../memory_architecture/010_binding_sensitive_task_harness.py)
+- Date: `2026-05-17`
+- Task: binding-sensitive synthetic delayed key-value recall with one query for each stored fact
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk only
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `8`
+- Queries per sequence: `8`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Candidate-guess exact-answer baseline: `0.1250`
+- Random-value exact-answer baseline: `0.0625`
+- Random-value candidate-value baseline: `0.5000`
+- Metrics: exact answer accuracy and candidate-value accuracy over all answer positions
+- Final train loss: `2.6886`
+- Final validation loss: `2.6931`
+- Final validation exact answer accuracy: `0.0715`
+- Final validation candidate-value accuracy: `0.4387`
+- Wall-clock time: approximately `330s` based on the tool session duration
+- Raw run log artifact: [`artifacts/memory_architecture_010_binding_sensitive_task_harness_run_2026-05-17.log`](../../artifacts/memory_architecture_010_binding_sensitive_task_harness_run_2026-05-17.log)
+- Note: this script is intentionally copied from `M-005` and modified in place, so the diff shows the benchmark changes clearly.
+- Note: every stored key is queried once, giving `8` answer positions per sequence instead of `1`.
+- Note: exact answer accuracy stays near random value-token behavior and below the `0.1250` candidate-guessing baseline.
+- Note: this confirms that the multi-query suffix does not give the chunk-local model a shortcut.
+
+Logged checkpoints:
+
+```text
+candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
+step=1 batch_answer_loss=45.6868 eval_answer_loss=18.0727 eval_exact_answer_accuracy=0.0082 eval_candidate_value_accuracy=0.0740
+step=200 batch_answer_loss=2.8036 eval_answer_loss=2.7825 eval_exact_answer_accuracy=0.0642 eval_candidate_value_accuracy=0.4727
+step=400 batch_answer_loss=2.7591 eval_answer_loss=2.7705 eval_exact_answer_accuracy=0.0707 eval_candidate_value_accuracy=0.4458
+step=600 batch_answer_loss=2.7346 eval_answer_loss=2.7238 eval_exact_answer_accuracy=0.0662 eval_candidate_value_accuracy=0.4401
+step=800 batch_answer_loss=2.7233 eval_answer_loss=2.7116 eval_exact_answer_accuracy=0.0678 eval_candidate_value_accuracy=0.4389
+step=1000 batch_answer_loss=2.7168 eval_answer_loss=2.7210 eval_exact_answer_accuracy=0.0697 eval_candidate_value_accuracy=0.4384
+step=1200 batch_answer_loss=2.6900 eval_answer_loss=2.6997 eval_exact_answer_accuracy=0.0693 eval_candidate_value_accuracy=0.4415
+step=1400 batch_answer_loss=2.7060 eval_answer_loss=2.6974 eval_exact_answer_accuracy=0.0669 eval_candidate_value_accuracy=0.4410
+step=1600 batch_answer_loss=2.7054 eval_answer_loss=2.6984 eval_exact_answer_accuracy=0.0667 eval_candidate_value_accuracy=0.4390
+step=1800 batch_answer_loss=2.7113 eval_answer_loss=2.6992 eval_exact_answer_accuracy=0.0701 eval_candidate_value_accuracy=0.4359
+step=2000 batch_answer_loss=2.6886 eval_answer_loss=2.6931 eval_exact_answer_accuracy=0.0715 eval_candidate_value_accuracy=0.4387
+```
+
+## M-011 Multi-Query Full-Attention Binding Control
+
+- Script: [`memory_architecture/011_full_attention_binding_sensitive_task_harness.py`](../../memory_architecture/011_full_attention_binding_sensitive_task_harness.py)
+- Date: `2026-05-17`
+- Task: binding-sensitive synthetic delayed key-value recall with one query for each stored fact
+- Device: `mps`
+- Sequence length: `128`
+- Embedding dim: `64`
+- Heads: `4`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: full causal self-attention over the whole sequence
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `8`
+- Queries per sequence: `8`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Candidate-guess exact-answer baseline: `0.1250`
+- Random-value exact-answer baseline: `0.0625`
+- Random-value candidate-value baseline: `0.5000`
+- Metrics: exact answer accuracy and candidate-value accuracy over all answer positions
+- Final train loss: `1.3798`
+- Final validation loss: `1.3752`
+- Final validation exact answer accuracy: `0.3431`
+- Final validation candidate-value accuracy: `1.0000`
+- Wall-clock time: approximately `210s` based on the tool session duration
+- Raw run log artifact: [`artifacts/memory_architecture_011_full_attention_binding_sensitive_task_harness_run_2026-05-17.log`](../../artifacts/memory_architecture_011_full_attention_binding_sensitive_task_harness_run_2026-05-17.log)
+- Note: this script is intentionally copied from `M-006` and modified with the same multi-query benchmark changes used in `M-010`.
+- Note: full attention is a positive exact-binding control on this benchmark.
+- Note: exact answer accuracy is clearly above the `0.1250` candidate-guessing baseline.
+
+Logged checkpoints:
+
+```text
+candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
+step=1 batch_answer_loss=46.7399 eval_answer_loss=21.0576 eval_exact_answer_accuracy=0.0076 eval_candidate_value_accuracy=0.0615
+step=200 batch_answer_loss=2.7849 eval_answer_loss=2.7445 eval_exact_answer_accuracy=0.1039 eval_candidate_value_accuracy=0.8438
+step=400 batch_answer_loss=1.8739 eval_answer_loss=1.8553 eval_exact_answer_accuracy=0.2838 eval_candidate_value_accuracy=0.9939
+step=600 batch_answer_loss=1.5662 eval_answer_loss=1.5345 eval_exact_answer_accuracy=0.3220 eval_candidate_value_accuracy=0.9996
+step=800 batch_answer_loss=1.4778 eval_answer_loss=1.4721 eval_exact_answer_accuracy=0.3357 eval_candidate_value_accuracy=1.0000
+step=1000 batch_answer_loss=1.3725 eval_answer_loss=1.4180 eval_exact_answer_accuracy=0.3402 eval_candidate_value_accuracy=1.0000
+step=1200 batch_answer_loss=1.4212 eval_answer_loss=1.4091 eval_exact_answer_accuracy=0.3388 eval_candidate_value_accuracy=1.0000
+step=1400 batch_answer_loss=1.3829 eval_answer_loss=1.3969 eval_exact_answer_accuracy=0.3366 eval_candidate_value_accuracy=1.0000
+step=1600 batch_answer_loss=1.4018 eval_answer_loss=1.3843 eval_exact_answer_accuracy=0.3389 eval_candidate_value_accuracy=1.0000
+step=1800 batch_answer_loss=1.3978 eval_answer_loss=1.3963 eval_exact_answer_accuracy=0.3411 eval_candidate_value_accuracy=1.0000
+step=2000 batch_answer_loss=1.3798 eval_answer_loss=1.3752 eval_exact_answer_accuracy=0.3431 eval_candidate_value_accuracy=1.0000
+```
+
+## M-012 Sparse Writable Memory On Multi-Query Binding
+
+- Script: [`memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py`](../../memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py)
+- Date: `2026-05-17`
+- Task: binding-sensitive synthetic delayed key-value recall with one query for each stored fact
+- Device: `mps`
+- Sequence length: `128`
+- Chunk size: `16`
+- Embedding dim: `64`
+- Heads: `4`
+- Address dim: `32`
+- Memory slots: `64`
+- Top-k memory reads: `8`
+- Read temperature: `0.25`
+- Write temperature: `0.25`
+- Hidden dim: `256`
+- Decoder blocks: `4`
+- Attention pattern: causal self-attention inside each chunk plus sparse top-k latent address reads in every decoder block
+- Addressing mechanism: fixed learned memory addresses shared across the batch
+- Memory write mechanism: same per-example runtime memory write mechanism as `M-009`
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `2000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Facts per sequence: `8`
+- Queries per sequence: `8`
+- Keys: `16`
+- Values: `16`
+- Noise tokens: `32`
+- Candidate-guess exact-answer baseline: `0.1250`
+- Random-value exact-answer baseline: `0.0625`
+- Random-value candidate-value baseline: `0.5000`
+- Metrics: exact answer accuracy and candidate-value accuracy over all answer positions
+- Final train loss: `1.8869`
+- Final validation loss: `1.8672`
+- Final validation exact answer accuracy: `0.2134`
+- Final validation candidate-value accuracy: `1.0000`
+- Wall-clock time: approximately `460s` based on the tool session duration
+- Raw run log artifact: [`artifacts/memory_architecture_012_sparse_memory_binding_sensitive_task_harness_run_2026-05-17.log`](../../artifacts/memory_architecture_012_sparse_memory_binding_sensitive_task_harness_run_2026-05-17.log)
+- Note: this script is intentionally copied from `M-009` and modified with the same multi-query benchmark changes used in `M-010`.
+- Note: sparse writable memory beats the chunk-local baseline and candidate-guessing baseline on exact binding.
+- Note: it remains below the full-attention control, so the memory mechanism is useful but still loses binding information.
+
+Logged checkpoints:
+
+```text
+candidate_guess_exact_baseline=0.1250 random_value_exact_baseline=0.0625 random_value_candidate_baseline=0.5000
+step=1 batch_answer_loss=43.5510 eval_answer_loss=17.9221 eval_exact_answer_accuracy=0.0233 eval_candidate_value_accuracy=0.1960
+step=200 batch_answer_loss=2.8037 eval_answer_loss=2.7766 eval_exact_answer_accuracy=0.0737 eval_candidate_value_accuracy=0.5126
+step=400 batch_answer_loss=2.7315 eval_answer_loss=2.7217 eval_exact_answer_accuracy=0.0860 eval_candidate_value_accuracy=0.5445
+step=600 batch_answer_loss=2.2053 eval_answer_loss=2.1998 eval_exact_answer_accuracy=0.1539 eval_candidate_value_accuracy=0.9807
+step=800 batch_answer_loss=1.9606 eval_answer_loss=1.9629 eval_exact_answer_accuracy=0.1580 eval_candidate_value_accuracy=1.0000
+step=1000 batch_answer_loss=1.9206 eval_answer_loss=1.9274 eval_exact_answer_accuracy=0.1612 eval_candidate_value_accuracy=1.0000
+step=1200 batch_answer_loss=1.9247 eval_answer_loss=1.9076 eval_exact_answer_accuracy=0.1575 eval_candidate_value_accuracy=1.0000
+step=1400 batch_answer_loss=1.9171 eval_answer_loss=1.8975 eval_exact_answer_accuracy=0.1580 eval_candidate_value_accuracy=1.0000
+step=1600 batch_answer_loss=1.8920 eval_answer_loss=1.9112 eval_exact_answer_accuracy=0.1597 eval_candidate_value_accuracy=1.0000
+step=1800 batch_answer_loss=1.8932 eval_answer_loss=1.8955 eval_exact_answer_accuracy=0.1633 eval_candidate_value_accuracy=1.0000
+step=2000 batch_answer_loss=1.8869 eval_answer_loss=1.8672 eval_exact_answer_accuracy=0.2134 eval_candidate_value_accuracy=1.0000
 ```
