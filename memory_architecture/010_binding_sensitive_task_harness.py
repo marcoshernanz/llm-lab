@@ -1,4 +1,4 @@
-"""Memory architecture experiment 005: a tiny chunk-local delayed-recall harness."""
+"""Memory architecture experiment 010: multi-query chunk-local binding benchmark."""
 
 from __future__ import annotations
 
@@ -27,10 +27,13 @@ TRAIN_STEPS = 2_000
 EVAL_INTERVAL = 200
 EVAL_BATCHES = 32
 
-NUM_FACTS = 4
+NUM_FACTS = 8
 NUM_KEYS = 16
 NUM_VALUES = 16
 NUM_NOISE_TOKENS = 32
+CANDIDATE_GUESS_BASELINE = 1.0 / NUM_FACTS
+RANDOM_VALUE_EXACT_BASELINE = 1.0 / NUM_VALUES
+RANDOM_VALUE_CANDIDATE_BASELINE = NUM_FACTS / NUM_VALUES
 
 PAD_TOKEN = "[PAD]"
 BOS_TOKEN = "[BOS]"
@@ -198,8 +201,8 @@ def build_vocab() -> tuple[list[str], dict[str, int]]:
     return vocab_tokens, token_to_id
 
 
-def build_example(token_to_id: dict[str, int]) -> tuple[list[int], int]:
-    """Create one delayed key-value recall sequence and answer position."""
+def build_example(token_to_id: dict[str, int]) -> tuple[list[int], list[int], list[int]]:
+    """Create one delayed key-value recall sequence and answer positions."""
     fact_tokens = [token_to_id[BOS_TOKEN]]
     key_tokens = [token_to_id[f"K{idx}"] for idx in range(NUM_KEYS)]
     value_tokens = [token_to_id[f"V{idx}"] for idx in range(NUM_VALUES)]
@@ -212,66 +215,97 @@ def build_example(token_to_id: dict[str, int]) -> tuple[list[int], int]:
     for key_id, value_id in key_value_pairs:
         fact_tokens.extend([token_to_id[STORE_TOKEN], key_id, value_id])
 
-    query_key_id, query_value_id = random.choice(key_value_pairs)
-    suffix_tokens = [
-        token_to_id[QUERY_TOKEN],
-        query_key_id,
-        token_to_id[ANSWER_TOKEN],
-        query_value_id,
-        token_to_id[EOS_TOKEN],
-    ]
+    query_pairs = key_value_pairs[:]
+    random.shuffle(query_pairs)
+    suffix_len = len(query_pairs) * 4 + 1
 
     full_sequence_len = SEQUENCE_LEN + 1
-    filler_len = full_sequence_len - len(fact_tokens) - len(suffix_tokens)
+    filler_len = full_sequence_len - len(fact_tokens) - suffix_len
     if filler_len < 0:
         raise ValueError("SEQUENCE_LEN is too small for the delayed-recall layout.")
 
     filler_tokens = random.choices(noise_tokens, k=filler_len)
-    token_ids = fact_tokens + filler_tokens + suffix_tokens
-    answer_position = len(token_ids) - 3
-    return token_ids, answer_position
+    token_ids = fact_tokens + filler_tokens
+    answer_positions = []
+    for query_key_id, query_value_id in query_pairs:
+        token_ids.extend([token_to_id[QUERY_TOKEN], query_key_id, token_to_id[ANSWER_TOKEN]])
+        answer_positions.append(len(token_ids) - 1)
+        token_ids.append(query_value_id)
+    token_ids.append(token_to_id[EOS_TOKEN])
+    return token_ids, answer_positions, chosen_values
 
 
-def sample_batch(token_to_id: dict[str, int]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Sample delayed-recall input, target, and answer-mask tensors."""
+def sample_batch(
+    token_to_id: dict[str, int],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Sample delayed-recall input, target, answer-mask, and candidate tensors."""
     inputs = torch.empty((BATCH_SIZE, SEQUENCE_LEN), dtype=torch.long, device=DEVICE)
     targets = torch.empty((BATCH_SIZE, SEQUENCE_LEN), dtype=torch.long, device=DEVICE)
     answer_mask = torch.zeros((BATCH_SIZE, SEQUENCE_LEN), dtype=torch.float32, device=DEVICE)
+    candidate_values = torch.empty((BATCH_SIZE, NUM_FACTS), dtype=torch.long, device=DEVICE)
 
     for batch_index in range(BATCH_SIZE):
-        token_ids, answer_position = build_example(token_to_id)
+        token_ids, answer_positions, example_candidate_values = build_example(token_to_id)
         inputs[batch_index] = torch.tensor(token_ids[:-1], dtype=torch.long, device=DEVICE)
         targets[batch_index] = torch.tensor(token_ids[1:], dtype=torch.long, device=DEVICE)
-        answer_mask[batch_index, answer_position] = 1.0
+        answer_mask[batch_index, answer_positions] = 1.0
+        candidate_values[batch_index] = torch.tensor(
+            example_candidate_values,
+            dtype=torch.long,
+            device=DEVICE,
+        )
 
-    return inputs, targets, answer_mask
+    return inputs, targets, answer_mask, candidate_values
+
+
+def answer_metrics(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    answer_mask: torch.Tensor,
+    candidate_values: torch.Tensor,
+) -> tuple[float, float]:
+    """Return exact answer accuracy and candidate-value accuracy."""
+    predictions = logits.argmax(dim=-1)
+    is_answer = answer_mask.bool()
+    predicted_answers = predictions[is_answer]
+    target_answers = targets[is_answer]
+    exact_accuracy = (predicted_answers == target_answers).float().mean()
+    candidate_hits = (predictions[:, :, None] == candidate_values[:, None, :]).any(dim=-1)
+    candidate_accuracy = candidate_hits[is_answer].float().mean()
+    return float(exact_accuracy.item()), float(candidate_accuracy.item())
 
 
 @torch.no_grad()
 def estimate_metrics(
     model: LanguageModel,
     token_to_id: dict[str, int],
-) -> tuple[float, float]:
-    """Estimate answer loss and answer accuracy on fresh synthetic batches."""
+) -> tuple[float, float, float]:
+    """Estimate answer loss, exact accuracy, and candidate accuracy."""
     losses: list[float] = []
-    accuracies: list[float] = []
+    exact_accuracies: list[float] = []
+    candidate_accuracies: list[float] = []
     model.eval()
 
     for _ in range(EVAL_BATCHES):
-        inputs, targets, answer_mask = sample_batch(token_to_id)
+        inputs, targets, answer_mask, candidate_values = sample_batch(token_to_id)
         logits = model(inputs)
         loss = loss_fn(logits, targets, answer_mask)
-        predictions = logits.argmax(dim=-1)
-        answer_positions = answer_mask.argmax(dim=1)
-        batch_indices = torch.arange(BATCH_SIZE, device=DEVICE)
-        predicted_answers = predictions[batch_indices, answer_positions]
-        target_answers = targets[batch_indices, answer_positions]
-        accuracy = (predicted_answers == target_answers).float().mean()
+        exact_accuracy, candidate_accuracy = answer_metrics(
+            logits,
+            targets,
+            answer_mask,
+            candidate_values,
+        )
         losses.append(float(loss.item()))
-        accuracies.append(float(accuracy.item()))
+        exact_accuracies.append(exact_accuracy)
+        candidate_accuracies.append(candidate_accuracy)
 
     model.train()
-    return sum(losses) / len(losses), sum(accuracies) / len(accuracies)
+    return (
+        sum(losses) / len(losses),
+        sum(exact_accuracies) / len(exact_accuracies),
+        sum(candidate_accuracies) / len(candidate_accuracies),
+    )
 
 
 def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tensor) -> torch.Tensor:
@@ -285,16 +319,21 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tens
 
 
 def main() -> None:
-    """Train the tiny chunk-local model on delayed key-value recall."""
+    """Train the chunk-local model on multi-query binding recall."""
     random.seed(SEED)
     torch.manual_seed(SEED)
 
     vocab_tokens, token_to_id = build_vocab()
     model = LanguageModel(len(vocab_tokens)).to(DEVICE)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    print(
+        f"candidate_guess_exact_baseline={CANDIDATE_GUESS_BASELINE:.4f} "
+        f"random_value_exact_baseline={RANDOM_VALUE_EXACT_BASELINE:.4f} "
+        f"random_value_candidate_baseline={RANDOM_VALUE_CANDIDATE_BASELINE:.4f}"
+    )
 
     for step in range(TRAIN_STEPS):
-        inputs, targets, answer_mask = sample_batch(token_to_id)
+        inputs, targets, answer_mask, _ = sample_batch(token_to_id)
         logits = model(inputs)
         loss = loss_fn(logits, targets, answer_mask)
 
@@ -304,12 +343,13 @@ def main() -> None:
 
         should_log = step == 0 or (step + 1) % EVAL_INTERVAL == 0 or step == TRAIN_STEPS - 1
         if should_log:
-            answer_loss, answer_accuracy = estimate_metrics(model, token_to_id)
+            answer_loss, exact_accuracy, candidate_accuracy = estimate_metrics(model, token_to_id)
             print(
                 f"step={step + 1} "
                 f"batch_answer_loss={loss.item():.4f} "
                 f"eval_answer_loss={answer_loss:.4f} "
-                f"eval_answer_accuracy={answer_accuracy:.4f}"
+                f"eval_exact_answer_accuracy={exact_accuracy:.4f} "
+                f"eval_candidate_value_accuracy={candidate_accuracy:.4f}"
             )
 
 
