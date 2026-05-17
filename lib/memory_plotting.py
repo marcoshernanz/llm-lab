@@ -224,7 +224,7 @@ def resolve_memory_artifacts_root(artifacts_root: Path | None = None) -> Path:
 def _write_metrics_csv(path: Path, records: Sequence[MemoryMetricRecord]) -> None:
     """Write one row per evaluation checkpoint."""
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
+        writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(
             [
                 "step",
