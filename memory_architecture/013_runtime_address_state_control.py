@@ -1,4 +1,4 @@
-"""Memory architecture experiment 012: sparse writable memory on multi-query binding."""
+"""Memory architecture experiment 013: runtime address state control."""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ class CausalSelfAttention(nn.Module):
 
 
 class SparseLatentAddressRead(nn.Module):
-    """Read runtime memory values from each token's nearest address slots."""
+    """Read runtime memory values from each token's nearest runtime address slots."""
 
     def __init__(self):
         """Create the token-to-address query and output projections."""
@@ -112,7 +112,7 @@ class SparseLatentAddressRead(nn.Module):
         queries = F.normalize(self.q_proj(x), dim=-1)
         addresses = F.normalize(memory_addresses, dim=-1)
 
-        read_scores = queries @ addresses.T
+        read_scores = queries @ addresses.transpose(1, 2)
         read_scores = read_scores / READ_TEMPERATURE
         top_scores, top_indices = torch.topk(
             read_scores,
@@ -128,8 +128,8 @@ class SparseLatentAddressRead(nn.Module):
         return self.out_proj(read_values)
 
 
-class FixedAddressMemoryWrite(nn.Module):
-    """Write chunk states into per-example memory values at fixed addresses."""
+class RuntimeAddressMemoryWrite(nn.Module):
+    """Write chunk states into per-example memory values at runtime addresses."""
 
     def __init__(self):
         """Create projections for write addresses, values, and gates."""
@@ -148,7 +148,7 @@ class FixedAddressMemoryWrite(nn.Module):
         write_queries = F.normalize(self.q_proj(x), dim=-1)
         addresses = F.normalize(memory_addresses, dim=-1)
 
-        write_scores = write_queries @ addresses.T
+        write_scores = write_queries @ addresses.transpose(1, 2)
         write_scores = write_scores / WRITE_TEMPERATURE
         write_weights = F.softmax(write_scores, dim=-1)
         write_gates = torch.sigmoid(self.gate_proj(x))
@@ -223,13 +223,13 @@ class Decoder(nn.Module):
     """Stack decoder blocks and update runtime memory after each chunk."""
 
     def __init__(self) -> None:
-        """Create the block stack, fixed addresses, and write module."""
+        """Create the block stack, base addresses, and write module."""
         super().__init__()
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
         self.out_norm = RMSNorm()
         self.memory_addresses = nn.Parameter(torch.randn(NUM_MEMORY_SLOTS, ADDRESS_DIM))
         self.memory_write_norm = RMSNorm()
-        self.memory_write = FixedAddressMemoryWrite()
+        self.memory_write = RuntimeAddressMemoryWrite()
 
     def forward(
         self,
@@ -237,12 +237,15 @@ class Decoder(nn.Module):
         memory_values: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run one chunk and return updated runtime memory values."""
+        batch_size = x.shape[0]
+        memory_addresses = self.memory_addresses.unsqueeze(0).expand(batch_size, -1, -1)
+
         for block in self.blocks:
-            x = block(x, self.memory_addresses, memory_values)
+            x = block(x, memory_addresses, memory_values)
 
         x = self.out_norm(x)
         memory_values = self.memory_write(
-            self.memory_write_norm(x), self.memory_addresses, memory_values
+            self.memory_write_norm(x), memory_addresses, memory_values
         )
         return x, memory_values
 
@@ -417,7 +420,7 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor, answer_mask: torch.Tens
 
 
 def main() -> None:
-    """Train the sparse writable-memory model on multi-query binding recall."""
+    """Train the runtime-address control model on multi-query binding recall."""
     random.seed(SEED)
     torch.manual_seed(SEED)
 
