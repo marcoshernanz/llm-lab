@@ -2,7 +2,7 @@
 
 Runs recorded through 2026-05-18.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, the first runtime-address-state control, the first bounded address-drift run, and the M-015 address-drift control cycle.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, the first runtime-address-state control, the first bounded address-drift run, the M-015 address-drift control cycle, and the M-016 address-geometry stabilization cycle.
 
 ## Summary
 
@@ -25,6 +25,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-013 | [`memory_architecture/013_runtime_address_state_control.py`](../../memory_architecture/013_runtime_address_state_control.py) | 2000 | 1.6848 | 1.6620 | 581 |
 | M-014 | [`memory_architecture/014_bounded_address_drift.py`](../../memory_architecture/014_bounded_address_drift.py) | 2000 | 1.6322 | 1.6022 | 630 |
 | M-015 | [`memory_architecture/015_address_drift_best.py`](../../memory_architecture/015_address_drift_best.py) | 4000 | 1.3720 | 1.3911 | 820 |
+| M-016 | [`memory_architecture/016_address_geometry_stabilization.py`](../../memory_architecture/016_address_geometry_stabilization.py) | 4000 | 1.3814 | 1.3704 | T4 sweep |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -896,3 +897,62 @@ Key conclusions:
 - The most honest interpretation is that bounded address movement can rescue bad fixed-address geometry and is stable at sufficient scale, but it is not yet a universal large improvement.
 - Candidate-value accuracy is saturated in all meaningful memory runs, so the remaining question is exact key-value binding, not candidate-set recovery.
 - The next milestone should not assume allocation will automatically help. If we proceed to allocation, it should keep a `0.20` drift baseline and frozen-address controls, because seed sensitivity is now a first-class result.
+
+## M-016 Address Geometry Stabilization
+
+- Canonical script: [`memory_architecture/016_address_geometry_stabilization.py`](../../memory_architecture/016_address_geometry_stabilization.py)
+- Date: `2026-05-18`
+- Execution target: Kaggle `T4 x2` using explicit `NvidiaTeslaT4` pushes
+- Cleanup note: the full sweep was run with temporary `016a` through `016r` variants, then the variant source files and per-run artifacts were removed after the lesson was extracted.
+- Retained artifact policy: keep the canonical configurable script plus one aggregate sweep summary.
+- Task: same binding-sensitive synthetic delayed key-value recall task as `M-015`
+- Model: sparse writable memory with frozen runtime addresses; address movement is disabled with `ADDRESS_UPDATE_SCALE=0.0`
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `4000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Candidate-guess exact-answer baseline: `0.1250`
+- Random-value exact-answer baseline: `0.0625`
+- Random-value candidate-value baseline: `0.5000`
+- Full-attention reference: `M-011` exact answer accuracy `0.3384`
+
+This milestone asks whether the seed sensitivity found in `M-015` is mostly an address-geometry problem:
+
+- if frozen addresses fail because random slots collide, more separated addresses should stabilize them;
+- if learned address tables help, trainable base addresses should beat fixed random addresses;
+- if retrieval neighborhoods are too narrow, higher top-k should rescue failing runs;
+- if capacity is the issue, more memory slots should rescue failing runs.
+
+Representative results:
+
+| Run | Address mode | Seed | Slots | Top-k | Exact @ 2000 | Exact @ 4000 | Final loss |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| M-016a | learned random | 1337 | 64 | 8 | 0.2335 | 0.2386 | 1.5916 |
+| M-016d | learned random | 2026 | 64 | 8 | 0.3309 | 0.3456 | 1.3704 |
+| M-016c | fixed spread | 1337 | 64 | 8 | 0.1646 | 0.3442 | 1.4177 |
+| M-016f | fixed spread | 2026 | 64 | 8 | 0.2363 | 0.2427 | 1.5679 |
+| M-016g | learned unit random | 1337 | 64 | 8 | 0.3350 | 0.3349 | 1.4015 |
+| M-016h | learned unit random | 2026 | 64 | 8 | 0.2736 | 0.3021 | 1.4992 |
+| M-016o | learned random | 1337 | 128 | 8 | 0.2017 | 0.2413 | 1.5891 |
+| M-016p | learned random | 1337 | 64 | 16 | 0.2348 | 0.2376 | 1.5872 |
+| M-016q | fixed spread | 2026 | 64 | 16 | 0.2768 | 0.2718 | 1.5223 |
+| M-016r | fixed spread | 2026 | 128 | 8 | 0.2376 | 0.2383 | 1.5835 |
+
+Aggregate artifacts:
+
+- Aggregate metrics by geometry: [`final_metrics_by_geometry.csv`](../../artifacts/memory_experiments/016_address_geometry_stabilization_summary/final_metrics_by_geometry.csv)
+- Aggregate accuracy plot: [`final_accuracy_by_geometry.svg`](../../artifacts/memory_experiments/016_address_geometry_stabilization_summary/final_accuracy_by_geometry.svg)
+
+![M-016 final accuracy by geometry](../../artifacts/memory_experiments/016_address_geometry_stabilization_summary/final_accuracy_by_geometry.svg)
+
+Key conclusions:
+
+- Simple frozen address geometry is not reliable enough. It can produce full-attention-like exact binding on some seeds and near-failure on others.
+- Raw learned random addresses are highly seed-sensitive: seed `1337` fails at `0.2386`, while seeds `2026`, `7`, and `42` reach `0.3367` to `0.3456`.
+- Fixed random addresses show the same problem on the direct two-seed check: `0.2362` on seed `1337` and `0.3414` on seed `2026`.
+- Fixed-spread addresses are not a universal fix. They rescue seed `1337` (`0.3442`) but fail on seeds `2026`, `7`, and `42` (`0.2331` to `0.2599`).
+- Learned unit-normalized addresses reduce the worst failures but do not fully solve the problem: they range from `0.2977` to `0.3434`.
+- More slots and wider retrieval do not rescue the known bad cases: seed `1337` learned-random stays near `0.24` with `128` slots or top-k `16`, and seed `2026` fixed-spread stays weak with `128` slots or top-k `16`.
+- Candidate-value accuracy is again saturated, so the problem is not finding valid values. It is binding the right queried key to the right value.
+- The main lesson is that bounded address movement remains justified. Allocation should come next only with strong controls: frozen/raw learned geometry, learned-unit geometry, and a moving-address baseline across multiple seeds.
