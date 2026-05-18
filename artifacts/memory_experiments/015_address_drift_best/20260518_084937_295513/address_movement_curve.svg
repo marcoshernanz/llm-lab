@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" fill="none">
+  <rect width="900" height="400" fill="white"/>
+  <line x1="64" y1="24" x2="64" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <line x1="64" y1="356" x2="876" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <text x="64" y="16" fill="#24292f" font-family="monospace" font-size="14">Mean address movement vs. step</text>
+  <text x="64" y="388" fill="#57606a" font-family="monospace" font-size="12">step 1 to 4000</text>
+  <text x="12" y="28" fill="#57606a" font-family="monospace" font-size="12">0.0297</text>
+  <text x="12" y="360" fill="#57606a" font-family="monospace" font-size="12">0.0000</text>
+  <polyline points="64.00,259.00 104.41,166.33 145.02,50.93 185.63,46.14 226.24,24.00 266.85,47.68 307.46,58.56 348.07,65.67 388.68,65.58 429.29,38.19 469.90,224.82 510.51,255.73 551.12,258.05 591.73,260.59 632.34,256.55 672.95,260.05 713.56,259.06 754.17,255.58 794.78,258.45 835.39,255.05 876.00,257.80" stroke="#ea580c" stroke-width="2" fill="none"/>
+  <circle cx="876.00" cy="257.80" r="3" fill="#ea580c"/>
+  <line x1="585" y1="14" x2="667" y2="14" stroke="#ea580c" stroke-width="2"/>
+  <text x="675" y="18" fill="#57606a" font-family="monospace" font-size="12">mean address movement</text>
+</svg>
