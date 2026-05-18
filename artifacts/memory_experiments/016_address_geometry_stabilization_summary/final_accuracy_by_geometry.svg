@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" fill="none">
+<rect width="900" height="420" fill="white"/>
+<text x="72" y="22" fill="#111827" font-family="monospace" font-size="15">M-016 final exact accuracy by address geometry</text>
+<line x1="72" y1="36" x2="72" y2="362" stroke="#d0d7de"/>
+<line x1="72" y1="362" x2="872" y2="362" stroke="#d0d7de"/>
+<line x1="72" y1="280.50" x2="872" y2="280.50" stroke="#eef2f7"/>
+<text x="18" y="284.50" fill="#57606a" font-family="monospace" font-size="12">0.24</text>
+<line x1="72" y1="199.00" x2="872" y2="199.00" stroke="#eef2f7"/>
+<text x="18" y="203.00" fill="#57606a" font-family="monospace" font-size="12">0.28</text>
+<line x1="72" y1="117.50" x2="872" y2="117.50" stroke="#eef2f7"/>
+<text x="18" y="121.50" fill="#57606a" font-family="monospace" font-size="12">0.32</text>
+<line x1="72" y1="36.00" x2="872" y2="36.00" stroke="#eef2f7"/>
+<text x="18" y="40.00" fill="#57606a" font-family="monospace" font-size="12">0.36</text>
+<text x="172.00" y="396" text-anchor="middle" fill="#57606a" font-family="monospace" font-size="12">seed 1337</text>
+<text x="372.00" y="396" text-anchor="middle" fill="#57606a" font-family="monospace" font-size="12">seed 2026</text>
+<text x="572.00" y="396" text-anchor="middle" fill="#57606a" font-family="monospace" font-size="12">seed 7</text>
+<text x="772.00" y="396" text-anchor="middle" fill="#57606a" font-family="monospace" font-size="12">seed 42</text>
+<circle cx="148.00" cy="283.26" r="5" fill="#2563eb"><title>M-016a learned_random seed=1337 exact=0.2386</title></circle>
+<circle cx="164.00" cy="288.23" r="5" fill="#64748b"><title>M-016b fixed_random seed=1337 exact=0.2362</title></circle>
+<circle cx="180.00" cy="68.24" r="5" fill="#dc2626"><title>M-016c fixed_spread seed=1337 exact=0.3442</title></circle>
+<circle cx="348.00" cy="65.25" r="5" fill="#2563eb"><title>M-016d learned_random seed=2026 exact=0.3456</title></circle>
+<circle cx="364.00" cy="73.96" r="5" fill="#64748b"><title>M-016e fixed_random seed=2026 exact=0.3414</title></circle>
+<circle cx="380.00" cy="275.05" r="5" fill="#dc2626"><title>M-016f fixed_spread seed=2026 exact=0.2427</title></circle>
+<circle cx="196.00" cy="87.14" r="5" fill="#059669"><title>M-016g learned_unit_random seed=1337 exact=0.3349</title></circle>
+<circle cx="396.00" cy="153.92" r="5" fill="#059669"><title>M-016h learned_unit_random seed=2026 exact=0.3021</title></circle>
+<circle cx="548.00" cy="83.41" r="5" fill="#2563eb"><title>M-016i learned_random seed=7 exact=0.3367</title></circle>
+<circle cx="580.00" cy="239.85" r="5" fill="#dc2626"><title>M-016j fixed_spread seed=7 exact=0.2599</title></circle>
+<circle cx="596.00" cy="163.00" r="5" fill="#059669"><title>M-016k learned_unit_random seed=7 exact=0.2977</title></circle>
+<circle cx="748.00" cy="75.70" r="5" fill="#2563eb"><title>M-016l learned_random seed=42 exact=0.3405</title></circle>
+<circle cx="780.00" cy="294.57" r="5" fill="#dc2626"><title>M-016m fixed_spread seed=42 exact=0.2331</title></circle>
+<circle cx="796.00" cy="69.73" r="5" fill="#059669"><title>M-016n learned_unit_random seed=42 exact=0.3434</title></circle>
+<circle cx="72" cy="410" r="4" fill="#2563eb"/>
+<text x="82" y="414" fill="#374151" font-family="monospace" font-size="11">learned_random</text>
+<circle cx="262" cy="410" r="4" fill="#64748b"/>
+<text x="272" y="414" fill="#374151" font-family="monospace" font-size="11">fixed_random</text>
+<circle cx="452" cy="410" r="4" fill="#dc2626"/>
+<text x="462" y="414" fill="#374151" font-family="monospace" font-size="11">fixed_spread</text>
+<circle cx="642" cy="410" r="4" fill="#059669"/>
+<text x="652" y="414" fill="#374151" font-family="monospace" font-size="11">learned_unit_random</text>
+</svg>
