@@ -52,7 +52,7 @@ This is the path that is most relevant to:
 
 ## Current Status
 
-As of 2026-05-17:
+As of 2026-05-18:
 
 - `001_char_decoder.py` is complete as the clean vanilla baseline.
 - `002_memory_retrieval.py` is complete as the static retrieval scaffold on top of full-sequence attention.
@@ -69,6 +69,7 @@ As of 2026-05-17:
 - `012_sparse_memory_binding_sensitive_task_harness.py` is complete as the sparse writable memory run on the multi-query binding benchmark.
 - `013_runtime_address_state_control.py` is complete as the control that turns fixed addresses into per-example runtime address state without moving addresses yet.
 - `014_bounded_address_drift.py` is complete as the first bounded runtime address movement experiment.
+- `015_address_drift_best.py` is retained as the canonical best address-drift run, with the full scale/seed sweep summarized in `artifacts/memory_experiments/015_address_drift_controls_summary/`.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -126,6 +127,20 @@ The first bounded address-drift run is now a promising but unsettled positive re
 - final mean address movement is `0.013766`,
 - final exact answer accuracy improves to `0.2996`, above both `M-012` (`0.2384`) and `M-013` (`0.2395`),
 - and candidate-value accuracy remains effectively saturated at `0.9999`.
+
+The address-drift control cycle tightened that interpretation:
+
+- frozen addresses can sometimes stay weak (`0.2441` on seed `1337`) and sometimes reach full-attention-like accuracy by themselves (`0.3427` on seed `2026`),
+- useful drift scales rescue the weak seed and can reach `0.34` to `0.35` exact accuracy,
+- scale `0.20` slightly beats frozen addresses on seeds `2026`, `7`, and `42`,
+- but smaller drift scales can hurt on some seeds.
+
+So the current conclusion is not "any drift helps."
+The more precise conclusion is:
+
+- bounded address movement is stable and can rescue bad fixed-address geometry,
+- high enough movement scale matters,
+- and seed sensitivity is now part of the phenomenon we need to control.
 
 ## What This Path Is Trying To Learn
 
@@ -655,6 +670,18 @@ Questions to answer:
 - How sensitive is the model to address-update scale?
 - Does the learned system prefer stable addresses even when movement is available?
 
+Status:
+- Complete via the retained canonical run `memory_architecture/015_address_drift_best.py`.
+- The temporary `015a` through `015p` sweep variants were removed after cleanup; the aggregate results are preserved in `artifacts/memory_experiments/015_address_drift_controls_summary/`.
+
+Main lesson:
+- Address movement is real, but the result is more nuanced than the first `M-014` run suggested.
+- On seed `1337`, frozen addresses stay weak (`0.2441`) while useful drift scales reach full-attention-like exact accuracy (`0.3411` to `0.3468`).
+- On seed `2026`, frozen addresses are already strong (`0.3427`), and only scale `0.20` slightly improves them (`0.3448`); lower dynamic scales hurt.
+- On seeds `7` and `42`, scale `0.20` gives small improvements over frozen addresses (`0.3372` vs `0.3345`, and `0.3446` vs `0.3390`).
+- The best interpretation is that bounded address movement can rescue unlucky fixed-address geometry and is stable at sufficient scale, but it is not yet a universal large gain.
+- Future allocation experiments must keep seed controls and a strong moving-address baseline rather than comparing against only the weaker seed-1337 frozen case.
+
 ### Milestone 016: Bounded Slot Allocation
 Track: Writing + Addressing
 
@@ -674,6 +701,7 @@ What stays fixed:
 Why this comes after drift:
 - Allocation changes both where a memory lives and whether old content is preserved.
 - It should only be tested after address drift has been isolated.
+- Since `M-015` found seed sensitivity, allocation must be compared against both frozen-address and `0.20` drifting-address baselines across at least two seeds.
 
 Exit criteria:
 - The model can use bounded allocation without immediate collapse.
@@ -759,11 +787,10 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 015: address drift controls and ablations,
-2. milestone 016: bounded slot allocation,
-3. milestone 017: longer-context pressure test,
-4. milestone 018: natural-text evaluation,
-5. milestone 019: thesis-grade freeze.
+1. milestone 016: bounded slot allocation,
+2. milestone 017: longer-context pressure test,
+3. milestone 018: natural-text evaluation,
+4. milestone 019: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:

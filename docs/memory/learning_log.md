@@ -1,8 +1,8 @@
 # Memory Architecture Learning Log
 
-Runs recorded through 2026-05-17.
+Runs recorded through 2026-05-18.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, the first runtime-address-state control, and the first bounded address-drift run.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, the first runtime-address-state control, the first bounded address-drift run, and the M-015 address-drift control cycle.
 
 ## Summary
 
@@ -24,6 +24,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-012 | [`memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py`](../../memory_architecture/012_sparse_memory_binding_sensitive_task_harness.py) | 2000 | 1.6581 | 1.6525 | 1043 |
 | M-013 | [`memory_architecture/013_runtime_address_state_control.py`](../../memory_architecture/013_runtime_address_state_control.py) | 2000 | 1.6848 | 1.6620 | 581 |
 | M-014 | [`memory_architecture/014_bounded_address_drift.py`](../../memory_architecture/014_bounded_address_drift.py) | 2000 | 1.6322 | 1.6022 | 630 |
+| M-015 | [`memory_architecture/015_address_drift_best.py`](../../memory_architecture/015_address_drift_best.py) | 4000 | 1.3720 | 1.3911 | 820 |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -831,3 +832,67 @@ step=2000 batch_answer_loss=1.5324 eval_answer_loss=1.4789 eval_answer_accuracy=
 - Note: address movement is nonzero and bounded; final mean address movement is `0.013766`.
 - Note: the refreshed run beats both `M-012` (`0.2384`) and `M-013` (`0.2395`) on exact binding while still trailing full attention `M-011` (`0.3384`).
 - Note: this overturns the earlier single-run negative read of `M-014`; we should treat the result as promising but not settled until `M-015` ablates movement scale and disabled movement.
+
+## M-015 Address Drift Controls And Ablations
+
+- Canonical script: [`memory_architecture/015_address_drift_best.py`](../../memory_architecture/015_address_drift_best.py)
+- Date: `2026-05-17` to `2026-05-18`
+- Execution target: Kaggle `T4 x2` using explicit `NvidiaTeslaT4` pushes
+- Cleanup note: the full sweep was run with temporary `015a` through `015p` variants, then the source files, raw Kaggle logs, and non-best per-run artifacts were removed after the lesson was extracted.
+- Retained artifact policy: keep one canonical best run plus one aggregate sweep summary.
+- Task: same binding-sensitive synthetic delayed key-value recall task as `M-014`
+- Model: same bounded-address-drift model as `M-014`
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `4000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Candidate-guess exact-answer baseline: `0.1250`
+- Random-value exact-answer baseline: `0.0625`
+- Random-value candidate-value baseline: `0.5000`
+- Full-attention reference: `M-011` exact answer accuracy `0.3384`
+
+This milestone asks a narrower causal question:
+
+- did `M-014` improve because addresses moved,
+- or was the improvement mostly unrelated to address drift?
+
+Retained best run:
+
+| Seed | Address scale | Exact @ 2000 | Exact @ 4000 | Final loss | Final movement | Wall seconds |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1337 | 0.075 | 0.2944 | 0.3468 | 1.3911 | 0.008790 | 820 |
+
+Sweep summary:
+
+| Seed | Frozen exact @ 4000 | Best moving exact @ 4000 | Best moving scale | Difference |
+| ---: | ---: | ---: | ---: | ---: |
+| 1337 | 0.2441 | 0.3468 | 0.075 | +0.1027 |
+| 2026 | 0.3427 | 0.3448 | 0.20 | +0.0022 |
+| 7 | 0.3345 | 0.3372 | 0.20 | +0.0027 |
+| 42 | 0.3390 | 0.3446 | 0.20 | +0.0056 |
+
+Retained artifacts:
+
+- Best metrics: [`metrics.csv`](../../artifacts/memory_experiments/015_address_drift_best/20260518_084937_295513/metrics.csv)
+- Best loss curve: [`loss_curve.svg`](../../artifacts/memory_experiments/015_address_drift_best/20260518_084937_295513/loss_curve.svg)
+- Best accuracy curve: [`accuracy_curve.svg`](../../artifacts/memory_experiments/015_address_drift_best/20260518_084937_295513/accuracy_curve.svg)
+- Best address movement curve: [`address_movement_curve.svg`](../../artifacts/memory_experiments/015_address_drift_best/20260518_084937_295513/address_movement_curve.svg)
+- Aggregate metrics by scale and seed: [`final_metrics_by_scale.csv`](../../artifacts/memory_experiments/015_address_drift_controls_summary/final_metrics_by_scale.csv)
+- Aggregate accuracy plot: [`final_accuracy_by_scale.svg`](../../artifacts/memory_experiments/015_address_drift_controls_summary/final_accuracy_by_scale.svg)
+
+![M-015 final accuracy by scale](../../artifacts/memory_experiments/015_address_drift_controls_summary/final_accuracy_by_scale.svg)
+
+![M-015 best accuracy curve](../../artifacts/memory_experiments/015_address_drift_best/20260518_084937_295513/accuracy_curve.svg)
+
+![M-015 best address movement curve](../../artifacts/memory_experiments/015_address_drift_best/20260518_084937_295513/address_movement_curve.svg)
+
+Key conclusions:
+
+- Address movement itself matters, but the original `M-014` setting does not support the simple claim that "small drift at scale `0.05` is the mechanism."
+- On seed `1337`, frozen addresses finish at `0.2441`, while useful drift scales reach full-attention-like exact binding: `0.3468` at scale `0.075`, `0.3447` at scale `0.15`, and `0.3411` at scale `0.20`.
+- On seed `2026`, the frozen-address control already reaches `0.3427`; scales `0.075` and `0.15` hurt badly, while scale `0.20` ends slightly higher at `0.3448`.
+- On seeds `7` and `42`, scale `0.20` slightly beats frozen addresses: `0.3372` vs `0.3345` on seed `7`, and `0.3446` vs `0.3390` on seed `42`.
+- The most honest interpretation is that bounded address movement can rescue bad fixed-address geometry and is stable at sufficient scale, but it is not yet a universal large improvement.
+- Candidate-value accuracy is saturated in all meaningful memory runs, so the remaining question is exact key-value binding, not candidate-set recovery.
+- The next milestone should not assume allocation will automatically help. If we proceed to allocation, it should keep a `0.20` drift baseline and frozen-address controls, because seed sensitivity is now a first-class result.
