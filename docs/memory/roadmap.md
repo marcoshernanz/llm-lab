@@ -70,6 +70,7 @@ As of 2026-05-18:
 - `013_runtime_address_state_control.py` is complete as the control that turns fixed addresses into per-example runtime address state without moving addresses yet.
 - `014_bounded_address_drift.py` is complete as the first bounded runtime address movement experiment.
 - `015_address_drift_best.py` is retained as the canonical best address-drift run, with the full scale/seed sweep summarized in `artifacts/memory_experiments/015_address_drift_controls_summary/`.
+- `016_address_geometry_stabilization.py` is complete as the address-geometry control suite, with the full geometry/seed/capacity sweep summarized in `artifacts/memory_experiments/016_address_geometry_stabilization_summary/`.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -142,6 +143,19 @@ The more precise conclusion is:
 - high enough movement scale matters,
 - and seed sensitivity is now part of the phenomenon we need to control.
 
+The address-geometry stabilization cycle then tested whether simple frozen geometry fixes could remove that seed sensitivity:
+
+- raw learned random addresses still range from failure (`0.2386` on seed `1337`) to full-attention-like accuracy (`0.3456` on seed `2026`),
+- fixed-spread addresses rescue seed `1337` (`0.3442`) but fail on seeds `2026`, `7`, and `42`,
+- learned unit-normalized addresses reduce the worst failures but still range from `0.2977` to `0.3434`,
+- and neither more memory slots nor wider top-k retrieval rescues the known bad cases.
+
+So the current conclusion is:
+
+- simple frozen address geometry is not reliable enough,
+- bounded address movement remains justified,
+- and allocation should be tested next only with strong seed controls and a moving-address baseline.
+
 ## What This Path Is Trying To Learn
 
 There are really three different questions here:
@@ -185,7 +199,7 @@ In plain terms:
 
 ## Milestones
 
-The first fourteen milestones already exist in code and are part of the roadmap.
+The first sixteen milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -682,7 +696,36 @@ Main lesson:
 - The best interpretation is that bounded address movement can rescue unlucky fixed-address geometry and is stable at sufficient scale, but it is not yet a universal large gain.
 - Future allocation experiments must keep seed controls and a strong moving-address baseline rather than comparing against only the weaker seed-1337 frozen case.
 
-### Milestone 016: Bounded Slot Allocation
+### Milestone 016: Address Geometry Stabilization
+Track: Evaluation + Addressing
+
+Goal:
+- Determine whether frozen-address seed sensitivity is mostly caused by poor address geometry.
+
+What changed:
+- Compare raw learned random addresses, fixed random addresses, fixed-spread addresses, and learned unit-normalized addresses.
+- Repeat the key geometry settings across multiple seeds.
+- Test whether more slots or wider top-k retrieval rescues known bad cases.
+- Keep address movement disabled so this isolates geometry from drift.
+
+Why this came before allocation:
+- `M-015` showed that frozen addresses can be either weak or full-attention-like depending on seed.
+- Allocation would add a new overwrite policy before we understood the existing addressing failure mode.
+- The clean question was whether better frozen geometry could make allocation unnecessary or at least give it a stable base.
+
+Status:
+- Complete via `memory_architecture/016_address_geometry_stabilization.py`.
+- The temporary `016a` through `016r` sweep variants were removed after cleanup.
+- The aggregate results are preserved in `artifacts/memory_experiments/016_address_geometry_stabilization_summary/`.
+
+Main lesson:
+- Simple frozen address geometry does not make the memory reliable.
+- Fixed-spread geometry rescues seed `1337` but fails on other seeds.
+- Learned unit-normalized addresses reduce catastrophic failures but still do not fully match the moving-address runs.
+- More slots and wider top-k retrieval do not rescue the known bad cases.
+- Bounded address movement remains justified, and future allocation work needs strong seed controls.
+
+### Milestone 017: Bounded Slot Allocation
 Track: Writing + Addressing
 
 Goal:
@@ -698,10 +741,11 @@ What stays fixed:
 - Retrieval remains sparse top-k.
 - The task harness stays synthetic and controlled.
 
-Why this comes after drift:
+Why this comes after geometry:
 - Allocation changes both where a memory lives and whether old content is preserved.
-- It should only be tested after address drift has been isolated.
-- Since `M-015` found seed sensitivity, allocation must be compared against both frozen-address and `0.20` drifting-address baselines across at least two seeds.
+- `M-015` showed that address movement can rescue bad geometry.
+- `M-016` showed that simple frozen geometry is not reliable enough by itself.
+- Therefore allocation should be compared against frozen raw learned addresses, learned unit-normalized addresses, and a strong moving-address baseline across multiple seeds.
 
 Exit criteria:
 - The model can use bounded allocation without immediate collapse.
@@ -713,7 +757,7 @@ Questions to answer:
 - How should collisions be handled?
 - Does allocation improve behavior, or only add instability?
 
-### Milestone 017: Longer-Context Pressure Test
+### Milestone 018: Longer-Context Pressure Test
 Track: Scaling
 
 Goal:
@@ -735,7 +779,7 @@ Questions to answer:
 - Does the address space stay usable at larger memory counts?
 - Does runtime scale acceptably?
 
-### Milestone 018: Natural-Text Evaluation Pass
+### Milestone 019: Natural-Text Evaluation Pass
 Track: External validity
 
 Goal:
@@ -757,7 +801,7 @@ Questions to answer:
 - Does success on synthetic tasks transfer at all?
 - Is the memory system learning semantic state or only benchmark tricks?
 
-### Milestone 019: Thesis-Grade Freeze
+### Milestone 020: Thesis-Grade Freeze
 Track: Research packaging
 
 Goal:
@@ -787,10 +831,10 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 016: bounded slot allocation,
-2. milestone 017: longer-context pressure test,
-3. milestone 018: natural-text evaluation,
-4. milestone 019: thesis-grade freeze.
+1. milestone 017: bounded slot allocation,
+2. milestone 018: longer-context pressure test,
+3. milestone 019: natural-text evaluation,
+4. milestone 020: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
@@ -800,7 +844,8 @@ It keeps the research disciplined:
 - then prove writing,
 - then compare sparse retrieval once there is useful runtime memory,
 - then tighten the benchmark so exact binding is measured directly,
-- then test whether addresses can move or be allocated,
+- then test whether addresses can move and whether stable frozen geometry is enough,
+- then test whether bounded allocation adds value beyond drift,
 - then test scale,
 - then package the result honestly.
 
