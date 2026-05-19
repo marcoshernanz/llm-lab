@@ -25,6 +25,10 @@ class MemoryMetricRecord:
     eval_exact_answer_accuracy: float
     eval_candidate_value_accuracy: float
     eval_mean_address_movement: float | None = None
+    eval_mean_memory_usage: float | None = None
+    eval_usage_entropy: float | None = None
+    eval_mean_allocation_gate: float | None = None
+    eval_mean_write_gate: float | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,10 @@ class MemoryMetricTracker:
         eval_exact_answer_accuracy: float,
         eval_candidate_value_accuracy: float,
         eval_mean_address_movement: float | None = None,
+        eval_mean_memory_usage: float | None = None,
+        eval_usage_entropy: float | None = None,
+        eval_mean_allocation_gate: float | None = None,
+        eval_mean_write_gate: float | None = None,
     ) -> None:
         """Record one memory-experiment checkpoint and optionally print it."""
         record = MemoryMetricRecord(
@@ -82,6 +90,26 @@ class MemoryMetricTracker:
                 None
                 if eval_mean_address_movement is None
                 else _checked_float("eval_mean_address_movement", eval_mean_address_movement)
+            ),
+            eval_mean_memory_usage=(
+                None
+                if eval_mean_memory_usage is None
+                else _checked_float("eval_mean_memory_usage", eval_mean_memory_usage)
+            ),
+            eval_usage_entropy=(
+                None
+                if eval_usage_entropy is None
+                else _checked_float("eval_usage_entropy", eval_usage_entropy)
+            ),
+            eval_mean_allocation_gate=(
+                None
+                if eval_mean_allocation_gate is None
+                else _checked_float("eval_mean_allocation_gate", eval_mean_allocation_gate)
+            ),
+            eval_mean_write_gate=(
+                None
+                if eval_mean_write_gate is None
+                else _checked_float("eval_mean_write_gate", eval_mean_write_gate)
             ),
         )
         if record.step <= 0:
@@ -206,6 +234,61 @@ def save_memory_metric_artifacts(
         )
         artifacts["address_movement_curve_svg"] = movement_path
 
+    if any(record.eval_mean_memory_usage is not None for record in records):
+        usage_path = run_dir / "usage_curve.svg"
+        usage_path.write_text(
+            _build_metric_curve_svg(
+                title="Memory usage diagnostics vs. step",
+                steps=steps,
+                series=[
+                    MetricSeries(
+                        "mean usage",
+                        [
+                            record.eval_mean_memory_usage
+                            if record.eval_mean_memory_usage is not None
+                            else 0.0
+                            for record in records
+                        ],
+                        "#0891b2",
+                    ),
+                    MetricSeries(
+                        "usage entropy",
+                        [
+                            record.eval_usage_entropy
+                            if record.eval_usage_entropy is not None
+                            else 0.0
+                            for record in records
+                        ],
+                        "#9333ea",
+                    ),
+                    MetricSeries(
+                        "allocation gate",
+                        [
+                            record.eval_mean_allocation_gate
+                            if record.eval_mean_allocation_gate is not None
+                            else 0.0
+                            for record in records
+                        ],
+                        "#ea580c",
+                    ),
+                    MetricSeries(
+                        "write gate",
+                        [
+                            record.eval_mean_write_gate
+                            if record.eval_mean_write_gate is not None
+                            else 0.0
+                            for record in records
+                        ],
+                        "#16a34a",
+                    ),
+                ],
+                y_min=0.0,
+                y_max=1.0,
+            ),
+            encoding="utf-8",
+        )
+        artifacts["usage_curve_svg"] = usage_path
+
     return artifacts
 
 
@@ -233,6 +316,10 @@ def _write_metrics_csv(path: Path, records: Sequence[MemoryMetricRecord]) -> Non
                 "eval_exact_answer_accuracy",
                 "eval_candidate_value_accuracy",
                 "eval_mean_address_movement",
+                "eval_mean_memory_usage",
+                "eval_usage_entropy",
+                "eval_mean_allocation_gate",
+                "eval_mean_write_gate",
             ]
         )
         for record in records:
@@ -244,6 +331,10 @@ def _write_metrics_csv(path: Path, records: Sequence[MemoryMetricRecord]) -> Non
                     record.eval_exact_answer_accuracy,
                     record.eval_candidate_value_accuracy,
                     "" if record.eval_mean_address_movement is None else record.eval_mean_address_movement,
+                    "" if record.eval_mean_memory_usage is None else record.eval_mean_memory_usage,
+                    "" if record.eval_usage_entropy is None else record.eval_usage_entropy,
+                    "" if record.eval_mean_allocation_gate is None else record.eval_mean_allocation_gate,
+                    "" if record.eval_mean_write_gate is None else record.eval_mean_write_gate,
                 ]
             )
 
@@ -393,6 +484,14 @@ def _format_record(record: MemoryMetricRecord) -> str:
     )
     if record.eval_mean_address_movement is not None:
         line += f" eval_mean_address_movement={record.eval_mean_address_movement:.6f}"
+    if record.eval_mean_memory_usage is not None:
+        line += f" eval_mean_memory_usage={record.eval_mean_memory_usage:.4f}"
+    if record.eval_usage_entropy is not None:
+        line += f" eval_usage_entropy={record.eval_usage_entropy:.4f}"
+    if record.eval_mean_allocation_gate is not None:
+        line += f" eval_mean_allocation_gate={record.eval_mean_allocation_gate:.4f}"
+    if record.eval_mean_write_gate is not None:
+        line += f" eval_mean_write_gate={record.eval_mean_write_gate:.4f}"
     return line
 
 
