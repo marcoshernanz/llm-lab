@@ -1,8 +1,8 @@
 # Memory Architecture Learning Log
 
-Runs recorded through 2026-05-18.
+Runs recorded through 2026-05-19.
 
-This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, the first runtime-address-state control, the first bounded address-drift run, the M-015 address-drift control cycle, and the M-016 address-geometry stabilization cycle.
+This log contains the memory-architecture experiments, beginning with a cleaned vanilla baseline, then the first static memory-retrieval scaffold, then the first chunk-local baseline, then the first chunk-local model with static memory retrieval, then longer follow-up runs for the chunked pair, then the first synthetic delayed-recall task-harness pair, then the first dense latent-address read path, then the first writable fixed-address memory run, then the first sparse top-k retrieval run over writable memory, the multi-query binding-sensitive benchmark/control/memory comparison, the first runtime-address-state control, the first bounded address-drift run, the M-015 address-drift control cycle, the M-016 address-geometry stabilization cycle, and the M-017 bounded slot-allocation cycle.
 
 ## Summary
 
@@ -26,6 +26,7 @@ This log contains the memory-architecture experiments, beginning with a cleaned 
 | M-014 | [`memory_architecture/014_bounded_address_drift.py`](../../memory_architecture/014_bounded_address_drift.py) | 2000 | 1.6322 | 1.6022 | 630 |
 | M-015 | [`memory_architecture/015_address_drift_best.py`](../../memory_architecture/015_address_drift_best.py) | 4000 | 1.3720 | 1.3911 | 820 |
 | M-016 | [`memory_architecture/016_address_geometry_stabilization.py`](../../memory_architecture/016_address_geometry_stabilization.py) | 4000 | 1.3814 | 1.3704 | T4 sweep |
+| M-017 | [`memory_architecture/017_bounded_slot_allocation.py`](../../memory_architecture/017_bounded_slot_allocation.py) | 4000 | 1.3775 | 1.3871 | T4 sweep |
 
 ## M-001 Vanilla Decoder Baseline
 
@@ -956,3 +957,72 @@ Key conclusions:
 - More slots and wider retrieval do not rescue the known bad cases: seed `1337` learned-random stays near `0.24` with `128` slots or top-k `16`, and seed `2026` fixed-spread stays weak with `128` slots or top-k `16`.
 - Candidate-value accuracy is again saturated, so the problem is not finding valid values. It is binding the right queried key to the right value.
 - The main lesson is that bounded address movement remains justified. Allocation should come next only with strong controls: frozen/raw learned geometry, learned-unit geometry, and a moving-address baseline across multiple seeds.
+
+## M-017 Bounded Slot Allocation
+
+- Canonical script: [`memory_architecture/017_bounded_slot_allocation.py`](../../memory_architecture/017_bounded_slot_allocation.py)
+- Date: `2026-05-18` to `2026-05-19`
+- Execution target: Kaggle `T4 x2` using explicit `NvidiaTeslaT4` pushes
+- Retained artifact policy: keep the canonical configurable script plus one aggregate sweep summary.
+- Task: same binding-sensitive synthetic delayed key-value recall task as `M-016`
+- Model: sparse writable memory with bounded address movement at scale `0.20`
+- New mechanism: bounded per-slot usage state plus optional usage-aware write allocation
+- Write sparsity: keep top `8` write targets per token/chunk before applying write gates
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `4000`
+- Eval interval: `200`
+- Eval batches: `32`
+- Candidate-guess exact-answer baseline: `0.1250`
+- Random-value exact-answer baseline: `0.0625`
+- Random-value candidate-value baseline: `0.5000`
+- Full-attention reference: `M-011` exact answer accuracy `0.3384`
+
+This milestone asks whether bounded memory needs an allocation signal:
+
+- the previous writer always writes according to address similarity;
+- if many tokens compete for the same slots, a slot-usage signal might steer new information toward less-used slots;
+- if the allocation signal is wrong, it can easily disrupt a geometry that was already good.
+
+The implementation has three allocation modes:
+
+- `off`: the M-016/M-015 style write distribution, but with sparse writes and usage logging.
+- `usage_penalty`: subtract a learned allocation-gated penalty from already-used slots before softmax.
+- `free_mixture`: mix the similarity write distribution with a distribution over low-usage slots.
+
+Representative results:
+
+| Run | Seed | Allocation mode | Exact @ 2000 | Exact @ 4000 | Final loss | Final movement | Final usage | Usage entropy | Allocation gate | Write gate |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| M-017a | 1337 | off | 0.3460 | 0.3440 | 1.3799 | 0.0381 | 0.1859 | 0.8093 | 0.0000 | 0.2502 |
+| M-017b | 1337 | usage penalty | 0.3433 | 0.3366 | 1.3684 | 0.0330 | 0.1822 | 0.8124 | 0.1176 | 0.2370 |
+| M-017c | 1337 | free mixture | 0.3444 | 0.3395 | 1.3616 | 0.0343 | 0.1746 | 0.7846 | 0.0835 | 0.2823 |
+| M-017d | 2026 | off | 0.2852 | 0.2873 | 1.5782 | 0.0394 | 0.2069 | 0.8152 | 0.0000 | 0.6340 |
+| M-017e | 2026 | usage penalty | 0.2246 | 0.3483 | 1.3871 | 0.0233 | 0.1221 | 0.8107 | 0.1387 | 0.1510 |
+| M-017f | 2026 | free mixture | 0.3376 | 0.3398 | 1.3794 | 0.0292 | 0.1409 | 0.8173 | 0.2287 | 0.1794 |
+
+Aggregate artifacts:
+
+- Aggregate metrics by allocation mode: [`final_metrics_by_allocation.csv`](../../artifacts/memory_experiments/017_bounded_slot_allocation_summary/final_metrics_by_allocation.csv)
+- Aggregate final accuracy plot: [`final_accuracy_by_allocation.svg`](../../artifacts/memory_experiments/017_bounded_slot_allocation_summary/final_accuracy_by_allocation.svg)
+- Aggregate exact-accuracy curves: [`exact_accuracy_curves.svg`](../../artifacts/memory_experiments/017_bounded_slot_allocation_summary/exact_accuracy_curves.svg)
+- Aggregate memory-usage curves: [`memory_usage_curves.svg`](../../artifacts/memory_experiments/017_bounded_slot_allocation_summary/memory_usage_curves.svg)
+- Aggregate write-gate curves: [`write_gate_curves.svg`](../../artifacts/memory_experiments/017_bounded_slot_allocation_summary/write_gate_curves.svg)
+
+![M-017 final accuracy by allocation](../../artifacts/memory_experiments/017_bounded_slot_allocation_summary/final_accuracy_by_allocation.svg)
+
+![M-017 exact accuracy curves](../../artifacts/memory_experiments/017_bounded_slot_allocation_summary/exact_accuracy_curves.svg)
+
+![M-017 memory usage curves](../../artifacts/memory_experiments/017_bounded_slot_allocation_summary/memory_usage_curves.svg)
+
+Key conclusions:
+
+- Dense writes made usage tracking almost useless in early smoke tests because every slot quickly looked occupied. Sparse writes were necessary before allocation became interpretable.
+- Once writes were sparse, usage became meaningful: final mean usage ranged from `0.1221` to `0.2069`, with normalized usage entropy around `0.78` to `0.82`.
+- Allocation is not a universal improvement. On seed `1337`, the no-allocation sparse writer is best at `0.3440`, while usage penalty drops to `0.3366` and free mixture ends at `0.3395`.
+- Allocation can rescue a bad sparse-write run. On seed `2026`, no allocation collapses relative to the moving-address baseline (`0.2873`), while usage penalty reaches `0.3483`, slightly above the full-attention reference `0.3384`.
+- The usage-penalty rescue coincides with lower address movement (`0.0233` vs `0.0394`) and lower write gate (`0.1510` vs `0.6340`) on seed `2026`, which suggests the mechanism is reducing overwrite pressure rather than simply adding capacity.
+- The `free_mixture` policy is more consistent than no allocation across these two seeds, but it does not clearly beat the best usage-penalty result.
+- Token-wise allocation was implemented and smoke-tested, but the naive version was too slow for the 4000-step T4 sweep. Chunk-wise allocation is the current practical control; token-wise allocation should only return if we make it vectorized or shorten the diagnostic.
+- Candidate-value accuracy remains saturated at `1.0000`, so the result is still about exact key-value binding, not candidate-set recovery.
+- The honest claim is narrow: bounded usage-aware allocation is a plausible overwrite-control mechanism, but this sweep does not prove it should replace address drift. It should be carried forward as an optional control in the next pressure test, not treated as the new default architecture.

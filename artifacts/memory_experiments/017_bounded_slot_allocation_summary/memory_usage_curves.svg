@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="440" viewBox="0 0 980 440" fill="none">
+  <rect width="980" height="440" fill="white"/>
+  <line x1="72" y1="34" x2="72" y2="392" stroke="#d0d7de" stroke-width="1"/>
+  <line x1="72" y1="392" x2="730" y2="392" stroke="#d0d7de" stroke-width="1"/>
+  <text x="72" y="20" fill="#24292f" font-family="monospace" font-size="14">M-017 mean memory usage vs. step</text>
+  <text x="72" y="426" fill="#57606a" font-family="monospace" font-size="12">step 1 to 4000</text>
+  <text x="12" y="38" fill="#57606a" font-family="monospace" font-size="12">0.4200</text>
+  <text x="12" y="396" fill="#57606a" font-family="monospace" font-size="12">0.0000</text>
+  <polyline points="72.00,91.84 104.74,253.36 137.65,255.46 170.56,196.59 203.47,170.78 236.38,177.31 269.28,183.66 302.19,194.25 335.10,244.61 368.01,245.47 400.92,248.09 433.83,248.41 466.73,250.20 499.64,248.85 532.55,244.81 565.46,240.31 598.37,243.45 631.28,241.62 664.18,239.43 697.09,234.62 730.00,233.51" stroke="#2563eb" stroke-width="2" fill="none"/>
+  <circle cx="730.00" cy="233.51" r="3" fill="#2563eb"/>
+  <polyline points="72.00,87.32 104.74,248.56 137.65,247.04 170.56,187.73 203.47,176.41 236.38,176.32 269.28,236.11 302.19,238.57 335.10,244.82 368.01,240.46 400.92,240.08 433.83,240.97 466.73,239.35 499.64,239.67 532.55,236.53 565.46,237.68 598.37,240.39 631.28,235.89 664.18,239.04 697.09,242.20 730.00,236.68" stroke="#dc2626" stroke-width="2" fill="none"/>
+  <circle cx="730.00" cy="236.68" r="3" fill="#dc2626"/>
+  <polyline points="72.00,80.83 104.74,228.67 137.65,243.81 170.56,121.69 203.47,157.86 236.38,212.45 269.28,244.56 302.19,246.69 335.10,245.78 368.01,243.78 400.92,241.63 433.83,238.54 466.73,241.47 499.64,237.37 532.55,238.21 565.46,237.55 598.37,240.41 631.28,236.89 664.18,239.89 697.09,242.11 730.00,243.19" stroke="#7c3aed" stroke-width="2" fill="none"/>
+  <circle cx="730.00" cy="243.19" r="3" fill="#7c3aed"/>
+  <polyline points="72.00,77.49 104.74,115.34 137.65,201.41 170.56,229.81 203.47,224.20 236.38,224.64 269.28,215.43 302.19,213.67 335.10,213.04 368.01,214.72 400.92,215.78 433.83,219.66 466.73,220.74 499.64,215.74 532.55,219.71 565.46,221.07 598.37,217.14 631.28,218.23 664.18,214.84 697.09,218.63 730.00,215.66" stroke="#0891b2" stroke-width="2" fill="none"/>
+  <circle cx="730.00" cy="215.66" r="3" fill="#0891b2"/>
+  <polyline points="72.00,71.90 104.74,69.28 137.65,125.45 170.56,208.77 203.47,220.81 236.38,225.73 269.28,225.51 302.19,224.62 335.10,224.31 368.01,223.55 400.92,223.29 433.83,219.81 466.73,221.05 499.64,244.31 532.55,280.83 565.46,282.01 598.37,288.13 631.28,288.90 664.18,287.77 697.09,290.22 730.00,287.92" stroke="#ea580c" stroke-width="2" fill="none"/>
+  <circle cx="730.00" cy="287.92" r="3" fill="#ea580c"/>
+  <polyline points="72.00,63.24 104.74,85.76 137.65,157.02 170.56,150.58 203.47,135.53 236.38,205.11 269.28,208.71 302.19,210.93 335.10,216.16 368.01,216.80 400.92,219.29 433.83,218.49 466.73,220.79 499.64,219.13 532.55,224.19 565.46,227.04 598.37,248.18 631.28,264.29 664.18,263.81 697.09,265.32 730.00,271.87" stroke="#16a34a" stroke-width="2" fill="none"/>
+  <circle cx="730.00" cy="271.87" r="3" fill="#16a34a"/>
+  <line x1="754" y1="48" x2="812" y2="48" stroke="#2563eb" stroke-width="2"/>
+  <text x="822" y="52" fill="#57606a" font-family="monospace" font-size="11">a_sparse_off_seed1337</text>
+  <line x1="754" y1="68" x2="812" y2="68" stroke="#dc2626" stroke-width="2"/>
+  <text x="822" y="72" fill="#57606a" font-family="monospace" font-size="11">b_sparse_usage_penalty_seed1337</text>
+  <line x1="754" y1="88" x2="812" y2="88" stroke="#7c3aed" stroke-width="2"/>
+  <text x="822" y="92" fill="#57606a" font-family="monospace" font-size="11">c_sparse_free_mixture_seed1337</text>
+  <line x1="754" y1="108" x2="812" y2="108" stroke="#0891b2" stroke-width="2"/>
+  <text x="822" y="112" fill="#57606a" font-family="monospace" font-size="11">d_sparse_off_seed2026</text>
+  <line x1="754" y1="128" x2="812" y2="128" stroke="#ea580c" stroke-width="2"/>
+  <text x="822" y="132" fill="#57606a" font-family="monospace" font-size="11">e_sparse_usage_penalty_seed2026</text>
+  <line x1="754" y1="148" x2="812" y2="148" stroke="#16a34a" stroke-width="2"/>
+  <text x="822" y="152" fill="#57606a" font-family="monospace" font-size="11">f_sparse_free_mixture_seed2026</text>
+</svg>

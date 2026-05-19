@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="440" viewBox="0 0 980 440" fill="none">
+  <rect width="980" height="440" fill="white"/>
+  <line x1="72" y1="34" x2="72" y2="392" stroke="#d0d7de" stroke-width="1"/>
+  <line x1="72" y1="392" x2="730" y2="392" stroke="#d0d7de" stroke-width="1"/>
+  <text x="72" y="20" fill="#24292f" font-family="monospace" font-size="14">M-017 final exact accuracy by allocation mode</text>
+  <text x="12" y="38" fill="#57606a" font-family="monospace" font-size="12">0.4000</text>
+  <text x="12" y="396" fill="#57606a" font-family="monospace" font-size="12">0.0000</text>
+  <rect x="161.50" y="84.13" width="42" height="307.87" fill="#2563eb"/>
+  <text x="182.50" y="78.13" text-anchor="middle" fill="#24292f" font-family="monospace" font-size="11">0.344</text>
+  <rect x="215.50" y="90.74" width="42" height="301.26" fill="#dc2626"/>
+  <text x="236.50" y="84.74" text-anchor="middle" fill="#24292f" font-family="monospace" font-size="11">0.337</text>
+  <rect x="269.50" y="88.11" width="42" height="303.89" fill="#7c3aed"/>
+  <text x="290.50" y="82.11" text-anchor="middle" fill="#24292f" font-family="monospace" font-size="11">0.340</text>
+  <text x="236.50" y="422" text-anchor="middle" fill="#57606a" font-family="monospace" font-size="12">seed 1337</text>
+  <rect x="490.50" y="134.87" width="42" height="257.13" fill="#2563eb"/>
+  <text x="511.50" y="128.87" text-anchor="middle" fill="#24292f" font-family="monospace" font-size="11">0.287</text>
+  <rect x="544.50" y="80.25" width="42" height="311.75" fill="#dc2626"/>
+  <text x="565.50" y="74.25" text-anchor="middle" fill="#24292f" font-family="monospace" font-size="11">0.348</text>
+  <rect x="598.50" y="87.84" width="42" height="304.16" fill="#7c3aed"/>
+  <text x="619.50" y="81.84" text-anchor="middle" fill="#24292f" font-family="monospace" font-size="11">0.340</text>
+  <text x="565.50" y="422" text-anchor="middle" fill="#57606a" font-family="monospace" font-size="12">seed 2026</text>
+  <line x1="72" y1="280.12" x2="730" y2="280.12" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <line x1="72" y1="89.13" x2="730" y2="89.13" stroke="#111827" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <rect x="754" y="40" width="16" height="12" fill="#2563eb"/>
+  <text x="780" y="52" fill="#57606a" font-family="monospace" font-size="12">off</text>
+  <rect x="754" y="62" width="16" height="12" fill="#dc2626"/>
+  <text x="780" y="74" fill="#57606a" font-family="monospace" font-size="12">usage_penalty</text>
+  <rect x="754" y="84" width="16" height="12" fill="#7c3aed"/>
+  <text x="780" y="96" fill="#57606a" font-family="monospace" font-size="12">free_mixture</text>
+</svg>
