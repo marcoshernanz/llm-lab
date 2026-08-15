@@ -24,6 +24,7 @@ class Attention(nn.Module):
         self.q_proj = nn.Linear(D_MODEL, D_MODEL)
         self.k_proj = nn.Linear(D_MODEL, D_MODEL)
         self.v_proj = nn.Linear(D_MODEL, D_MODEL)
+        self.out_proj = nn.Linear(D_MODEL, D_MODEL)
 
     def forward(self, x: torch.Tensor):  # [B, T, D]
         q = self.q_proj(x)  # [B, T, D]
@@ -39,6 +40,7 @@ class Attention(nn.Module):
 
         attention = attention_scores.softmax(-1)  # [B, T, T]
         attention @= v  # [B, T, D]
+        attention = self.out_proj(attention)
 
         return attention
 
