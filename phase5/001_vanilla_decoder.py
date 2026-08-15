@@ -17,6 +17,14 @@ D_MODEL = 16
 CONTEXT_LEN = 16
 
 
+class Attention(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.q_proj = nn.Linear(D_MODEL, D_MODEL)
+        self.k_proj = nn.Linear(D_MODEL, D_MODEL)
+        self.v_proj = nn.Linear(D_MODEL, D_MODEL)
+
+
 class Model(nn.Module):
     """Embed tokens and their positions."""
 
