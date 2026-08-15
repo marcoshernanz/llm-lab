@@ -26,10 +26,12 @@ class Model(nn.Module):
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.embed_positions = nn.Embedding(CONTEXT_LEN, D_MODEL)
 
-    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:  # [B, T]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
         """Return token-plus-position embeddings for one batch of token ids."""
-        position_ids = torch.arange(input_ids.size(1), device=input_ids.device)  # [T]
-        return self.embed_tokens(input_ids) + self.embed_positions(position_ids)  # [B, T, D]
+        positions = torch.arange(x.size(1), device=x.device)  # [T]
+        token_embeddings = self.embed_tokens(x)  # [B, T, D]
+        position_embeddings = self.embed_positions(positions)  # [T, D]
+        return token_embeddings + position_embeddings  # [B, T, D]
 
 
 def load_text(split: str) -> str:
