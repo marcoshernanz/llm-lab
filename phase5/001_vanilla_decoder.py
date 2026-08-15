@@ -212,7 +212,7 @@ def main() -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
     for step in range(TRAIN_STEPS):
-        pass
+        inputs, targets = sample_batch(train_tokens)
 
     print(f"vocab_size={len(chars)}")
     print(f"train_tokens={train_tokens.numel()}")
