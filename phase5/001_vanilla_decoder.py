@@ -133,6 +133,11 @@ class Decoder(nn.Module):
         super().__init__()
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for block in self.blocks:
+            x = block(x)
+        return x
+
 
 class Model(nn.Module):
     """Embed tokens and their positions."""
