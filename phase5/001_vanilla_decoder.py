@@ -16,6 +16,7 @@ DEVICE = "mps"
 
 D_MODEL = 16
 CONTEXT_LEN = 16
+NUM_HEADS = 4
 
 
 class CausalSelfAttention(nn.Module):
@@ -32,6 +33,9 @@ class CausalSelfAttention(nn.Module):
         self.o_proj = nn.Linear(D_MODEL, D_MODEL)
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
+
+    def split_heads(self, x: torch.Tensor):  # [B, T, D]
+        pass
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
