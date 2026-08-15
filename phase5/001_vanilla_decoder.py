@@ -40,20 +40,23 @@ class CausalSelfAttention(nn.Module):
 
     def combine_heads(self, x: torch.Tensor):  # [B, H, T, D]
         b, h, t, d = x.size()
-        return x.swapaxes(1, 2).reshape(b, t, h * d)
+        return x.swapaxes(1, 2).reshape(b, t, h * d)  # [B, T, D]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
-        q = self.q_proj(x)  # [B, T, D]
-        k = self.k_proj(x)  # [B, T, D]
-        v = self.v_proj(x)  # [B, T, D]
+        q = self.split_heads(self.q_proj(x))  # [B, H, T, D]
+        k = self.split_heads(self.k_proj(x))  # [B, H, T, D]
+        v = self.split_heads(self.v_proj(x))  # [B, H, T, D]
 
-        attn_scores = (q @ k.mT) / math.sqrt(D_MODEL)  # [B, T, T]
+        attn_scores = (q @ k.mT) / math.sqrt(D_MODEL)  # [B, H, T, T]
         attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
 
-        attn_weights = attn_scores.softmax(dim=-1)  # [B, T, T]
-        attn_output = attn_weights @ v  # [B, T, D]
+        attn_weights = attn_scores.softmax(dim=-1)  # [B, H, T, T]
+        attn_output = attn_weights @ v  # [B, H, T, D]
+
+        attn_output = self.combine_heads(attn_output)  # [B, T, D]
+
         return self.o_proj(attn_output)  # [B, T, D]
 
 
