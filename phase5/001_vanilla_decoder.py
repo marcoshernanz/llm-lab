@@ -27,6 +27,11 @@ class Attention(nn.Module):
     def forward(self, x: torch.Tensor):  # [B, T, D]
         q = self.q_proj(x)  # [B, T, D]
         k = self.k_proj(x)  # [B, T, D]
+        attention_scores = q @ k.mT  # [B, T, T]
+
+        ones = torch.ones(x.size(1), x.size(1), dtype=torch.bool, device=x.device)  # [B, T, T]
+        causal_mask = torch.triu(ones, diagonal=1)  # [B, T, T]
+        attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)
 
 
 class Model(nn.Module):
