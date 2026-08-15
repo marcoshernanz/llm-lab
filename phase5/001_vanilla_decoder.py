@@ -112,6 +112,10 @@ class CausalSelfAttention(nn.Module):
 class DecoderBlock(nn.Module):
     def __init__(self):
         super().__init__()
+        self.attn = CausalSelfAttention()
+        self.attn_norm = LayerNorm()
+        self.ffn = FeedForward()
+        self.ffn_norm = LayerNorm()
 
 
 class Model(nn.Module):
