@@ -12,11 +12,13 @@ For the run history from this path, see `learning_log.md`, which is created when
 
 ## Current Status
 
-As of 2026-08-14:
+As of 2026-08-15:
 
 - The roadmap is written and the target architecture is chosen.
-- No milestone is implemented yet.
-- The frozen control below has been calibrated on the development machine, but no phase-5 training run has been recorded.
+- `001_vanilla_decoder.py` is complete as the pre-modern baseline, recorded as `P5-001`.
+- The baseline does not learn at the control learning rate. It collapses to character-unigram loss (`3.0537`) by step `250` and stays there, with the smallest gradient norms of any configuration tested.
+- A control sweep confirms the code is correct: the same script at lr `3e-4` reaches `2.15` in `400` steps, and pre-norm at the control lr reaches `1.51`.
+- Milestone 502 is next, and it must first settle whether `M-501` is compared at the control learning rate alone or against a supplementary post-norm best-effort run.
 
 ## Why This Phase Is Separate
 
@@ -194,9 +196,17 @@ What it contains:
 - AdamW.
 
 Exit criteria:
-- One run completes end to end and loss decreases smoothly.
-- Parameter count, wall-clock, and tokens per second are recorded.
+- One run completes end to end.
+- Parameter count and wall-clock are recorded.
 - Every tensor path in the file can be explained without reference to any other file.
+
+Status:
+- Complete via `phase5/001_vanilla_decoder.py`, recorded as `P5-001`.
+
+Main lesson:
+- At the control learning rate the baseline collapses to character-unigram loss (`3.0537`) by step `250` and never recovers, so "loss decreases smoothly" was not met.
+- The collapse is an optimization failure, not a code bug and not a divergence: gradient norms are the smallest of any tested configuration, clipping fires on `1%` of steps, and the same script reaches `2.15` at lr `3e-4`.
+- Post-norm puts the normalization on the residual stream itself, so there is no identity path through depth and no single learning rate that works. That is the mechanism milestone 502 removes.
 
 Questions to answer:
 - What does post-norm actually do to the gradient path?
