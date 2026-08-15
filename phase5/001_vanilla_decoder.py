@@ -26,7 +26,9 @@ class Model(nn.Module):
 
     def forward(self, x: torch.Tensor):  # [B, T]
         positions = torch.arange(CONTEXT_LEN)  # [T]
-        x = self.token_embeddings(x) + self.position_embeddings(positions)  # [B, T, D]
+        token_embeddings = self.token_embeddings(x)  # [B, T, D]
+        position_embeddings = self.position_embeddings(positions)  # [T, D]
+        x = token_embeddings + position_embeddings  # [B, T, D]
 
 
 def load_text(split: str) -> str:
