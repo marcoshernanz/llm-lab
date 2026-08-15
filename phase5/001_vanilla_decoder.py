@@ -28,6 +28,11 @@ assert D_MODEL % NUM_HEADS == 0
 HEAD_DIM = D_MODEL // NUM_HEADS
 
 
+class LayerNorm(nn.Module):
+    def __init__(self):
+        pass
+
+
 class CausalSelfAttention(nn.Module):
     """Apply masked self-attention over one sequence."""
 
