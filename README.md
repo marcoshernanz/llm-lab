@@ -50,7 +50,8 @@ Artifacts:
 | final baseline | full-dataset long run on TPU `v5e-8`                       |
 | systems ref    | handwritten CPU trainer, profiling, buffer reuse           |
 | framework path | tiny PyTorch baselines, RoPE/GQA/SwiGLU modernization      |
-| current pivot  | production profiling, Triton, CUDA/C++                     |
+| current path   | vanilla decoder rebuilt into a 2026-era architecture       |
+| later pivot    | production profiling, Triton, CUDA/C++                     |
 
 ## Experiment Index
 
@@ -118,6 +119,7 @@ The completed and active roadmap documents are:
 - [`docs/phase2/scaling.md`](docs/phase2/scaling.md)
 - [`docs/phase3/systems.md`](docs/phase3/systems.md)
 - [`docs/phase4/roadmap.md`](docs/phase4/roadmap.md)
+- [`docs/phase5/roadmap.md`](docs/phase5/roadmap.md)
 - [`docs/memory/roadmap.md`](docs/memory/roadmap.md)
 - [`docs/meta/project_direction.md`](docs/meta/project_direction.md)
 
