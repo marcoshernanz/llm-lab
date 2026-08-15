@@ -18,7 +18,7 @@ EMBEDDING_DIM = 16
 CONTEXT_LEN = 16
 
 
-class Model:
+class Model(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embeddings = nn.Embedding(VOCAB_SIZE, EMBEDDING_DIM)
