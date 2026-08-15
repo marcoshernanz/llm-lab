@@ -33,7 +33,10 @@ class LayerNorm(nn.Module):
     def __init__(self):
         self.weight = nn.Parameter(torch.ones(BATCH_SIZE))
         self.bias = nn.Parameter(torch.zeros(BATCH_SIZE))
-        pass
+
+    def forward(self, x: torch.Tensor):
+        x = (x - x.mean(dim=0, keepdim=True)) / torch.sqrt(x.var(dim=0, keepdim=True))
+        return x * self.weight + self.bias
 
 
 class CausalSelfAttention(nn.Module):
