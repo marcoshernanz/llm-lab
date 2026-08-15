@@ -1026,3 +1026,78 @@ Key conclusions:
 - Token-wise allocation was implemented and smoke-tested, but the naive version was too slow for the 4000-step T4 sweep. Chunk-wise allocation is the current practical control; token-wise allocation should only return if we make it vectorized or shorten the diagnostic.
 - Candidate-value accuracy remains saturated at `1.0000`, so the result is still about exact key-value binding, not candidate-set recovery.
 - The honest claim is narrow: bounded usage-aware allocation is a plausible overwrite-control mechanism, but this sweep does not prove it should replace address drift. It should be carried forward as an optional control in the next pressure test, not treated as the new default architecture.
+
+## M-018 Longer-Context Pressure Test
+
+- Canonical script: [`memory_architecture/018_longer_context_pressure_test.py`](../../memory_architecture/018_longer_context_pressure_test.py)
+- Date: `2026-05-20`
+- Execution target: Kaggle `T4` using explicit `NvidiaTeslaT4` pushes
+- Retained artifact policy: keep the canonical configurable script plus one aggregate sweep summary.
+- Task: harder binding-sensitive synthetic delayed key-value recall task
+- Sequence length: `256`
+- Chunk size: `16` for chunk-local and memory variants; `256` for the full-context control
+- Facts per example: `12`
+- Keys: `24`
+- Values: `24`
+- Noise tokens: `48`
+- Memory slots: `64`
+- Top-k reads: `8`
+- Top-k writes: `8`
+- Address movement scale: `0.20`
+- Batch size: `64`
+- Learning rate: `3e-3`
+- Train steps: `6000`
+- Eval interval: `300`
+- Eval batches: `32`
+- Candidate-guess exact-answer baseline: `0.0833`
+- Random-value exact-answer baseline: `0.0417`
+- Random-value candidate-value baseline: `0.5000`
+
+This milestone asks whether the memory result becomes more meaningful when the cross-chunk pressure is higher:
+
+- the old benchmark used `128` tokens and `8` facts;
+- this pressure test uses `256` tokens and `12` facts;
+- the no-memory local baseline gets `16` isolated chunks;
+- the memory model must carry facts through runtime memory;
+- the full-context control tests what the same model size can do with direct attention over the full sequence.
+
+Representative results:
+
+| Run | Seed | Model | Allocation | Strength | Exact @ 3000 | Exact @ 6000 | Candidate @ 6000 | Final loss | Seconds to final step |
+| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| M-018a | 1337 | chunk-local | off | 0.00 | 0.0437 | 0.0422 | 0.4764 | 3.1318 | 1279 |
+| M-018b | 1337 | memory | off | 0.00 | 0.1467 | 0.2529 | 0.9937 | 1.8406 | 2452 |
+| M-018c | 1337 | memory | usage penalty | 1.00 | 0.1200 | 0.1178 | 0.7758 | 2.9400 | 2949 |
+| M-018d | 1337 | full-context | off | 0.00 | 0.2559 | 0.2583 | 1.0000 | 1.7273 | 479 |
+| M-018e | 2026 | memory | off | 0.00 | 0.2593 | 0.2598 | 1.0000 | 1.6976 | 2951 |
+| M-018f | 2026 | full-context | off | 0.00 | 0.2593 | 0.2550 | 1.0000 | 1.7189 | 464 |
+| M-018g | 1337 | memory | usage penalty | 0.25 | 0.1695 | 0.2189 | 0.9797 | 2.2660 | 2464 |
+
+Aggregate artifacts:
+
+- Aggregate metrics by variant: [`final_metrics_by_variant.csv`](../../artifacts/memory_experiments/018_longer_context_pressure_summary/final_metrics_by_variant.csv)
+- Aggregate final exact-accuracy plot: [`final_exact_accuracy_by_variant.svg`](../../artifacts/memory_experiments/018_longer_context_pressure_summary/final_exact_accuracy_by_variant.svg)
+- Aggregate exact-accuracy curves: [`exact_accuracy_curves.svg`](../../artifacts/memory_experiments/018_longer_context_pressure_summary/exact_accuracy_curves.svg)
+- Aggregate candidate-accuracy curves: [`candidate_accuracy_curves.svg`](../../artifacts/memory_experiments/018_longer_context_pressure_summary/candidate_accuracy_curves.svg)
+- Aggregate loss curves: [`loss_curves.svg`](../../artifacts/memory_experiments/018_longer_context_pressure_summary/loss_curves.svg)
+- Aggregate memory-usage curves: [`memory_usage_curves.svg`](../../artifacts/memory_experiments/018_longer_context_pressure_summary/memory_usage_curves.svg)
+- Aggregate write-gate curves: [`write_gate_curves.svg`](../../artifacts/memory_experiments/018_longer_context_pressure_summary/write_gate_curves.svg)
+
+![M-018 final exact accuracy by variant](../../artifacts/memory_experiments/018_longer_context_pressure_summary/final_exact_accuracy_by_variant.svg)
+
+![M-018 exact accuracy curves](../../artifacts/memory_experiments/018_longer_context_pressure_summary/exact_accuracy_curves.svg)
+
+![M-018 candidate accuracy curves](../../artifacts/memory_experiments/018_longer_context_pressure_summary/candidate_accuracy_curves.svg)
+
+Key conclusions:
+
+- The harder pressure benchmark works. The chunk-local baseline finishes at exact `0.0422`, essentially the random-value exact baseline `0.0417`, and candidate accuracy `0.4764`, near the random candidate baseline `0.5000`.
+- Moving-address memory clearly solves something the chunk-local baseline cannot solve: seed `1337` reaches exact `0.2529`, and seed `2026` reaches exact `0.2598`.
+- The memory model is now essentially tied with the full-context control: full-context reaches `0.2583` on seed `1337` and `0.2550` on seed `2026`.
+- Candidate-value accuracy saturates for the successful memory and full-context runs, so the remaining ceiling is exact key-value binding, not finding valid values.
+- The harder benchmark lowers the full-context exact-binding ceiling from the old `M-011` result around `0.34` to about `0.25` to `0.26` for this model size and recipe.
+- The memory-off seed `1337` run has a late jump after step `4200`, so `4000` steps would have understated the memory result. For this benchmark, `6000` steps is a better default.
+- Usage-aware allocation is negative here. Strong usage penalty collapses to exact `0.1178`, and weaker penalty `0.25` improves to `0.2189` but still trails allocation-off at `0.2529`.
+- The allocation failure coincides with weaker candidate recovery and lower write gates, suggesting the usage penalty suppresses useful writes rather than solving overwrites.
+- Runtime matters: full-context controls finish in about `464` to `479` seconds, while memory runs take about `2452` to `2951` seconds in the naive implementation. The mechanism is useful, but not computationally efficient yet.
+- The next step should not be more allocation. The next high-learning step is to attack the remaining exact-binding ceiling or make the memory implementation cheaper.
