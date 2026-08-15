@@ -18,31 +18,32 @@ D_MODEL = 16
 CONTEXT_LEN = 16
 
 
-class Attention(nn.Module):
+class CausalSelfAttention(nn.Module):
+    """Apply masked self-attention over one sequence."""
+
     def __init__(self):
+        """Create the projections and the causal mask."""
         super().__init__()
         self.q_proj = nn.Linear(D_MODEL, D_MODEL)
         self.k_proj = nn.Linear(D_MODEL, D_MODEL)
         self.v_proj = nn.Linear(D_MODEL, D_MODEL)
-        self.out_proj = nn.Linear(D_MODEL, D_MODEL)
+        self.o_proj = nn.Linear(D_MODEL, D_MODEL)
+        mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
+        self.register_buffer("causal_mask", mask)
 
-    def forward(self, x: torch.Tensor):  # [B, T, D]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Return attention outputs for one batch of embeddings."""
+        seq_len = x.size(1)
         q = self.q_proj(x)  # [B, T, D]
         k = self.k_proj(x)  # [B, T, D]
         v = self.v_proj(x)  # [B, T, D]
 
-        attention_scores = q @ k.mT  # [B, T, T]
-        attention_scores /= math.sqrt(D_MODEL)  # [B, T, T]
+        attn_scores = (q @ k.mT) / math.sqrt(D_MODEL)  # [B, T, T]
+        attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
 
-        ones = torch.ones(x.size(1), x.size(1), dtype=torch.bool, device=x.device)  # [T, T]
-        causal_mask = torch.triu(ones, diagonal=1)  # [T, T]
-        attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)  # [B, T, T]
-
-        attention = attention_scores.softmax(-1)  # [B, T, T]
-        attention @= v  # [B, T, D]
-        attention = self.out_proj(attention)
-
-        return attention
+        attn_weights = attn_scores.softmax(dim=-1)  # [B, T, T]
+        attn_output = attn_weights @ v  # [B, T, D]
+        return self.o_proj(attn_output)  # [B, T, D]
 
 
 class Model(nn.Module):
@@ -59,7 +60,7 @@ class Model(nn.Module):
         positions = torch.arange(x.size(1), device=x.device)  # [T]
         token_embeddings = self.embed_tokens(x)  # [B, T, D]
         position_embeddings = self.embed_positions(positions)  # [T, D]
-        x = token_embeddings + position_embeddings  # [B, T, D]
+        return token_embeddings + position_embeddings  # [B, T, D]
 
 
 def load_text(split: str) -> str:
