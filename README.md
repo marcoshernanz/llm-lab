@@ -96,6 +96,7 @@ Artifacts:
 | `phase4/004_char_decoder_rope.py`                         | decoder with rotary positional embeddings    |
 | `phase4/005_char_decoder_rope_gqa.py`                     | decoder with RoPE and grouped-query attention |
 | `phase4/006_char_decoder_rope_gqa_swiglu.py`              | decoder with RoPE, GQA, SwiGLU, and RMSNorm  |
+| `phase5/001_vanilla_decoder.py`                           | vanilla post-norm decoder, phase-5 baseline  |
 | `memory_architecture/001_char_decoder.py`                 | memory-path vanilla decoder baseline         |
 | `memory_architecture/002_memory_retrieval.py`             | static retrieval scaffold                    |
 | `memory_architecture/003_chunk_local.py`                  | chunk-local decoder baseline                 |
@@ -109,6 +110,7 @@ The main learning logs are:
 - [`docs/phase2/learning_log.md`](docs/phase2/learning_log.md)
 - [`docs/phase3/learning_log.md`](docs/phase3/learning_log.md)
 - [`docs/phase4/learning_log.md`](docs/phase4/learning_log.md)
+- [`docs/phase5/learning_log.md`](docs/phase5/learning_log.md)
 - [`docs/memory/learning_log.md`](docs/memory/learning_log.md)
 
 They contain the actual run history, metrics, curves, and milestone conclusions.
@@ -149,4 +151,10 @@ Run the current phase-4 PyTorch baseline:
 
 ```bash
 uv run python phase4/006_char_decoder_rope_gqa_swiglu.py
+```
+
+Run the phase-5 vanilla architecture baseline:
+
+```bash
+uv run python phase5/001_vanilla_decoder.py
 ```
