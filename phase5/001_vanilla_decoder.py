@@ -19,6 +19,7 @@ DEVICE = "mps"
 # B: batch size
 # T: sequence length
 # D: model dim
+# V: vocab size
 # H: number of attention heads
 # Dh: head dim, D // H
 # Dff: feed-forward dim
@@ -30,6 +31,7 @@ NUM_HEADS = 4
 assert D_MODEL % NUM_HEADS == 0
 HEAD_DIM = D_MODEL // NUM_HEADS
 NUM_BLOCKS = 4
+INIT_STD = 0.02
 
 
 class FeedForward(nn.Module):
@@ -143,25 +145,27 @@ class Decoder(nn.Module):
         return x
 
 
-class Model(nn.Module):
-    """Embed tokens and their positions."""
+class LanguageModel(nn.Module):
+    """Embed tokens, run the decoder, and predict next-token logits."""
 
     def __init__(self, vocab_size: int):
-        """Create the token and position embedding tables."""
+        """Create the embedding tables and the decoder stack."""
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.embed_positions = nn.Embedding(CONTEXT_LEN, D_MODEL)
         self.decoder = Decoder()
+        nn.init.normal_(self.embed_tokens.weight, std=INIT_STD)
+        nn.init.normal_(self.embed_positions.weight, std=INIT_STD)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
-        """Return token-plus-position embeddings for one batch of token ids."""
+        """Return next-token logits for one batch of token ids."""
         positions = torch.arange(x.size(1), device=x.device)  # [T]
         token_embeddings = self.embed_tokens(x)  # [B, T, D]
         position_embeddings = self.embed_positions(positions)  # [T, D]
-        embeddings = token_embeddings + position_embeddings  # [B, T, D]
-        x = self.decoder(embeddings)
-        x = x @ self.embed_tokens.weight.T
-        return x
+        hidden_states = token_embeddings + position_embeddings  # [B, T, D]
+        hidden_states = self.decoder(hidden_states)  # [B, T, D]
+        logits = hidden_states @ self.embed_tokens.weight.T  # [B, T, V]
+        return logits
 
 
 def load_text(split: str) -> str:
