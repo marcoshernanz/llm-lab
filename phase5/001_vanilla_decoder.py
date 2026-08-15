@@ -30,7 +30,7 @@ assert D_MODEL % NUM_HEADS == 0
 HEAD_DIM = D_MODEL // NUM_HEADS
 
 
-class FeedForward:
+class FeedForward(nn.Module):
     def __init__(self):
         super().__init__()
         self.w_up = nn.Linear(D_MODEL, D_FFN)
