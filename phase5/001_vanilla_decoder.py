@@ -37,8 +37,8 @@ class Attention(nn.Module):
         causal_mask = torch.triu(ones, diagonal=1)  # [B, T, T]
         attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)  # [B, T, T]
 
-        attention = attention_scores.softmax(-1)
-        attention *= v
+        attention = attention_scores.softmax(-1)  # [B, T]
+        attention @= v
 
         return attention
 
