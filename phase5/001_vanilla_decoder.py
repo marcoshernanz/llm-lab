@@ -13,22 +13,23 @@ VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 
-VOCAB_SIZE = 128
-EMBEDDING_DIM = 16
+D_MODEL = 16
 CONTEXT_LEN = 16
 
 
 class Model(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.token_embeddings = nn.Embedding(VOCAB_SIZE, EMBEDDING_DIM)
-        self.position_embeddings = nn.Embedding(CONTEXT_LEN, EMBEDDING_DIM)
+    """Embed tokens and their positions."""
 
-    def forward(self, x: torch.Tensor):  # [B, T]
-        positions = torch.arange(x.size(1), device=x.device)  # [T]
-        token_embeddings = self.token_embeddings(x)  # [B, T, D]
-        position_embeddings = self.position_embeddings(positions)  # [T, D]
-        x = token_embeddings + position_embeddings  # [B, T, D]
+    def __init__(self, vocab_size: int):
+        """Create the token and position embedding tables."""
+        super().__init__()
+        self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
+        self.embed_positions = nn.Embedding(CONTEXT_LEN, D_MODEL)
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:  # [B, T]
+        """Return token-plus-position embeddings for one batch of token ids."""
+        position_ids = torch.arange(input_ids.size(1), device=input_ids.device)  # [T]
+        return self.embed_tokens(input_ids) + self.embed_positions(position_ids)  # [B, T, D]
 
 
 def load_text(split: str) -> str:
