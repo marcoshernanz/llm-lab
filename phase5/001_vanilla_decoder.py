@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import math
+import time
+
 import torch
-from torch import nn
 import torch.nn.functional as F
 from datasets import load_dataset  # pyright: ignore
+from torch import nn
 
 DATASET_NAME = "roneneldan/TinyStories"
 DATASET_CONFIG = None
@@ -14,10 +16,7 @@ TRAIN_SPLIT = "train[:20000]"
 VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
-
-BATCH_SIZE = 8
-LEARNING_RATE = 0.01
-TRAIN_STEPS = 1000
+SEED = 1337
 
 # Tensor shapes:
 # B: batch size
@@ -28,31 +27,21 @@ TRAIN_STEPS = 1000
 # Dh: head dim, D // H
 # Dff: feed-forward dim
 
-D_MODEL = 16
-D_FFN = 64
-CONTEXT_LEN = 16
+CONTEXT_LEN = 256
+D_MODEL = 128
 NUM_HEADS = 4
 assert D_MODEL % NUM_HEADS == 0
 HEAD_DIM = D_MODEL // NUM_HEADS
-NUM_BLOCKS = 4
+D_FFN = 4 * D_MODEL
+NUM_BLOCKS = 8
 INIT_STD = 0.02
 
-
-class FeedForward(nn.Module):
-    """Project up, apply a nonlinearity, and project back down."""
-
-    def __init__(self):
-        """Create the two linear layers of the MLP."""
-        super().__init__()
-        self.up_proj = nn.Linear(D_MODEL, D_FFN)
-        self.down_proj = nn.Linear(D_FFN, D_MODEL)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Return the feed-forward block output."""
-        x = self.up_proj(x)  # [B, T, Dff]
-        x = F.gelu(x)  # [B, T, Dff]
-        x = self.down_proj(x)  # [B, T, D]
-        return x
+BATCH_SIZE = 32
+LEARNING_RATE = 3e-3
+GRAD_CLIP_NORM = 1.0
+TRAIN_STEPS = 3_000
+EVAL_INTERVAL = 250
+EVAL_BATCHES = 32
 
 
 class LayerNorm(nn.Module):
@@ -114,6 +103,23 @@ class CausalSelfAttention(nn.Module):
         attn_output = attn_weights @ v  # [B, H, T, Dh]
         attn_output = self.combine_heads(attn_output)  # [B, T, D]
         return self.o_proj(attn_output)  # [B, T, D]
+
+
+class FeedForward(nn.Module):
+    """Project up, apply a nonlinearity, and project back down."""
+
+    def __init__(self):
+        """Create the two linear layers of the MLP."""
+        super().__init__()
+        self.up_proj = nn.Linear(D_MODEL, D_FFN)
+        self.down_proj = nn.Linear(D_FFN, D_MODEL)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Return the feed-forward block output."""
+        x = self.up_proj(x)  # [B, T, Dff]
+        x = F.gelu(x)  # [B, T, Dff]
+        x = self.down_proj(x)  # [B, T, D]
+        return x
 
 
 class DecoderBlock(nn.Module):
@@ -190,22 +196,36 @@ def encode(text: str, stoi: dict[str, int]) -> torch.Tensor:
     return torch.tensor([stoi[char] for char in text], dtype=torch.long, device=DEVICE)
 
 
-def sample_batch(tokens: torch.Tensor):
+def sample_batch(tokens: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sample random input windows and their next-token targets."""
     max_start = tokens.size(0) - CONTEXT_LEN
-    starts = torch.randint(max_start, (BATCH_SIZE,), device=DEVICE)
-    offsets = torch.arange(CONTEXT_LEN, device=DEVICE)
-    positions = starts[:, None] + offsets[None, :]
-    inputs = tokens[positions]
-    targets = tokens[positions + 1]
-    return inputs, targets
+    starts = torch.randint(max_start, (BATCH_SIZE,), device=DEVICE)  # [B]
+    offsets = torch.arange(CONTEXT_LEN, device=DEVICE)  # [T]
+    positions = starts[:, None] + offsets[None, :]  # [B, T]
+    return tokens[positions], tokens[positions + 1]  # [B, T], [B, T]
 
 
-def loss_fn(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    return F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+def loss_fn(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:  # [B, T, V], [B, T]
+    """Compute next-token cross-entropy for one batch."""
+    return F.cross_entropy(logits.flatten(0, 1), targets.flatten())
+
+
+@torch.no_grad()
+def estimate_loss(model: LanguageModel, tokens: torch.Tensor) -> float:
+    """Estimate the loss of one split over a few random batches."""
+    model.eval()
+    total_loss = 0.0
+    for _ in range(EVAL_BATCHES):
+        inputs, targets = sample_batch(tokens)
+        total_loss += loss_fn(model(inputs), targets).item()
+    model.train()
+    return total_loss / EVAL_BATCHES
 
 
 def main() -> None:
-    """Load the dataset and report the vocabulary size and token counts."""
+    """Train the vanilla decoder and report the loss."""
+    torch.manual_seed(SEED)
+
     train_text = load_text(TRAIN_SPLIT)
     val_text = load_text(VAL_SPLIT)
     chars, stoi = build_vocab(train_text, val_text)
@@ -214,19 +234,26 @@ def main() -> None:
 
     model = LanguageModel(len(chars)).to(DEVICE)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    print(f"vocab_size={len(chars)} parameters={sum(p.numel() for p in model.parameters())}")
 
-    for step in range(TRAIN_STEPS):
+    start_seconds = time.perf_counter()
+    for step in range(1, TRAIN_STEPS + 1):
         inputs, targets = sample_batch(train_tokens)
-        logits = model(inputs)
-        loss = loss_fn(logits, targets)
+        loss = loss_fn(model(inputs), targets)
 
         optimizer.zero_grad()
         loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
         optimizer.step()
 
-    print(f"vocab_size={len(chars)}")
-    print(f"train_tokens={train_tokens.numel()}")
-    print(f"val_tokens={val_tokens.numel()}")
+        if step == 1 or step % EVAL_INTERVAL == 0:
+            train_loss = estimate_loss(model, train_tokens)
+            val_loss = estimate_loss(model, val_tokens)
+            seconds = time.perf_counter() - start_seconds
+            print(
+                f"step={step} train_loss={train_loss:.4f} "
+                f"val_loss={val_loss:.4f} seconds={seconds:.1f}"
+            )
 
 
 if __name__ == "__main__":
