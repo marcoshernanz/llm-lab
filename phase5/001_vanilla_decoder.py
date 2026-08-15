@@ -29,6 +29,7 @@ CONTEXT_LEN = 16
 NUM_HEADS = 4
 assert D_MODEL % NUM_HEADS == 0
 HEAD_DIM = D_MODEL // NUM_HEADS
+NUM_BLOCKS = 4
 
 
 class FeedForward(nn.Module):
@@ -125,6 +126,12 @@ class DecoderBlock(nn.Module):
         x = self.attn_norm(x + self.attn(x))  # [B, T, D]
         x = self.ffn_norm(x + self.ffn(x))  # [B, T, D]
         return x
+
+
+class Decoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
 
 
 class Model(nn.Module):
