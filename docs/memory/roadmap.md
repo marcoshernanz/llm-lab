@@ -52,7 +52,7 @@ This is the path that is most relevant to:
 
 ## Current Status
 
-As of 2026-05-19:
+As of 2026-05-20:
 
 - `001_char_decoder.py` is complete as the clean vanilla baseline.
 - `002_memory_retrieval.py` is complete as the static retrieval scaffold on top of full-sequence attention.
@@ -72,6 +72,7 @@ As of 2026-05-19:
 - `015_address_drift_best.py` is retained as the canonical best address-drift run, with the full scale/seed sweep summarized in `artifacts/memory_experiments/015_address_drift_controls_summary/`.
 - `016_address_geometry_stabilization.py` is complete as the address-geometry control suite, with the full geometry/seed/capacity sweep summarized in `artifacts/memory_experiments/016_address_geometry_stabilization_summary/`.
 - `017_bounded_slot_allocation.py` is complete as the first bounded slot-usage and allocation suite, with the sparse allocation sweep summarized in `artifacts/memory_experiments/017_bounded_slot_allocation_summary/`.
+- `018_longer_context_pressure_test.py` is complete as the longer-context pressure test, with the pressure/control sweep summarized in `artifacts/memory_experiments/018_longer_context_pressure_summary/`.
 
 That means the fixed-slot read-only line has done its job:
 
@@ -164,11 +165,25 @@ The first bounded-allocation cycle then tested whether usage-aware writes improv
 - but hurt or slightly trailed no allocation on another seed (`0.3440` without allocation vs `0.3366` with usage penalty),
 - and the naive token-wise allocator was too slow for the 4000-step T4 sweep.
 
-So the allocation conclusion is deliberately narrow:
+So the allocation conclusion after `M-017` was deliberately narrow:
 
 - bounded usage-aware allocation is a plausible overwrite-control mechanism,
 - it is not yet robust enough to become the default architecture,
 - and it should be carried forward as an optional control in the next pressure test rather than expanded immediately.
+
+The longer-context pressure test then changed the priority:
+
+- the no-memory chunk-local baseline collapses to random-value exact accuracy (`0.0422`) on `256` tokens and `12` facts,
+- moving-address memory reaches full-context-control accuracy on two seeds (`0.2529` and `0.2598`),
+- full-context controls land at `0.2583` and `0.2550`,
+- and usage-aware allocation hurts under this pressure setting, even when the penalty is weakened.
+
+So the current conclusion is:
+
+- moving-address writable memory is now the clean mechanism to carry forward,
+- bounded allocation should be deprioritized until there is a clearer overwrite failure,
+- the remaining scientific weakness is exact binding quality,
+- and the remaining engineering weakness is runtime cost.
 
 ## What This Path Is Trying To Learn
 
@@ -213,7 +228,7 @@ In plain terms:
 
 ## Milestones
 
-The first sixteen milestones already exist in code and are part of the roadmap.
+The first eighteen milestones already exist in code and are part of the roadmap.
 The later milestones move toward latent-space addressable memory in small steps.
 
 ### Milestone 001: Vanilla Decoder Baseline
@@ -802,6 +817,16 @@ Questions to answer:
 - Does the address space stay usable at larger memory counts?
 - Does runtime scale acceptably?
 
+Status:
+- Complete via `memory_architecture/018_longer_context_pressure_test.py`.
+- The aggregate results are preserved in `artifacts/memory_experiments/018_longer_context_pressure_summary/`.
+
+Main lesson:
+- The longer-context benchmark is a useful pressure test: chunk-local no-memory stays at random-value exact accuracy (`0.0422`), while moving-address memory reaches `0.2529` on seed `1337` and `0.2598` on seed `2026`.
+- Moving-address memory is essentially tied with the full-context controls (`0.2583` and `0.2550`) on this harder setup.
+- Usage-aware allocation hurts under pressure: strong penalty falls to `0.1178`, and weaker `0.25` penalty reaches `0.2189`, still below allocation-off.
+- The next step should move toward external validity or exact-binding improvement with the simple moving-address writer, not toward more allocation machinery.
+
 ### Milestone 019: Natural-Text Evaluation Pass
 Track: External validity
 
@@ -854,9 +879,8 @@ Questions to answer:
 
 The intended order from the current point is:
 
-1. milestone 018: longer-context pressure test,
-2. milestone 019: natural-text evaluation,
-3. milestone 020: thesis-grade freeze.
+1. milestone 019: natural-text evaluation,
+2. milestone 020: thesis-grade freeze.
 
 This order matters.
 It keeps the research disciplined:
@@ -871,8 +895,8 @@ It keeps the research disciplined:
 - then test scale,
 - then package the result honestly.
 
-After `M-017`, the current recommendation is not to add a more complex allocator yet.
-The higher-learning next step is to increase context pressure and see whether the mechanisms that already work on the small task keep their advantage when the memory demand grows.
+After `M-018`, the current recommendation is not to add a more complex allocator.
+The higher-learning next step is to test whether the simple moving-address writer transfers beyond the synthetic key-value benchmark, while keeping the exact-binding ceiling and runtime cost visible.
 
 ## Non-Goals
 
