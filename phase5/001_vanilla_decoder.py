@@ -25,8 +25,8 @@ class Model(nn.Module):
         self.position_embeddings = nn.Embedding(CONTEXT_LEN, EMBEDDING_DIM)
 
     def forward(self, x: torch.Tensor):  # [B, T]
-        positions = torch.arange(CONTEXT_LEN)
-        x = self.token_embeddings(x) + self.position_embeddings(positions)
+        positions = torch.arange(CONTEXT_LEN)  # [T]
+        x = self.token_embeddings(x) + self.position_embeddings(positions)  # [B, T, D]
 
 
 def load_text(split: str) -> str:
