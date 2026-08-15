@@ -13,10 +13,17 @@ VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 
+NUM_TOKENS = 128
+EMBEDDING_DIM = 16
+
 
 class Embedding(nn.Module):
     def __init__(self):
         super().__init__()
+        self.embedding = nn.Linear(NUM_TOKENS, EMBEDDING_DIM, bias=False)
+
+    def forward(self, x: torch.Tensor):
+        return self.embedding(x)
 
 
 def load_text(split: str) -> str:
