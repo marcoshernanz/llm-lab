@@ -38,6 +38,10 @@ class CausalSelfAttention(nn.Module):
         b, t, d = x.size()
         return x.reshape(b, t, NUM_HEADS, d // NUM_HEADS).swapaxes(1, 2)  # [B, H, T, D]
 
+    def combine_heads(self, x: torch.Tensor):  # [B, H, T, D]
+        b, h, t, d = x.size()
+        return x.swapaxes(1, 2).reshape(b, t, h * d)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
