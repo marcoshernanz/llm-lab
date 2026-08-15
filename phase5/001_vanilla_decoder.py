@@ -14,7 +14,13 @@ VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 
-# Shapes: B batch, T sequence, D model dim, H heads, Dh head dim, with D = H * Dh.
+# Tensor shapes:
+# B: batch size
+# T: sequence length
+# D: model dim
+# H: number of attention heads
+# Dh: head dim, D // H
+
 D_MODEL = 16
 CONTEXT_LEN = 16
 NUM_HEADS = 4
