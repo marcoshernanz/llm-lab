@@ -109,6 +109,11 @@ class CausalSelfAttention(nn.Module):
         return self.o_proj(attn_output)  # [B, T, D]
 
 
+class DecoderBlock(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+
 class Model(nn.Module):
     """Embed tokens and their positions."""
 
