@@ -117,6 +117,13 @@ class DecoderBlock(nn.Module):
         self.ffn = FeedForward()
         self.ffn_norm = LayerNorm()
 
+    def forward(self, x: torch.Tensor):
+        x = self.attn(x) + x
+        x = self.attn_norm(x)
+        x = self.ffn(x) + x
+        x = self.ffn_norm(x)
+        return x
+
 
 class Model(nn.Module):
     """Embed tokens and their positions."""
