@@ -40,12 +40,14 @@ class CausalSelfAttention(nn.Module):
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Split the embedding axis into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        return x.reshape(batch_size, seq_len, NUM_HEADS, HEAD_DIM).transpose(1, 2)  # [B, H, T, Dh]
+        x = x.reshape(batch_size, seq_len, NUM_HEADS, HEAD_DIM)  # [B, T, H, Dh]
+        return x.transpose(1, 2)  # [B, H, T, Dh]
 
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
         """Merge the attention heads back into one embedding axis."""
         batch_size, _, seq_len, _ = x.size()
-        return x.transpose(1, 2).reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
+        x = x.transpose(1, 2)  # [B, T, H, Dh]
+        return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
@@ -58,7 +60,8 @@ class CausalSelfAttention(nn.Module):
         attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
 
         attn_weights = attn_scores.softmax(dim=-1)  # [B, H, T, T]
-        attn_output = self.combine_heads(attn_weights @ v)  # [B, T, D]
+        attn_output = attn_weights @ v  # [B, H, T, Dh]
+        attn_output = self.combine_heads(attn_output)  # [B, T, D]
         return self.o_proj(attn_output)  # [B, T, D]
 
 
