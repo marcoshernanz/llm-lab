@@ -33,12 +33,12 @@ class Attention(nn.Module):
         attention_scores = q @ k.mT  # [B, T, T]
         attention_scores /= math.sqrt(D_MODEL)  # [B, T, T]
 
-        ones = torch.ones(x.size(1), x.size(1), dtype=torch.bool, device=x.device)  # [B, T, T]
-        causal_mask = torch.triu(ones, diagonal=1)  # [B, T, T]
+        ones = torch.ones(x.size(1), x.size(1), dtype=torch.bool, device=x.device)  # [T, T]
+        causal_mask = torch.triu(ones, diagonal=1)  # [T, T]
         attention_scores = attention_scores.masked_fill(causal_mask, -torch.inf)  # [B, T, T]
 
-        attention = attention_scores.softmax(-1)  # [B, T]
-        attention @= v
+        attention = attention_scores.softmax(-1)  # [B, T, T]
+        attention @= v  # [B, T, D]
 
         return attention
 
