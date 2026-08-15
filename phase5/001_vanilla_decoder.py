@@ -25,7 +25,7 @@ class Model(nn.Module):
         self.position_embeddings = nn.Embedding(CONTEXT_LEN, EMBEDDING_DIM)
 
     def forward(self, x: torch.Tensor):  # [B, T]
-        positions = torch.arange(CONTEXT_LEN)  # [T]
+        positions = torch.arange(CONTEXT_LEN, device=DEVICE)  # [T]
         token_embeddings = self.token_embeddings(x)  # [B, T, D]
         position_embeddings = self.position_embeddings(positions)  # [T, D]
         x = token_embeddings + position_embeddings  # [B, T, D]
