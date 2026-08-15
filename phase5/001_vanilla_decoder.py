@@ -29,15 +29,21 @@ HEAD_DIM = D_MODEL // NUM_HEADS
 
 
 class LayerNorm(nn.Module):
+    """Normalize each embedding vector and apply a learned scale and shift."""
+
     def __init__(self):
+        """Create the learned scale and shift parameters."""
         super().__init__()
         self.weight = nn.Parameter(torch.ones(D_MODEL))
         self.bias = nn.Parameter(torch.zeros(D_MODEL))
         self.eps = 1e-5
 
-    def forward(self, x: torch.Tensor):
-        x = (x - x.mean(dim=-1, keepdim=True)) / torch.sqrt(x.var(dim=-1, keepdim=True) + self.eps)
-        return x * self.weight + self.bias
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Return the normalized, scaled, and shifted embeddings."""
+        mean = x.mean(dim=-1, keepdim=True)  # [B, T, 1]
+        variance = x.var(dim=-1, keepdim=True, correction=0)  # [B, T, 1]
+        normalized = (x - mean) / torch.sqrt(variance + self.eps)  # [B, T, D]
+        return normalized * self.weight + self.bias  # [B, T, D]
 
 
 class CausalSelfAttention(nn.Module):
