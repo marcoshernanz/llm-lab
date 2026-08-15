@@ -28,6 +28,11 @@ assert D_MODEL % NUM_HEADS == 0
 HEAD_DIM = D_MODEL // NUM_HEADS
 
 
+class FeedForward:
+    def __init__(self):
+        super().__init__()
+
+
 class LayerNorm(nn.Module):
     """Normalize each embedding vector and apply a learned scale and shift."""
 
