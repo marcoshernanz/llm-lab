@@ -21,7 +21,6 @@ DEVICE = "mps"
 # H: number of attention heads
 # Dh: head dim, D // H
 
-BATCH_SIZE = 8
 D_MODEL = 16
 CONTEXT_LEN = 16
 NUM_HEADS = 4
@@ -32,11 +31,12 @@ HEAD_DIM = D_MODEL // NUM_HEADS
 class LayerNorm(nn.Module):
     def __init__(self):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(BATCH_SIZE))
-        self.bias = nn.Parameter(torch.zeros(BATCH_SIZE))
+        self.weight = nn.Parameter(torch.ones(D_MODEL))
+        self.bias = nn.Parameter(torch.zeros(D_MODEL))
+        self.eps = 1e-5
 
     def forward(self, x: torch.Tensor):
-        x = (x - x.mean(dim=0, keepdim=True)) / torch.sqrt(x.var(dim=0, keepdim=True))
+        x = (x - x.mean(dim=0, keepdim=True)) / torch.sqrt(x.var(dim=0, keepdim=True) + self.eps)
         return x * self.weight + self.bias
 
 
