@@ -21,6 +21,7 @@ DEVICE = "mps"
 # H: number of attention heads
 # Dh: head dim, D // H
 
+BATCH_SIZE = 8
 D_MODEL = 16
 CONTEXT_LEN = 16
 NUM_HEADS = 4
@@ -30,6 +31,8 @@ HEAD_DIM = D_MODEL // NUM_HEADS
 
 class LayerNorm(nn.Module):
     def __init__(self):
+        self.weight = nn.Parameter(torch.ones(BATCH_SIZE))
+        self.bias = nn.Parameter(torch.zeros(BATCH_SIZE))
         pass
 
 
