@@ -13,17 +13,20 @@ VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 
-NUM_TOKENS = 128
+VOCAB_SIZE = 128
 EMBEDDING_DIM = 16
+CONTEXT_LEN = 16
 
 
-class Embedding(nn.Module):
+class Model:
     def __init__(self):
         super().__init__()
-        self.embedding = nn.Linear(NUM_TOKENS, EMBEDDING_DIM, bias=False)
+        self.token_embeddings = nn.Embedding(VOCAB_SIZE, EMBEDDING_DIM)
+        self.position_embeddings = nn.Embedding(CONTEXT_LEN, EMBEDDING_DIM)
 
-    def forward(self, x: torch.Tensor):
-        return self.embedding(x)
+    def forward(self, x: torch.Tensor):  # [B, T]
+        positions = torch.arange(CONTEXT_LEN)
+        x = self.token_embeddings(x) + self.position_embeddings(positions)
 
 
 def load_text(split: str) -> str:
