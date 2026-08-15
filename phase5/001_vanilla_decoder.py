@@ -31,7 +31,7 @@ class Model(nn.Module):
         positions = torch.arange(x.size(1), device=x.device)  # [T]
         token_embeddings = self.embed_tokens(x)  # [B, T, D]
         position_embeddings = self.embed_positions(positions)  # [T, D]
-        return token_embeddings + position_embeddings  # [B, T, D]
+        x = token_embeddings + position_embeddings  # [B, T, D]
 
 
 def load_text(split: str) -> str:
