@@ -21,6 +21,7 @@ DEVICE = "mps"
 # D: model dim
 # H: number of attention heads
 # Dh: head dim, D // H
+# Dff: feed-forward dim
 
 D_MODEL = 16
 D_FFN = 64
@@ -31,15 +32,19 @@ HEAD_DIM = D_MODEL // NUM_HEADS
 
 
 class FeedForward(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.w_up = nn.Linear(D_MODEL, D_FFN)
-        self.w_down = nn.Linear(D_FFN, D_MODEL)
+    """Project up, apply a nonlinearity, and project back down."""
 
-    def forward(self, x: torch.Tensor):
-        x = self.w_up(x)
-        x = F.gelu(x)
-        x = self.w_down(x)
+    def __init__(self):
+        """Create the two linear layers of the MLP."""
+        super().__init__()
+        self.up_proj = nn.Linear(D_MODEL, D_FFN)
+        self.down_proj = nn.Linear(D_FFN, D_MODEL)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Return the feed-forward block output."""
+        x = self.up_proj(x)  # [B, T, Dff]
+        x = F.gelu(x)  # [B, T, Dff]
+        x = self.down_proj(x)  # [B, T, D]
         return x
 
 
