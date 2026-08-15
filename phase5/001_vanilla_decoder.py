@@ -24,6 +24,10 @@ class Attention(nn.Module):
         self.k_proj = nn.Linear(D_MODEL, D_MODEL)
         self.v_proj = nn.Linear(D_MODEL, D_MODEL)
 
+    def forward(self, x: torch.Tensor):  # [B, T, D]
+        q = self.q_proj(x)  # [B, T, D]
+        k = self.k_proj(x)  # [B, T, D]
+
 
 class Model(nn.Module):
     """Embed tokens and their positions."""
