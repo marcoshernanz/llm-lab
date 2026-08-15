@@ -200,6 +200,10 @@ def sample_batch(tokens: torch.Tensor):
     return inputs, targets
 
 
+def loss_fn(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    return F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+
+
 def main() -> None:
     """Load the dataset and report the vocabulary size and token counts."""
     train_text = load_text(TRAIN_SPLIT)
@@ -213,6 +217,8 @@ def main() -> None:
 
     for step in range(TRAIN_STEPS):
         inputs, targets = sample_batch(train_tokens)
+        logits = model(inputs)
+        loss = loss_fn(logits, targets)
 
     print(f"vocab_size={len(chars)}")
     print(f"train_tokens={train_tokens.numel()}")
