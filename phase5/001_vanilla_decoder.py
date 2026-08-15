@@ -15,6 +15,9 @@ VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 
+LEARNING_RATE = 0.01
+TRAIN_STEPS = 1000
+
 # Tensor shapes:
 # B: batch size
 # T: sequence length
@@ -193,6 +196,12 @@ def main() -> None:
     chars, stoi = build_vocab(train_text, val_text)
     train_tokens = encode(train_text, stoi)
     val_tokens = encode(val_text, stoi)
+
+    model = LanguageModel(len(chars)).to(DEVICE)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+
+    for step in range(TRAIN_STEPS):
+        pass
 
     print(f"vocab_size={len(chars)}")
     print(f"train_tokens={train_tokens.numel()}")
