@@ -8,7 +8,7 @@ from datasets import load_dataset  # pyright: ignore
 DATASET_NAME = "roneneldan/TinyStories"
 DATASET_CONFIG = None
 TRAIN_SPLIT = "train[:20000]"
-VALIDATION_SPLIT = "validation[:2000]"
+VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 
@@ -19,29 +19,29 @@ def load_text(split: str) -> str:
     return "\n".join(text for text in dataset[TEXT_COLUMN] if text)
 
 
-def build_vocab(train_text: str, validation_text: str) -> tuple[list[str], dict[str, int]]:
+def build_vocab(train_text: str, val_text: str) -> tuple[list[str], dict[str, int]]:
     """Build one character vocabulary from the train and validation text."""
-    vocab_chars = sorted(set(train_text + validation_text))
-    char_to_id = {char: idx for idx, char in enumerate(vocab_chars)}
-    return vocab_chars, char_to_id
+    chars = sorted(set(train_text + val_text))
+    stoi = {char: i for i, char in enumerate(chars)}
+    return chars, stoi
 
 
-def encode_text(text: str, char_to_id: dict[str, int]) -> torch.Tensor:
-    """Turn one text string into a tensor of character ids."""
-    return torch.tensor([char_to_id[char] for char in text], dtype=torch.long, device=DEVICE)
+def encode(text: str, stoi: dict[str, int]) -> torch.Tensor:
+    """Turn one text string into a tensor of token ids."""
+    return torch.tensor([stoi[char] for char in text], dtype=torch.long, device=DEVICE)
 
 
 def main() -> None:
-    """Load the dataset and report the character vocabulary and token counts."""
+    """Load the dataset and report the vocabulary size and token counts."""
     train_text = load_text(TRAIN_SPLIT)
-    validation_text = load_text(VALIDATION_SPLIT)
-    vocab_chars, char_to_id = build_vocab(train_text, validation_text)
-    train_tokens = encode_text(train_text, char_to_id)
-    validation_tokens = encode_text(validation_text, char_to_id)
+    val_text = load_text(VAL_SPLIT)
+    chars, stoi = build_vocab(train_text, val_text)
+    train_tokens = encode(train_text, stoi)
+    val_tokens = encode(val_text, stoi)
 
-    print(f"vocab_size={len(vocab_chars)}")
+    print(f"vocab_size={len(chars)}")
     print(f"train_tokens={train_tokens.numel()}")
-    print(f"validation_tokens={validation_tokens.numel()}")
+    print(f"val_tokens={val_tokens.numel()}")
 
 
 if __name__ == "__main__":
