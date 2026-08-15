@@ -36,7 +36,7 @@ class LayerNorm(nn.Module):
         self.eps = 1e-5
 
     def forward(self, x: torch.Tensor):
-        x = (x - x.mean(dim=0, keepdim=True)) / torch.sqrt(x.var(dim=0, keepdim=True) + self.eps)
+        x = (x - x.mean(dim=-1, keepdim=True)) / torch.sqrt(x.var(dim=-1, keepdim=True) + self.eps)
         return x * self.weight + self.bias
 
 
