@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" fill="none">
+  <rect width="900" height="400" fill="white"/>
+  <line x1="64" y1="24" x2="64" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <line x1="64" y1="356" x2="876" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <text x="64" y="16" fill="#24292f" font-family="monospace" font-size="14">M-018 exact answer accuracy vs. step</text>
+  <text x="64" y="388" fill="#57606a" font-family="monospace" font-size="12">step 1 to 6000</text>
+  <text x="12" y="28" fill="#57606a" font-family="monospace" font-size="12">0.3000</text>
+  <text x="12" y="360" fill="#57606a" font-family="monospace" font-size="12">0.0000</text>
+  <polyline points="64.00,340.69 104.47,308.36 145.08,308.13 185.68,309.75 226.29,307.10 266.90,306.11 307.51,305.66 348.11,306.47 388.72,309.44 429.33,309.80 469.93,307.59 510.54,306.56 551.15,306.29 591.75,304.53 632.36,306.83 672.97,307.50 713.57,306.20 754.18,305.93 794.79,306.02 835.39,306.33 876.00,309.26" stroke="#2563eb" stroke-width="2" fill="none"/>
+  <polyline points="64.00,345.24 104.47,306.33 145.08,307.64 185.68,268.87 226.29,210.15 266.90,199.47 307.51,196.68 348.11,197.76 388.72,199.83 429.33,192.90 469.93,193.67 510.54,192.18 551.15,187.77 591.75,183.13 632.36,159.76 672.97,95.54 713.57,85.86 754.18,80.95 794.79,78.52 835.39,78.21 876.00,76.14" stroke="#dc2626" stroke-width="2" fill="none"/>
+  <polyline points="64.00,344.97 104.47,305.84 145.08,308.31 185.68,296.97 226.29,259.32 266.90,234.64 307.51,223.07 348.11,226.54 388.72,227.89 429.33,227.35 469.93,223.21 510.54,223.21 551.15,231.85 591.75,222.89 632.36,223.03 672.97,223.16 713.57,225.68 754.18,226.54 794.79,222.80 835.39,226.49 876.00,225.59" stroke="#059669" stroke-width="2" fill="none"/>
+  <polyline points="64.00,352.40 104.47,303.09 145.08,193.85 185.68,110.40 226.29,87.26 266.90,81.13 307.51,69.47 348.11,73.30 388.72,70.87 429.33,75.10 469.93,72.85 510.54,73.34 551.15,70.46 591.75,67.18 632.36,69.88 672.97,73.21 713.57,67.49 754.18,68.21 794.79,74.11 835.39,71.00 876.00,70.10" stroke="#7c3aed" stroke-width="2" fill="none"/>
+  <polyline points="64.00,348.75 104.47,309.21 145.08,296.38 185.68,250.90 226.29,242.75 266.90,232.62 307.51,231.22 348.11,177.00 388.72,73.84 429.33,75.78 469.93,69.07 510.54,68.80 551.15,72.04 591.75,68.53 632.36,70.24 672.97,69.65 713.57,71.45 754.18,65.78 794.79,69.11 835.39,69.65 876.00,68.48" stroke="#ea580c" stroke-width="2" fill="none"/>
+  <polyline points="64.00,344.52 104.47,273.23 145.08,184.79 185.68,132.15 226.29,104.28 266.90,93.16 307.51,78.66 348.11,65.46 388.72,77.13 429.33,72.13 469.93,69.07 510.54,68.03 551.15,71.95 591.75,69.88 632.36,72.35 672.97,64.29 713.57,68.17 754.18,68.53 794.79,71.77 835.39,67.45 876.00,73.79" stroke="#0891b2" stroke-width="2" fill="none"/>
+  <polyline points="64.00,345.28 104.47,306.69 145.08,308.58 185.68,268.42 226.29,258.60 266.90,203.08 307.51,176.19 348.11,166.92 388.72,166.83 429.33,165.39 469.93,168.45 510.54,169.62 551.15,168.31 591.75,165.16 632.36,168.04 672.97,165.97 713.57,166.74 754.18,164.17 794.79,158.68 835.39,147.15 876.00,113.78" stroke="#9333ea" stroke-width="2" fill="none"/>
+  <line x1="64.00" y1="263.78" x2="876.00" y2="263.78" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <line x1="64.00" y1="309.89" x2="876.00" y2="309.89" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <circle cx="876.00" cy="309.26" r="3" fill="#2563eb"/>
+  <circle cx="876.00" cy="76.14" r="3" fill="#dc2626"/>
+  <circle cx="876.00" cy="225.59" r="3" fill="#059669"/>
+  <circle cx="876.00" cy="70.10" r="3" fill="#7c3aed"/>
+  <circle cx="876.00" cy="68.48" r="3" fill="#ea580c"/>
+  <circle cx="876.00" cy="73.79" r="3" fill="#0891b2"/>
+  <circle cx="876.00" cy="113.78" r="3" fill="#9333ea"/>
+  <line x1="585" y1="14" x2="667" y2="14" stroke="#2563eb" stroke-width="2"/>
+  <text x="675" y="18" fill="#57606a" font-family="monospace" font-size="12">018a_chunk_local_seed1337</text>
+  <line x1="585" y1="34" x2="667" y2="34" stroke="#dc2626" stroke-width="2"/>
+  <text x="675" y="38" fill="#57606a" font-family="monospace" font-size="12">018b_memory_off_seed1337</text>
+  <line x1="585" y1="54" x2="667" y2="54" stroke="#059669" stroke-width="2"/>
+  <text x="675" y="58" fill="#57606a" font-family="monospace" font-size="12">018c_memory_usage_penalty_100_seed1337</text>
+  <line x1="585" y1="74" x2="667" y2="74" stroke="#7c3aed" stroke-width="2"/>
+  <text x="675" y="78" fill="#57606a" font-family="monospace" font-size="12">018d_full_context_seed1337</text>
+  <line x1="585" y1="94" x2="667" y2="94" stroke="#ea580c" stroke-width="2"/>
+  <text x="675" y="98" fill="#57606a" font-family="monospace" font-size="12">018e_memory_off_seed2026</text>
+  <line x1="585" y1="114" x2="667" y2="114" stroke="#0891b2" stroke-width="2"/>
+  <text x="675" y="118" fill="#57606a" font-family="monospace" font-size="12">018f_full_context_seed2026</text>
+  <line x1="585" y1="134" x2="667" y2="134" stroke="#9333ea" stroke-width="2"/>
+  <text x="675" y="138" fill="#57606a" font-family="monospace" font-size="12">018g_memory_usage_penalty_025_seed1337</text>
+  <line x1="585" y1="154" x2="667" y2="154" stroke="#9ca3af" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="675" y="158" fill="#57606a" font-family="monospace" font-size="12">candidate guess exact</text>
+  <line x1="585" y1="174" x2="667" y2="174" stroke="#64748b" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="675" y="178" fill="#57606a" font-family="monospace" font-size="12">random value exact</text>
+</svg>

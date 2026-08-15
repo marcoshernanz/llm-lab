@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" fill="none">
+  <rect width="900" height="400" fill="white"/>
+  <line x1="64" y1="24" x2="64" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <line x1="64" y1="356" x2="876" y2="356" stroke="#d0d7de" stroke-width="1"/>
+  <text x="64" y="16" fill="#24292f" font-family="monospace" font-size="14">M-018 write gate vs. step</text>
+  <text x="64" y="388" fill="#57606a" font-family="monospace" font-size="12">step 1 to 6000</text>
+  <text x="12" y="28" fill="#57606a" font-family="monospace" font-size="12">0.9000</text>
+  <text x="12" y="360" fill="#57606a" font-family="monospace" font-size="12">0.0000</text>
+  <polyline points="64.00,167.61 104.47,136.95 145.08,166.77 185.68,261.62 226.29,134.03 266.90,152.45 307.51,143.09 348.11,139.10 388.72,152.95 429.33,145.06 469.93,147.60 510.54,234.42 551.15,228.53 591.75,267.14 632.36,310.28 672.97,326.74 713.57,326.43 754.18,324.56 794.79,323.97 835.39,324.39 876.00,322.01" stroke="#dc2626" stroke-width="2" fill="none"/>
+  <polyline points="64.00,166.87 104.47,119.31 145.08,128.24 185.68,86.31 226.29,142.19 266.90,296.12 307.51,303.55 348.11,313.04 388.72,317.72 429.33,319.11 469.93,323.62 510.54,325.01 551.15,326.16 591.75,330.48 632.36,330.18 672.97,331.61 713.57,332.58 754.18,334.70 794.79,328.59 835.39,334.16 876.00,334.03" stroke="#059669" stroke-width="2" fill="none"/>
+  <polyline points="64.00,180.18 104.47,190.65 145.08,256.73 185.68,125.42 226.29,66.88 266.90,78.79 307.51,62.01 348.11,202.73 388.72,323.00 429.33,323.03 469.93,321.43 510.54,323.44 551.15,322.67 591.75,320.79 632.36,321.43 672.97,317.93 713.57,319.40 754.18,320.12 794.79,316.93 835.39,316.53 876.00,317.36" stroke="#ea580c" stroke-width="2" fill="none"/>
+  <polyline points="64.00,167.37 104.47,128.16 145.08,161.00 185.68,297.40 226.29,334.72 266.90,308.46 307.51,289.38 348.11,294.47 388.72,293.73 429.33,297.09 469.93,292.49 510.54,307.97 551.15,303.46 591.75,297.94 632.36,294.35 672.97,293.06 713.57,290.54 754.18,307.78 794.79,288.28 835.39,263.81 876.00,325.37" stroke="#9333ea" stroke-width="2" fill="none"/>
+  <circle cx="876.00" cy="322.01" r="3" fill="#dc2626"/>
+  <circle cx="876.00" cy="334.03" r="3" fill="#059669"/>
+  <circle cx="876.00" cy="317.36" r="3" fill="#ea580c"/>
+  <circle cx="876.00" cy="325.37" r="3" fill="#9333ea"/>
+  <line x1="585" y1="14" x2="667" y2="14" stroke="#dc2626" stroke-width="2"/>
+  <text x="675" y="18" fill="#57606a" font-family="monospace" font-size="12">018b_memory_off_seed1337</text>
+  <line x1="585" y1="34" x2="667" y2="34" stroke="#059669" stroke-width="2"/>
+  <text x="675" y="38" fill="#57606a" font-family="monospace" font-size="12">018c_memory_usage_penalty_100_seed1337</text>
+  <line x1="585" y1="54" x2="667" y2="54" stroke="#ea580c" stroke-width="2"/>
+  <text x="675" y="58" fill="#57606a" font-family="monospace" font-size="12">018e_memory_off_seed2026</text>
+  <line x1="585" y1="74" x2="667" y2="74" stroke="#9333ea" stroke-width="2"/>
+  <text x="675" y="78" fill="#57606a" font-family="monospace" font-size="12">018g_memory_usage_penalty_025_seed1337</text>
+</svg>
