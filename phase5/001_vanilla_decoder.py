@@ -220,6 +220,10 @@ def main() -> None:
         logits = model(inputs)
         loss = loss_fn(logits, targets)
 
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
     print(f"vocab_size={len(chars)}")
     print(f"train_tokens={train_tokens.numel()}")
     print(f"val_tokens={val_tokens.numel()}")
