@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import torch
+from torch import nn
 from datasets import load_dataset  # pyright: ignore
 
 DATASET_NAME = "roneneldan/TinyStories"
@@ -11,6 +12,11 @@ TRAIN_SPLIT = "train[:20000]"
 VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
+
+
+class Embedding(nn.Module):
+    def __init__(self):
+        super().__init__()
 
 
 def load_text(split: str) -> str:
