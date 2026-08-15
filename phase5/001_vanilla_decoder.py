@@ -129,13 +129,17 @@ class DecoderBlock(nn.Module):
 
 
 class Decoder(nn.Module):
+    """Stack the decoder blocks."""
+
     def __init__(self):
+        """Create the block stack."""
         super().__init__()
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Run the full decoder stack."""
         for block in self.blocks:
-            x = block(x)
+            x = block(x)  # [B, T, D]
         return x
 
 
