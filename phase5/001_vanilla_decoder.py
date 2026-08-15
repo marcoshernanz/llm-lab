@@ -31,6 +31,7 @@ HEAD_DIM = D_MODEL // NUM_HEADS
 
 class LayerNorm(nn.Module):
     def __init__(self):
+        super().__init__()
         self.weight = nn.Parameter(torch.ones(BATCH_SIZE))
         self.bias = nn.Parameter(torch.zeros(BATCH_SIZE))
 
