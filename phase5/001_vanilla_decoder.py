@@ -14,9 +14,12 @@ VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 
+# Shapes: B batch, T sequence, D model dim, H heads, Dh head dim, with D = H * Dh.
 D_MODEL = 16
 CONTEXT_LEN = 16
 NUM_HEADS = 4
+assert D_MODEL % NUM_HEADS == 0
+HEAD_DIM = D_MODEL // NUM_HEADS
 
 
 class CausalSelfAttention(nn.Module):
@@ -34,29 +37,28 @@ class CausalSelfAttention(nn.Module):
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
-    def split_heads(self, x: torch.Tensor):  # [B, T, D]
-        b, t, d = x.size()
-        return x.reshape(b, t, NUM_HEADS, d // NUM_HEADS).swapaxes(1, 2)  # [B, H, T, D]
+    def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Split the embedding axis into separate attention heads."""
+        batch_size, seq_len, _ = x.size()
+        return x.reshape(batch_size, seq_len, NUM_HEADS, HEAD_DIM).transpose(1, 2)  # [B, H, T, Dh]
 
-    def combine_heads(self, x: torch.Tensor):  # [B, H, T, D]
-        b, h, t, d = x.size()
-        return x.swapaxes(1, 2).reshape(b, t, h * d)  # [B, T, D]
+    def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
+        """Merge the attention heads back into one embedding axis."""
+        batch_size, _, seq_len, _ = x.size()
+        return x.transpose(1, 2).reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
-        q = self.split_heads(self.q_proj(x))  # [B, H, T, D]
-        k = self.split_heads(self.k_proj(x))  # [B, H, T, D]
-        v = self.split_heads(self.v_proj(x))  # [B, H, T, D]
+        q = self.split_heads(self.q_proj(x))  # [B, H, T, Dh]
+        k = self.split_heads(self.k_proj(x))  # [B, H, T, Dh]
+        v = self.split_heads(self.v_proj(x))  # [B, H, T, Dh]
 
-        attn_scores = (q @ k.mT) / math.sqrt(D_MODEL)  # [B, H, T, T]
+        attn_scores = (q @ k.mT) / math.sqrt(HEAD_DIM)  # [B, H, T, T]
         attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
 
         attn_weights = attn_scores.softmax(dim=-1)  # [B, H, T, T]
-        attn_output = attn_weights @ v  # [B, H, T, D]
-
-        attn_output = self.combine_heads(attn_output)  # [B, T, D]
-
+        attn_output = self.combine_heads(attn_weights @ v)  # [B, T, D]
         return self.o_proj(attn_output)  # [B, T, D]
 
 
