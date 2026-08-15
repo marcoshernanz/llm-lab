@@ -151,13 +151,17 @@ class Model(nn.Module):
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.embed_positions = nn.Embedding(CONTEXT_LEN, D_MODEL)
+        self.decoder = Decoder()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
         """Return token-plus-position embeddings for one batch of token ids."""
         positions = torch.arange(x.size(1), device=x.device)  # [T]
         token_embeddings = self.embed_tokens(x)  # [B, T, D]
         position_embeddings = self.embed_positions(positions)  # [T, D]
-        return token_embeddings + position_embeddings  # [B, T, D]
+        embeddings = token_embeddings + position_embeddings  # [B, T, D]
+        x = self.decoder(embeddings)
+        x = x @ self.embed_tokens.weight.T
+        return x
 
 
 def load_text(split: str) -> str:
