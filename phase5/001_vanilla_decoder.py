@@ -40,6 +40,8 @@ class Attention(nn.Module):
         attention = attention_scores.softmax(-1)
         attention *= v
 
+        return attention
+
 
 class Model(nn.Module):
     """Embed tokens and their positions."""
