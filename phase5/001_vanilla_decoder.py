@@ -22,6 +22,7 @@ DEVICE = "mps"
 # Dh: head dim, D // H
 
 D_MODEL = 16
+D_FFN = 64
 CONTEXT_LEN = 16
 NUM_HEADS = 4
 assert D_MODEL % NUM_HEADS == 0
@@ -31,6 +32,8 @@ HEAD_DIM = D_MODEL // NUM_HEADS
 class FeedForward:
     def __init__(self):
         super().__init__()
+        self.w_up = nn.Linear(D_MODEL, D_FFN)
+        self.w_down = nn.Linear(D_MODEL, D_FFN)
 
 
 class LayerNorm(nn.Module):
