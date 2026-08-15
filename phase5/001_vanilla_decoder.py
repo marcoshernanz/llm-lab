@@ -36,12 +36,12 @@ def main() -> None:
     train_text = load_text(TRAIN_SPLIT)
     validation_text = load_text(VALIDATION_SPLIT)
     vocab_chars, char_to_id = build_vocab(train_text, validation_text)
-    train_token_ids = encode_text(train_text, char_to_id)
-    validation_token_ids = encode_text(validation_text, char_to_id)
+    train_tokens = encode_text(train_text, char_to_id)
+    validation_tokens = encode_text(validation_text, char_to_id)
 
     print(f"vocab_size={len(vocab_chars)}")
-    print(f"train_tokens={train_token_ids.numel()}")
-    print(f"validation_tokens={validation_token_ids.numel()}")
+    print(f"train_tokens={train_tokens.numel()}")
+    print(f"validation_tokens={validation_tokens.numel()}")
 
 
 if __name__ == "__main__":
