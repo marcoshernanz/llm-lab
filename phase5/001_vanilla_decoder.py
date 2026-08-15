@@ -15,6 +15,7 @@ VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
 DEVICE = "mps"
 
+BATCH_SIZE = 8
 LEARNING_RATE = 0.01
 TRAIN_STEPS = 1000
 
@@ -187,6 +188,16 @@ def build_vocab(train_text: str, val_text: str) -> tuple[list[str], dict[str, in
 def encode(text: str, stoi: dict[str, int]) -> torch.Tensor:
     """Turn one text string into a tensor of token ids."""
     return torch.tensor([stoi[char] for char in text], dtype=torch.long, device=DEVICE)
+
+
+def sample_batch(tokens: torch.Tensor):
+    max_start = tokens.size(0) - CONTEXT_LEN
+    starts = torch.randint(max_start, (BATCH_SIZE,), device=DEVICE)
+    offsets = torch.arange(CONTEXT_LEN, device=DEVICE)
+    positions = starts[:, None] + offsets[None, :]
+    inputs = tokens[positions]
+    targets = tokens[positions + 1]
+    return inputs, targets
 
 
 def main() -> None:
