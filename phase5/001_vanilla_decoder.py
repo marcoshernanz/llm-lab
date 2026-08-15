@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import torch
 from torch import nn
+import torch.nn.functional as F
 from datasets import load_dataset  # pyright: ignore
 
 DATASET_NAME = "roneneldan/TinyStories"
@@ -33,7 +34,13 @@ class FeedForward:
     def __init__(self):
         super().__init__()
         self.w_up = nn.Linear(D_MODEL, D_FFN)
-        self.w_down = nn.Linear(D_MODEL, D_FFN)
+        self.w_down = nn.Linear(D_FFN, D_MODEL)
+
+    def forward(self, x: torch.Tensor):
+        x = self.w_up(x)
+        x = F.gelu(x)
+        x = self.w_down(x)
+        return x
 
 
 class LayerNorm(nn.Module):
