@@ -110,18 +110,20 @@ class CausalSelfAttention(nn.Module):
 
 
 class DecoderBlock(nn.Module):
+    """Apply one post-norm attention sublayer and one post-norm MLP sublayer."""
+
     def __init__(self):
+        """Create the attention, feed-forward, and normalization sublayers."""
         super().__init__()
         self.attn = CausalSelfAttention()
         self.attn_norm = LayerNorm()
         self.ffn = FeedForward()
         self.ffn_norm = LayerNorm()
 
-    def forward(self, x: torch.Tensor):
-        x = self.attn(x) + x
-        x = self.attn_norm(x)
-        x = self.ffn(x) + x
-        x = self.ffn_norm(x)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Return the residual output of one decoder block."""
+        x = self.attn_norm(x + self.attn(x))  # [B, T, D]
+        x = self.ffn_norm(x + self.ffn(x))  # [B, T, D]
         return x
 
 
