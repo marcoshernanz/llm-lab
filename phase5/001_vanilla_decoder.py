@@ -31,7 +31,7 @@ CONTEXT_LEN = 256
 D_MODEL = 128
 NUM_HEADS = 4
 assert D_MODEL % NUM_HEADS == 0
-HEAD_DIM = D_MODEL // NUM_HEADS
+D_HEAD = D_MODEL // NUM_HEADS
 D_FFN = 4 * D_MODEL
 NUM_BLOCKS = 8
 INIT_STD = 0.02
@@ -80,7 +80,7 @@ class CausalSelfAttention(nn.Module):
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Split the embedding axis into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, NUM_HEADS, HEAD_DIM)  # [B, T, H, Dh]
+        x = x.reshape(batch_size, seq_len, NUM_HEADS, D_HEAD)  # [B, T, H, Dh]
         return x.transpose(1, 2)  # [B, H, T, Dh]
 
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
@@ -96,7 +96,7 @@ class CausalSelfAttention(nn.Module):
         k = self.split_heads(self.k_proj(x))  # [B, H, T, Dh]
         v = self.split_heads(self.v_proj(x))  # [B, H, T, Dh]
 
-        attn_scores = (q @ k.mT) / math.sqrt(HEAD_DIM)  # [B, H, T, T]
+        attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, H, T, T]
         attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
 
         attn_weights = attn_scores.softmax(dim=-1)  # [B, H, T, T]
