@@ -54,9 +54,9 @@ class RMSNorm(nn.Module):
         self.eps = 1e-5
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Return the normalized, scaled, and shifted embeddings."""
-        variance = x.var(dim=-1, keepdim=True, correction=0)  # [B, T, 1]
-        normalized = x / torch.sqrt(variance + self.eps)  # [B, T, D]
+        """Return the normalized and scaled embeddings."""
+        mean_square = x.pow(2).mean(dim=-1, keepdim=True)  # [B, T, 1]
+        normalized = x * torch.rsqrt(mean_square + self.eps)  # [B, T, D]
         return normalized * self.weight  # [B, T, D]
 
 
