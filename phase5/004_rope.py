@@ -72,8 +72,16 @@ class CausalSelfAttention(nn.Module):
         self.k_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.v_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
+
+        inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, HEAD_DIM, 2) / HEAD_DIM))
+        positions = torch.arange(CONTEXT_LEN)
+        angles = positions[:, None] * inv_freq[None, :]
+        angles = torch.cat([angles, angles], dim=-1)
+        self.register_buffer("rope_cos", angles.cos())
+        self.register_buffer("rope_sin", angles.sin())
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Split the embedding axis into separate attention heads."""
@@ -86,10 +94,6 @@ class CausalSelfAttention(nn.Module):
         batch_size, _, seq_len, _ = x.size()
         x = x.transpose(1, 2)  # [B, T, H, Dh]
         return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
-
-    def rotate(self, x: torch.Tensor):  # [B, H, T, Dh]
-        x1, x2 = x.chunk(2, dim=-1)  # [B, H, T, 2, Dh/2]
-        inv_freq = 1 / (10000 ** (torch.arange(0, HEAD_DIM, 2) / HEAD_DIM))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
