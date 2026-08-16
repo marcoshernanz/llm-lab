@@ -88,6 +88,12 @@ class CausalSelfAttention(nn.Module):
         x0, x1 = x.chunk(2, dim=-1)
         return torch.cat([-x1, x0], dim=-1)
 
+    def apply_rope(self, x: torch.Tensor):
+        seq_len = x.size(2)
+        cos = self.rope_cos[:seq_len]
+        sin = self.rope_sin[:seq_len]
+        return x * cos + self.rotate_half(x) * sin
+
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Split the embedding axis into separate attention heads."""
         batch_size, seq_len, _ = x.size()
