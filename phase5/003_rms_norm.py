@@ -35,6 +35,7 @@ D_HEAD = D_MODEL // NUM_HEADS
 D_FFN = 4 * D_MODEL
 NUM_BLOCKS = 8
 INIT_STD = 0.02
+NORM_EPS = 1e-5
 
 BATCH_SIZE = 32
 LEARNING_RATE = 3e-3
@@ -51,7 +52,7 @@ class RMSNorm(nn.Module):
         """Create the learned gain parameter."""
         super().__init__()
         self.weight = nn.Parameter(torch.ones(D_MODEL))
-        self.eps = 1e-5
+        self.eps = NORM_EPS
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the normalized and scaled embeddings."""
@@ -95,7 +96,8 @@ class CausalSelfAttention(nn.Module):
         v = self.split_heads(self.v_proj(x))  # [B, H, T, Dh]
 
         attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, H, T, T]
-        attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
+        causal_mask = self.causal_mask[:seq_len, :seq_len]  # [T, T]
+        attn_scores = attn_scores.masked_fill(causal_mask, -torch.inf)  # [B, H, T, T]
 
         attn_weights = attn_scores.softmax(dim=-1)  # [B, H, T, T]
         attn_output = attn_weights @ v  # [B, H, T, Dh]
@@ -222,7 +224,7 @@ def estimate_loss(model: LanguageModel, tokens: torch.Tensor) -> float:
 
 
 def main() -> None:
-    """Train the vanilla decoder and report the loss."""
+    """Train the model and report the loss."""
     torch.manual_seed(SEED)
 
     train_text = load_text(TRAIN_SPLIT)
