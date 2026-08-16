@@ -23,19 +23,19 @@ SEED = 1337
 # T: sequence length
 # D: model dim
 # V: vocab size
-# H: number of attention heads
+# Hq: number of query heads
 # Hkv: number of key and value heads
-# Dh: head dim, D // H
+# Dh: head dim, D // Hq
 # Dff: feed-forward dim
-# *: H for queries, Hkv for keys and values
+# H*: Hq for queries, Hkv for keys and values
 
 CONTEXT_LEN = 256
 D_MODEL = 128
-NUM_HEADS = 4
+NUM_QUERY_HEADS = 4
 NUM_KV_HEADS = 2
-assert NUM_HEADS % NUM_KV_HEADS == 0
-assert D_MODEL % NUM_HEADS == 0
-D_HEAD = D_MODEL // NUM_HEADS
+assert NUM_QUERY_HEADS % NUM_KV_HEADS == 0
+assert D_MODEL % NUM_QUERY_HEADS == 0
+D_HEAD = D_MODEL // NUM_QUERY_HEADS
 D_FFN = 4 * D_MODEL
 NUM_BLOCKS = 8
 INIT_STD = 0.02
@@ -90,48 +90,48 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("rope_cos", angles.cos())
         self.register_buffer("rope_sin", angles.sin())
 
-    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, * * Dh]
+    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H* Dh]
         """Split the projection into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, *, Dh]
-        return x.transpose(1, 2)  # [B, *, T, Dh]
+        x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H*, Dh]
+        return x.transpose(1, 2)  # [B, H*, T, Dh]
 
     def repeat_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
         """Share each key or value head across its group of query heads."""
-        return x.repeat_interleave(NUM_HEADS // NUM_KV_HEADS, dim=1)  # [B, H, T, Dh]
+        return x.repeat_interleave(NUM_QUERY_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
 
-    def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
+    def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hq, T, Dh]
         """Merge the attention heads back into one embedding axis."""
         batch_size, _, seq_len, _ = x.size()
-        x = x.transpose(1, 2)  # [B, T, H, Dh]
+        x = x.transpose(1, 2)  # [B, T, Hq, Dh]
         return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
-    def rotate_half(self, x: torch.Tensor) -> torch.Tensor:  # [B, *, T, Dh]
+    def rotate_half(self, x: torch.Tensor) -> torch.Tensor:  # [B, H*, T, Dh]
         """Pair each feature with the one half a head apart and rotate the pair."""
-        x1, x2 = x.chunk(2, dim=-1)  # [B, *, T, Dh/2] each
-        return torch.cat([-x2, x1], dim=-1)  # [B, *, T, Dh]
+        x1, x2 = x.chunk(2, dim=-1)  # [B, H*, T, Dh/2] each
+        return torch.cat([-x2, x1], dim=-1)  # [B, H*, T, Dh]
 
-    def apply_rope(self, x: torch.Tensor) -> torch.Tensor:  # [B, *, T, Dh]
+    def apply_rope(self, x: torch.Tensor) -> torch.Tensor:  # [B, H*, T, Dh]
         """Rotate queries or keys by a position-dependent angle."""
         seq_len = x.size(2)
         cos = self.rope_cos[:seq_len]  # [T, Dh]
         sin = self.rope_sin[:seq_len]  # [T, Dh]
-        return x * cos + self.rotate_half(x) * sin  # [B, *, T, Dh]
+        return x * cos + self.rotate_half(x) * sin  # [B, H*, T, Dh]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
-        q = self.apply_rope(self.split_heads(self.q_proj(x), NUM_HEADS))  # [B, H, T, Dh]
+        q = self.apply_rope(self.split_heads(self.q_proj(x), NUM_QUERY_HEADS))  # [B, Hq, T, Dh]
         k = self.apply_rope(self.split_heads(self.k_proj(x), NUM_KV_HEADS))  # [B, Hkv, T, Dh]
         v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
-        k = self.repeat_kv_heads(k)  # [B, H, T, Dh]
-        v = self.repeat_kv_heads(v)  # [B, H, T, Dh]
+        k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
+        v = self.repeat_kv_heads(v)  # [B, Hq, T, Dh]
 
-        attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, H, T, T]
+        attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, Hq, T, T]
         attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
 
-        attn_weights = attn_scores.softmax(dim=-1)  # [B, H, T, T]
-        attn_output = attn_weights @ v  # [B, H, T, Dh]
+        attn_weights = attn_scores.softmax(dim=-1)  # [B, Hq, T, T]
+        attn_output = attn_weights @ v  # [B, Hq, T, Dh]
         attn_output = self.combine_heads(attn_output)  # [B, T, D]
         return self.o_proj(attn_output)  # [B, T, D]
 
