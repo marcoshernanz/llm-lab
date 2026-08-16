@@ -132,13 +132,12 @@ class DecoderBlock(nn.Module):
         self.attn_norm = LayerNorm()
         self.ffn = FeedForward()
         self.ffn_norm = LayerNorm()
-        self.out_norm = LayerNorm()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the residual output of one decoder block."""
         x = x + self.attn(self.attn_norm(x))  # [B, T, D]
         x = x + self.ffn(self.ffn_norm(x))  # [B, T, D]
-        return self.out_norm(x)  # [B, T, D]
+        return x
 
 
 class Decoder(nn.Module):
@@ -148,12 +147,13 @@ class Decoder(nn.Module):
         """Create the block stack."""
         super().__init__()
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
+        self.out_norm = LayerNorm()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Run the full decoder stack."""
         for block in self.blocks:
             x = block(x)  # [B, T, D]
-        return x
+        return self.out_norm(x)  # [B, T, D]
 
 
 class LanguageModel(nn.Module):
