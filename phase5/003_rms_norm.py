@@ -68,10 +68,10 @@ class CausalSelfAttention(nn.Module):
     def __init__(self):
         """Create the projections and the causal mask."""
         super().__init__()
-        self.q_proj = nn.Linear(D_MODEL, D_MODEL)
-        self.k_proj = nn.Linear(D_MODEL, D_MODEL)
-        self.v_proj = nn.Linear(D_MODEL, D_MODEL)
-        self.o_proj = nn.Linear(D_MODEL, D_MODEL)
+        self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.k_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.v_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
@@ -109,8 +109,8 @@ class FeedForward(nn.Module):
     def __init__(self):
         """Create the two linear layers of the MLP."""
         super().__init__()
-        self.up_proj = nn.Linear(D_MODEL, D_FFN)
-        self.down_proj = nn.Linear(D_FFN, D_MODEL)
+        self.up_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
+        self.down_proj = nn.Linear(D_FFN, D_MODEL, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the feed-forward block output."""
