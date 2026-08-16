@@ -161,18 +161,13 @@ class LanguageModel(nn.Module):
         """Create the embedding tables and the decoder stack."""
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
-        self.embed_positions = nn.Embedding(CONTEXT_LEN, D_MODEL)
         self.decoder = Decoder()
         nn.init.normal_(self.embed_tokens.weight, std=INIT_STD)
-        nn.init.normal_(self.embed_positions.weight, std=INIT_STD)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
         """Return next-token logits for one batch of token ids."""
-        positions = torch.arange(x.size(1), device=x.device)  # [T]
-        token_embeddings = self.embed_tokens(x)  # [B, T, D]
-        position_embeddings = self.embed_positions(positions)  # [T, D]
-        hidden_states = token_embeddings + position_embeddings  # [B, T, D]
-        hidden_states = self.decoder(hidden_states)  # [B, T, D]
+        embeddings = self.embed_tokens(x)  # [B, T, D]
+        hidden_states = self.decoder(embeddings)  # [B, T, D]
         logits = hidden_states @ self.embed_tokens.weight.T  # [B, T, V]
         return logits
 
