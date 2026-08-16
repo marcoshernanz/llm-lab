@@ -84,6 +84,10 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("rope_cos", angles.cos())
         self.register_buffer("rope_sin", angles.sin())
 
+    def rotate_half(self, x: torch.Tensor):
+        x0, x1 = x.chunk(2, dim=-1)
+        return torch.cat([-x1, x0], dim=-1)
+
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Split the embedding axis into separate attention heads."""
         batch_size, seq_len, _ = x.size()
