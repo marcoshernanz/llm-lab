@@ -1,4 +1,4 @@
-"""Phase 5 experiment 003: the pre-norm decoder with RMSNorm and no biases."""
+"""Phase 5 experiment 004: the decoder with rotary position embeddings."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ class CausalSelfAttention(nn.Module):
     rope_sin: torch.Tensor
 
     def __init__(self):
-        """Create the projections and the causal mask."""
+        """Create the projections, the causal mask, and the rotation tables."""
         super().__init__()
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.k_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
@@ -79,22 +79,12 @@ class CausalSelfAttention(nn.Module):
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
-        inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))
-        positions = torch.arange(CONTEXT_LEN)
-        angles = positions[:, None] * inv_freq[None, :]
-        angles = torch.cat([angles, angles], dim=-1)
+        inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))  # [Dh/2]
+        positions = torch.arange(CONTEXT_LEN)  # [T]
+        angles = positions[:, None] * inv_freq[None, :]  # [T, Dh/2]
+        angles = torch.cat([angles, angles], dim=-1)  # [T, Dh]
         self.register_buffer("rope_cos", angles.cos())
         self.register_buffer("rope_sin", angles.sin())
-
-    def rotate_half(self, x: torch.Tensor):
-        x0, x1 = x.chunk(2, dim=-1)
-        return torch.cat([-x1, x0], dim=-1)
-
-    def apply_rope(self, x: torch.Tensor):
-        seq_len = x.size(2)
-        cos = self.rope_cos[:seq_len]
-        sin = self.rope_sin[:seq_len]
-        return x * cos + self.rotate_half(x) * sin
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Split the embedding axis into separate attention heads."""
@@ -107,6 +97,18 @@ class CausalSelfAttention(nn.Module):
         batch_size, _, seq_len, _ = x.size()
         x = x.transpose(1, 2)  # [B, T, H, Dh]
         return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
+
+    def rotate_half(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
+        """Pair each feature with the one half a head apart and rotate the pair."""
+        x1, x2 = x.chunk(2, dim=-1)  # [B, H, T, Dh/2] each
+        return torch.cat([-x2, x1], dim=-1)  # [B, H, T, Dh]
+
+    def apply_rope(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
+        """Rotate queries or keys by a position-dependent angle."""
+        seq_len = x.size(2)
+        cos = self.rope_cos[:seq_len]  # [T, Dh]
+        sin = self.rope_sin[:seq_len]  # [T, Dh]
+        return x * cos + self.rotate_half(x) * sin  # [B, H, T, Dh]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
