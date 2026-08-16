@@ -12,13 +12,15 @@ For the run history from this path, see `learning_log.md`, which is created when
 
 ## Current Status
 
-As of 2026-08-15:
+As of 2026-08-16:
 
 - The roadmap is written and the target architecture is chosen.
-- `001_vanilla_decoder.py` is complete as the pre-modern baseline, recorded as `P5-001`.
-- The baseline does not learn at the control learning rate. It collapses to character-unigram loss (`3.0537`) by step `250` and stays there, with the smallest gradient norms of any configuration tested.
-- A control sweep confirms the code is correct: the same script at lr `3e-4` reaches `2.15` in `400` steps, and pre-norm at the control lr reaches `1.51`.
-- Milestone 502 is next, and it must first settle whether `M-501` is compared at the control learning rate alone or against a supplementary post-norm best-effort run.
+- Milestones 501, 502, and 503 are complete, recorded as `P5-001`, `P5-002`, and `P5-003`.
+- Validation loss so far: `3.0537` for the vanilla post-norm baseline, `1.0161` for pre-norm, `0.9563` for RMSNorm with no biases.
+- The baseline does not learn at the control learning rate. It collapses to character-unigram loss by step `250`, with the smallest gradient norms of any configuration tested. A control sweep confirms the code is correct: the same script reaches `2.15` at lr `3e-4`.
+- RMSNorm plus bias removal improved loss, parameter count, and wall-clock simultaneously, which makes it the cheapest win in the ladder so far.
+- Milestone 504 is next.
+- Still outstanding: the supplementary `post-norm, lr 3e-4` run at full length, so the `501` to `502` comparison is not credited entirely to norm placement.
 
 ## Why This Phase Is Separate
 
@@ -226,6 +228,14 @@ Exit criteria:
 - Loss curve compared against `M-501` at identical seed and budget.
 - The residual stream identity path is explicit in the code.
 
+Status:
+- Complete via `phase5/002_pre_norm.py`, recorded as `P5-002`.
+
+Main lesson:
+- Validation loss falls from `3.0537` to `1.0161` for four lines of code and `+256` parameters.
+- The identity path is measurable outside training: activations scaled by `50x` leave a post-norm block at standard deviation `1.000` and a pre-norm block at `50.265`.
+- Pre-norm trains with much larger gradients, clipping on `50%` of steps against `1%` for the collapsed post-norm run, so heavy clipping here is a sign of health.
+
 Questions to answer:
 - Why does post-norm need warmup that pre-norm does not?
 - What does the final norm before the LM head actually protect?
@@ -242,6 +252,14 @@ Why these are one milestone:
 Exit criteria:
 - Parameter count drops and the loss does not.
 - The exact arithmetic difference between LayerNorm and RMSNorm is written down.
+
+Status:
+- Complete via `phase5/003_rms_norm.py`, recorded as `P5-003`.
+
+Main lesson:
+- Everything improved at once: validation loss `1.0161` to `0.9563`, parameters down by `11392`, wall-clock down `9.5%` from `663.90s` to `601.10s`.
+- The claim that re-centering contributes little is reproduced directly: dropping the mean subtraction and all biases cost no quality.
+- Implementation trap: normalizing by `x.var(correction=0)` instead of the mean square agrees with RMSNorm only when the per-token mean is zero, and pre-norm is exactly the setting where the residual stream drifts away from it.
 
 Questions to answer:
 - What does mean subtraction buy, and why was losing it free?
