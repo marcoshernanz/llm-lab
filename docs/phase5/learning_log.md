@@ -1,15 +1,17 @@
 # Phase 5 Learning Log
 
-Runs recorded through 2026-08-15.
+Runs recorded through 2026-08-16.
 
 This log contains the completed runs from the phase-5 architecture-modernization path.
 The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 
 ## Summary
 
-| Run | Script | Steps | Train Loss | Val Loss | Wall Seconds |
-| --- | ------ | ----: | ---------: | -------: | -----------: |
-| P5-001 | [`phase5/001_vanilla_decoder.py`](../../phase5/001_vanilla_decoder.py) | 3000 | 3.0721 | 3.0537 | 689.90 |
+| Run | Script | Steps | Train Loss | Val Loss | Wall Seconds | Parameters |
+| --- | ------ | ----: | ---------: | -------: | -----------: | ---------: |
+| P5-001 | [`phase5/001_vanilla_decoder.py`](../../phase5/001_vanilla_decoder.py) | 3000 | 3.0721 | 3.0537 | 689.90 | 1631488 |
+| P5-002 | [`phase5/002_pre_norm.py`](../../phase5/002_pre_norm.py) | 3000 | 0.9948 | 1.0161 | 663.90 | 1631744 |
+| P5-003 | [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py) | 3000 | 0.9358 | 0.9563 | 601.10 | 1620352 |
 
 ## P5-001 Milestone 501 Vanilla Decoder Baseline
 
@@ -109,3 +111,89 @@ Two honest options:
 
 Option 2 costs one extra run and makes the rest of the ladder more defensible.
 This should be decided before `M-502` is recorded.
+
+## P5-002 Milestone 502 Pre-Norm Residual Stream
+
+- Script: [`phase5/002_pre_norm.py`](../../phase5/002_pre_norm.py)
+- Date: `2026-08-16`
+- Parameters: `1631744`
+- Final train loss: `0.9948`
+- Final validation loss: `1.0161`
+- Wall-clock time: `663.90s`
+
+What changed from `M-501`, and nothing else:
+
+- the normalization moved inside the residual branch, from `LayerNorm(x + Sublayer(x))` to `x + Sublayer(LayerNorm(x))`,
+- one final `LayerNorm` was added after the block stack, because pre-norm leaves the residual stream unnormalized all the way to the LM head.
+
+That is four lines of code and `+256` parameters.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.1776 val_loss=4.1743 seconds=5.2
+step=250 train_loss=2.3459 val_loss=2.3460 seconds=58.4
+step=500 train_loss=2.2191 val_loss=2.2263 seconds=111.7
+step=750 train_loss=1.6943 val_loss=1.6976 seconds=165.0
+step=1000 train_loss=1.3785 val_loss=1.3745 seconds=218.7
+step=1250 train_loss=1.2522 val_loss=1.2495 seconds=272.8
+step=1500 train_loss=1.1776 val_loss=1.1775 seconds=326.0
+step=1750 train_loss=1.1166 val_loss=1.1027 seconds=379.6
+step=2000 train_loss=1.0752 val_loss=1.0835 seconds=435.3
+step=2250 train_loss=1.0594 val_loss=1.0612 seconds=492.1
+step=2500 train_loss=1.0338 val_loss=1.0315 seconds=548.6
+step=2750 train_loss=1.0074 val_loss=1.0186 seconds=605.3
+step=3000 train_loss=0.9948 val_loss=1.0161 seconds=663.9
+```
+
+Main lesson:
+
+- Norm placement is the difference between a model that does not learn and a model that learns well. Validation loss goes from `3.0537` to `1.0161` with no change in size, data, seed, or learning rate.
+- The mechanism is visible outside of training: feeding activations scaled by `50x` into one block, the post-norm block returns output with standard deviation `1.000`, while the pre-norm block returns `50.265`. Pre-norm leaves the residual stream untouched, so there is an identity path from the embedding to the output and gradients never traverse a norm on the way back.
+- Pre-norm also trains with much larger gradients. In the `400`-step control sweep the pre-norm run clipped on `50%` of steps against `1%` for the collapsed post-norm run, so aggressive clipping here is a sign of health, not instability.
+
+Caveat that must be repeated whenever this comparison is cited:
+
+- `M-501` collapsed at the control learning rate, so the `3.0537` to `1.0161` gap credits norm placement with a gap that is partly a learning-rate mismatch.
+- The `400`-step sweep gives the fairer reference: post-norm reaches `2.15` at lr `3e-4` where pre-norm reaches `1.51` at lr `3e-3`.
+- A full `3000`-step post-norm run at lr `3e-4` is still the honest supplementary baseline and has not been run.
+
+## P5-003 Milestone 503 RMSNorm And Bias Removal
+
+- Script: [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py)
+- Date: `2026-08-16`
+- Parameters: `1620352`
+- Final train loss: `0.9358`
+- Final validation loss: `0.9563`
+- Wall-clock time: `601.10s`
+
+What changed from `M-502`:
+
+- `LayerNorm` became `RMSNorm`: no mean subtraction, no shift parameter, normalizing by the root mean square instead of the centered standard deviation,
+- every `nn.Linear` in the model now uses `bias=False`.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.1971 val_loss=4.1946 seconds=4.5
+step=250 train_loss=2.3275 val_loss=2.3284 seconds=50.9
+step=500 train_loss=1.9631 val_loss=1.9771 seconds=98.6
+step=750 train_loss=1.4360 val_loss=1.4377 seconds=150.1
+step=1000 train_loss=1.2298 val_loss=1.2242 seconds=200.1
+step=1250 train_loss=1.1462 val_loss=1.1439 seconds=249.2
+step=1500 train_loss=1.0952 val_loss=1.0949 seconds=298.6
+step=1750 train_loss=1.0424 val_loss=1.0312 seconds=350.4
+step=2000 train_loss=1.0073 val_loss=1.0155 seconds=400.8
+step=2250 train_loss=0.9951 val_loss=0.9929 seconds=450.5
+step=2500 train_loss=0.9805 val_loss=0.9792 seconds=500.2
+step=2750 train_loss=0.9528 val_loss=0.9642 seconds=550.7
+step=3000 train_loss=0.9358 val_loss=0.9563 seconds=601.1
+```
+
+Main lesson:
+
+- Removing parameters and arithmetic improved every axis at once: validation loss falls from `1.0161` to `0.9563`, parameters fall by `11392` (`9216` from six linear biases across eight blocks, `2176` from seventeen norm shifts), and wall-clock falls from `663.90s` to `601.10s`, a `9.5%` speedup.
+- This is the cheapest win in the ladder so far, and it is a pure simplification. The literature claim that re-centering contributes little is reproduced here: dropping it did not cost quality.
+- The speedup is real but should not be over-read at this scale. RMSNorm removes one reduction pass and one subtraction per norm, and bias removal deletes an add per projection; both matter more as models get larger and more bandwidth-bound.
+- One implementation trap worth recording: the first draft normalized by `x.var(correction=0)` rather than the mean square. Those agree only when the per-token mean is zero. On input shifted by a constant of `3.0` it produced output RMS `3.164` instead of `1.0`, and pre-norm is exactly the setting where the residual stream is free to drift away from zero mean.
+
