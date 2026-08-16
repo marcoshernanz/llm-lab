@@ -132,12 +132,13 @@ class DecoderBlock(nn.Module):
         self.attn_norm = LayerNorm()
         self.ffn = FeedForward()
         self.ffn_norm = LayerNorm()
+        self.out_norm = LayerNorm()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the residual output of one decoder block."""
         x = x + self.attn(self.attn_norm(x))  # [B, T, D]
         x = x + self.ffn(self.ffn_norm(x))  # [B, T, D]
-        return x
+        return self.out_norm(x)  # [B, T, D]
 
 
 class Decoder(nn.Module):
