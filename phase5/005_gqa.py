@@ -1,4 +1,4 @@
-"""Phase 5 experiment 004: the decoder with rotary position embeddings."""
+"""Phase 5 experiment 005: the decoder with grouped-query attention."""
 
 from __future__ import annotations
 
@@ -90,17 +90,11 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("rope_cos", angles.cos())
         self.register_buffer("rope_sin", angles.sin())
 
-    def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Split the embedding axis into separate attention heads."""
+    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, * * Dh]
+        """Split the projection into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, NUM_HEADS, D_HEAD)  # [B, T, H, Dh]
-        return x.transpose(1, 2)  # [B, H, T, Dh]
-
-    def split_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, Hkv * Dh]
-        """Split the projection into the shared key and value heads."""
-        batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, NUM_KV_HEADS, D_HEAD)  # [B, T, Hkv, Dh]
-        return x.transpose(1, 2)  # [B, Hkv, T, Dh]
+        x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, *, Dh]
+        return x.transpose(1, 2)  # [B, *, T, Dh]
 
     def repeat_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
         """Share each key or value head across its group of query heads."""
@@ -127,9 +121,9 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
-        q = self.apply_rope(self.split_heads(self.q_proj(x)))  # [B, H, T, Dh]
-        k = self.apply_rope(self.split_kv_heads(self.k_proj(x)))  # [B, Hkv, T, Dh]
-        v = self.split_kv_heads(self.v_proj(x))  # [B, Hkv, T, Dh]
+        q = self.apply_rope(self.split_heads(self.q_proj(x), NUM_HEADS))  # [B, H, T, Dh]
+        k = self.apply_rope(self.split_heads(self.k_proj(x), NUM_KV_HEADS))  # [B, Hkv, T, Dh]
+        v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
         k = self.repeat_kv_heads(k)  # [B, H, T, Dh]
         v = self.repeat_kv_heads(v)  # [B, H, T, Dh]
 
