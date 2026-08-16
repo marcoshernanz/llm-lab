@@ -72,8 +72,8 @@ class CausalSelfAttention(nn.Module):
         """Create the projections, the causal mask, and the rotation tables."""
         super().__init__()
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
-        self.k_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
-        self.v_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.k_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
+        self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
