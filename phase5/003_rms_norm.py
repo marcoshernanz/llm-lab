@@ -1,4 +1,4 @@
-"""Phase 5 experiment 002: the decoder with a pre-norm residual stream."""
+"""Phase 5 experiment 003: the pre-norm decoder with RMSNorm and no biases."""
 
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ EVAL_BATCHES = 32
 
 
 class RMSNorm(nn.Module):
-    """Normalize each embedding vector and apply a learned scale and shift."""
+    """Scale each embedding vector by its root mean square and a learned gain."""
 
     def __init__(self):
-        """Create the learned scale and shift parameters."""
+        """Create the learned gain parameter."""
         super().__init__()
         self.weight = nn.Parameter(torch.ones(D_MODEL))
         self.eps = 1e-5
