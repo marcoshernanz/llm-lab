@@ -105,6 +105,12 @@ class CausalSelfAttention(nn.Module):
         x = x.transpose(1, 2)  # [B, T, H, Dh]
         return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
+    def combine_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
+        """Merge the attention heads back into one embedding axis."""
+        batch_size, _, seq_len, _ = x.size()
+        x = x.transpose(1, 2)  # [B, T, H, Dh]
+        return x.reshape(batch_size, seq_len, NUM_KV_HEADS * D_HEAD)  # [B, T, D]
+
     def rotate_half(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
         """Pair each feature with the one half a head apart and rotate the pair."""
         x1, x2 = x.chunk(2, dim=-1)  # [B, H, T, Dh/2] each
