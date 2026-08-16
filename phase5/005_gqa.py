@@ -91,7 +91,7 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("rope_cos", angles.cos())
         self.register_buffer("rope_sin", angles.sin())
 
-    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H * Dh]
+    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H*Dh]
         """Split the projection into separate attention heads."""
         batch_size, seq_len, _ = x.size()
         x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H, Dh]
