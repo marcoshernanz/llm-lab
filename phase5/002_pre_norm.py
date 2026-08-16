@@ -1,4 +1,4 @@
-"""Phase 5 experiment 001: the vanilla decoder-only transformer baseline."""
+"""Phase 5 experiment 002: the decoder with a pre-norm residual stream."""
 
 from __future__ import annotations
 
@@ -123,7 +123,7 @@ class FeedForward(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    """Apply one post-norm attention sublayer and one post-norm MLP sublayer."""
+    """Apply one pre-norm attention sublayer and one pre-norm MLP sublayer."""
 
     def __init__(self):
         """Create the attention, feed-forward, and normalization sublayers."""
@@ -141,10 +141,10 @@ class DecoderBlock(nn.Module):
 
 
 class Decoder(nn.Module):
-    """Stack the decoder blocks."""
+    """Stack the decoder blocks and normalize the final residual stream."""
 
     def __init__(self):
-        """Create the block stack."""
+        """Create the block stack and the final norm."""
         super().__init__()
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
         self.out_norm = LayerNorm()
