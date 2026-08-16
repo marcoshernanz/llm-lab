@@ -92,6 +92,12 @@ class CausalSelfAttention(nn.Module):
         x = x.reshape(batch_size, seq_len, NUM_HEADS, D_HEAD)  # [B, T, H, Dh]
         return x.transpose(1, 2)  # [B, H, T, Dh]
 
+    def split_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Split the embedding axis into separate attention heads."""
+        batch_size, seq_len, _ = x.size()
+        x = x.reshape(batch_size, seq_len, NUM_KV_HEADS, D_HEAD)  # [B, T, H, Dh]
+        return x.transpose(1, 2)  # [B, H, T, Dh]
+
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
         """Merge the attention heads back into one embedding axis."""
         batch_size, _, seq_len, _ = x.size()
