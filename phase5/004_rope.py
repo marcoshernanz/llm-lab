@@ -111,8 +111,8 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
-        q = self.split_heads(self.q_proj(x))  # [B, H, T, Dh]
-        k = self.split_heads(self.k_proj(x))  # [B, H, T, Dh]
+        q = self.apply_rope(self.split_heads(self.q_proj(x)))  # [B, H, T, Dh]
+        k = self.apply_rope(self.split_heads(self.k_proj(x)))  # [B, H, T, Dh]
         v = self.split_heads(self.v_proj(x))  # [B, H, T, Dh]
 
         attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, H, T, T]
