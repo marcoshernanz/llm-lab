@@ -44,22 +44,20 @@ EVAL_INTERVAL = 250
 EVAL_BATCHES = 32
 
 
-class LayerNorm(nn.Module):
+class RMSNorm(nn.Module):
     """Normalize each embedding vector and apply a learned scale and shift."""
 
     def __init__(self):
         """Create the learned scale and shift parameters."""
         super().__init__()
         self.weight = nn.Parameter(torch.ones(D_MODEL))
-        self.bias = nn.Parameter(torch.zeros(D_MODEL))
         self.eps = 1e-5
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the normalized, scaled, and shifted embeddings."""
-        mean = x.mean(dim=-1, keepdim=True)  # [B, T, 1]
         variance = x.var(dim=-1, keepdim=True, correction=0)  # [B, T, 1]
-        normalized = (x - mean) / torch.sqrt(variance + self.eps)  # [B, T, D]
-        return normalized * self.weight + self.bias  # [B, T, D]
+        normalized = x / torch.sqrt(variance + self.eps)  # [B, T, D]
+        return normalized * self.weight  # [B, T, D]
 
 
 class CausalSelfAttention(nn.Module):
@@ -129,9 +127,9 @@ class DecoderBlock(nn.Module):
         """Create the attention, feed-forward, and normalization sublayers."""
         super().__init__()
         self.attn = CausalSelfAttention()
-        self.attn_norm = LayerNorm()
+        self.attn_norm = RMSNorm()
         self.ffn = FeedForward()
-        self.ffn_norm = LayerNorm()
+        self.ffn_norm = RMSNorm()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the residual output of one decoder block."""
@@ -147,7 +145,7 @@ class Decoder(nn.Module):
         """Create the block stack and the final norm."""
         super().__init__()
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
-        self.out_norm = LayerNorm()
+        self.out_norm = RMSNorm()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Run the full decoder stack."""
