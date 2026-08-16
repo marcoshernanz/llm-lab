@@ -31,10 +31,11 @@ CONTEXT_LEN = 256
 D_MODEL = 128
 NUM_HEADS = 4
 assert D_MODEL % NUM_HEADS == 0
-HEAD_DIM = D_MODEL // NUM_HEADS
+D_HEAD = D_MODEL // NUM_HEADS
 D_FFN = 4 * D_MODEL
 NUM_BLOCKS = 8
 INIT_STD = 0.02
+ROPE_BASE = 10000.0
 
 BATCH_SIZE = 32
 LEARNING_RATE = 3e-3
@@ -76,7 +77,7 @@ class CausalSelfAttention(nn.Module):
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
-        inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, HEAD_DIM, 2) / HEAD_DIM))
+        inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))
         positions = torch.arange(CONTEXT_LEN)
         angles = positions[:, None] * inv_freq[None, :]
         angles = torch.cat([angles, angles], dim=-1)
@@ -86,7 +87,7 @@ class CausalSelfAttention(nn.Module):
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Split the embedding axis into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, NUM_HEADS, HEAD_DIM)  # [B, T, H, Dh]
+        x = x.reshape(batch_size, seq_len, NUM_HEADS, D_HEAD)  # [B, T, H, Dh]
         return x.transpose(1, 2)  # [B, H, T, Dh]
 
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
@@ -102,7 +103,7 @@ class CausalSelfAttention(nn.Module):
         k = self.split_heads(self.k_proj(x))  # [B, H, T, Dh]
         v = self.split_heads(self.v_proj(x))  # [B, H, T, Dh]
 
-        attn_scores = (q @ k.mT) / math.sqrt(HEAD_DIM)  # [B, H, T, T]
+        attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, H, T, T]
         attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
 
         attn_weights = attn_scores.softmax(dim=-1)  # [B, H, T, T]
@@ -174,8 +175,8 @@ class LanguageModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
         """Return next-token logits for one batch of token ids."""
-        embeddings = self.embed_tokens(x)  # [B, T, D]
-        hidden_states = self.decoder(embeddings)  # [B, T, D]
+        hidden_states = self.embed_tokens(x)  # [B, T, D]
+        hidden_states = self.decoder(hidden_states)  # [B, T, D]
         logits = hidden_states @ self.embed_tokens.weight.T  # [B, T, V]
         return logits
 
