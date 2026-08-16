@@ -12,6 +12,7 @@ The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 | P5-001 | [`phase5/001_vanilla_decoder.py`](../../phase5/001_vanilla_decoder.py) | 3000 | 3.0721 | 3.0537 | 689.90 | 1631488 |
 | P5-002 | [`phase5/002_pre_norm.py`](../../phase5/002_pre_norm.py) | 3000 | 0.9948 | 1.0161 | 663.90 | 1631744 |
 | P5-003 | [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py) | 3000 | 0.9358 | 0.9563 | 601.10 | 1620352 |
+| P5-004 | [`phase5/004_rope.py`](../../phase5/004_rope.py) | 3000 | 0.8548 | 0.8760 | 762.50 | 1587584 |
 
 ## P5-001 Milestone 501 Vanilla Decoder Baseline
 
@@ -197,3 +198,64 @@ Main lesson:
 - The speedup is real but should not be over-read at this scale. RMSNorm removes one reduction pass and one subtraction per norm, and bias removal deletes an add per projection; both matter more as models get larger and more bandwidth-bound.
 - One implementation trap worth recording: the first draft normalized by `x.var(correction=0)` rather than the mean square. Those agree only when the per-token mean is zero. On input shifted by a constant of `3.0` it produced output RMS `3.164` instead of `1.0`, and pre-norm is exactly the setting where the residual stream is free to drift away from zero mean.
 
+
+## P5-004 Milestone 504 Rotary Position Embeddings
+
+- Script: [`phase5/004_rope.py`](../../phase5/004_rope.py)
+- Date: `2026-08-16`
+- Parameters: `1587584`
+- Final train loss: `0.8548`
+- Final validation loss: `0.8760`
+- Wall-clock time: `762.50s`
+
+What changed from `M-503`:
+
+- the learned absolute position table is gone, and with it `32768` parameters,
+- queries and keys are rotated by a position-dependent angle after the head split, using the split-half convention,
+- values are not rotated, because position belongs in the comparison rather than in the retrieved content,
+- `rope_cos` and `rope_sin` are precomputed buffers of shape `[T, Dh]`, built once per attention layer.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.2291 val_loss=4.2293 seconds=5.9
+step=250 train_loss=1.5966 val_loss=1.5898 seconds=62.8
+step=500 train_loss=1.2012 val_loss=1.2109 seconds=119.9
+step=750 train_loss=1.0802 val_loss=1.0813 seconds=177.8
+step=1000 train_loss=1.0094 val_loss=1.0080 seconds=235.4
+step=1250 train_loss=0.9766 val_loss=0.9776 seconds=296.6
+step=1500 train_loss=0.9513 val_loss=0.9553 seconds=362.7
+step=1750 train_loss=0.9246 val_loss=0.9167 seconds=427.0
+step=2000 train_loss=0.9037 val_loss=0.9162 seconds=492.1
+step=2250 train_loss=0.8917 val_loss=0.8954 seconds=556.7
+step=2500 train_loss=0.8845 val_loss=0.8889 seconds=626.5
+step=2750 train_loss=0.8676 val_loss=0.8792 seconds=694.0
+step=3000 train_loss=0.8548 val_loss=0.8760 seconds=762.5
+```
+
+Main lesson:
+
+- RoPE is the largest quality win of the ladder so far and it is also a simplification: validation loss falls from `0.9563` to `0.8760` while the model loses `32768` parameters.
+- Relative position is what the model wanted. The learned table gave every absolute position its own vector and forced the model to infer that only differences matter; RoPE makes the attention score between positions `m` and `n` depend on `n - m` by construction. Verified directly: the score for a gap of `2` is identical at positions `(3, 5)`, `(10, 12)`, and `(100, 102)`.
+- The rotation is length-preserving, so position is injected without disturbing activation scale. This is the mechanical reason it can be applied at every layer while an additive table cannot.
+- Cost is real but modest: `762.50s` against `601.10s`, about `27%` slower. A direct measurement puts RoPE at `204.5ms` per step against `165.8ms` with the rotation replaced by the identity, roughly `23%`, so the run-level number and the microbenchmark agree.
+- `rotate_half` is the expensive half of the operation, `0.410ms` of `1.067ms` per call, because `chunk` plus `cat` allocates a new tensor instead of reading in place. That is the piece a fused kernel would remove, and it is a good candidate for the phase-4 Triton milestone.
+
+### Two Methodology Findings
+
+The first run of this milestone was performed with macOS Low Power Mode enabled and took `1390.6s`, roughly double the clean rerun at `762.5s`, with a steady slowdown from the first checkpoint to the last.
+
+- Wall-clock is only comparable across milestones if the power mode is fixed. Low Power Mode must be off for every phase-5 run.
+- The wall-clock times recorded for `P5-001` through `P5-003` were measured before this was noticed and may or may not be affected. They should be treated as provisional until those runs are repeated under known conditions.
+
+The two `M-504` runs also did not reproduce each other exactly, despite identical code, seed, and data:
+
+| Step | Clean rerun | Low Power run |
+| ---: | ---: | ---: |
+| 250 | `1.5898` | `1.5933` |
+| 1500 | `0.9553` | `0.9518` |
+| 3000 | `0.8760` | `0.8727` |
+
+- Step `1` agrees to four decimals and the runs drift apart after that, which points at floating-point non-determinism in MPS kernels rather than at a data or seeding difference.
+- This gives an accidental estimate of the run-to-run noise floor: about `0.003` in final validation loss.
+- Differences smaller than roughly `0.01` therefore cannot be called from a single run. The `0.08` gap from `M-003` to `M-004` is far above the floor, but milestones expected to be near-neutral, such as grouped-query attention, will need repeated seeds before any claim is made.
