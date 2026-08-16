@@ -87,6 +87,13 @@ class CausalSelfAttention(nn.Module):
         x = x.transpose(1, 2)  # [B, T, H, Dh]
         return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
+    def rotate(self, x: torch.Tensor):  # [B, T, D]
+        even = x[:, :, ::2]  # [B, T, D/2]
+        odd = x[:, :, 1::2]  # [B, T, D/2]
+        angle = torch.tensor(0)
+        x[:, :, ::2] = even * torch.cos(angle) - odd * torch.sin(angle)
+        x[:, :, 1::2] = odd * torch.cos(angle) + even * torch.sin(angle)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
