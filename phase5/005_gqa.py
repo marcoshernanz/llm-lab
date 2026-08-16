@@ -252,7 +252,7 @@ def estimate_loss(model: LanguageModel, tokens: torch.Tensor) -> float:
 
 
 def main() -> None:
-    """Train the vanilla decoder and report the loss."""
+    """Train the model and report the loss."""
     torch.manual_seed(SEED)
 
     train_text = load_text(TRAIN_SPLIT)
