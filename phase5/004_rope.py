@@ -65,6 +65,8 @@ class CausalSelfAttention(nn.Module):
     """Apply masked self-attention over one sequence."""
 
     causal_mask: torch.Tensor
+    rope_cos: torch.Tensor
+    rope_sin: torch.Tensor
 
     def __init__(self):
         """Create the projections and the causal mask."""
