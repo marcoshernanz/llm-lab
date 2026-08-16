@@ -23,23 +23,24 @@ SEED = 1337
 # T: sequence length
 # D: model dim
 # V: vocab size
+# H: a head count, Hq or Hkv depending on the projection
 # Hq: number of query heads
 # Hkv: number of key and value heads
 # Dh: head dim, D // Hq
 # Dff: feed-forward dim
-# H*: Hq for queries, Hkv for keys and values
 
 CONTEXT_LEN = 256
 D_MODEL = 128
-NUM_QUERY_HEADS = 4
+NUM_Q_HEADS = 4
 NUM_KV_HEADS = 2
-assert NUM_QUERY_HEADS % NUM_KV_HEADS == 0
-assert D_MODEL % NUM_QUERY_HEADS == 0
-D_HEAD = D_MODEL // NUM_QUERY_HEADS
+assert NUM_Q_HEADS % NUM_KV_HEADS == 0
+assert D_MODEL % NUM_Q_HEADS == 0
+D_HEAD = D_MODEL // NUM_Q_HEADS
 D_FFN = 4 * D_MODEL
 NUM_BLOCKS = 8
 INIT_STD = 0.02
 ROPE_BASE = 10000.0
+NORM_EPS = 1e-5
 
 BATCH_SIZE = 32
 LEARNING_RATE = 3e-3
@@ -56,7 +57,7 @@ class RMSNorm(nn.Module):
         """Create the learned gain parameter."""
         super().__init__()
         self.weight = nn.Parameter(torch.ones(D_MODEL))
-        self.eps = 1e-5
+        self.eps = NORM_EPS
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the normalized and scaled embeddings."""
@@ -66,7 +67,7 @@ class RMSNorm(nn.Module):
 
 
 class CausalSelfAttention(nn.Module):
-    """Apply masked self-attention over one sequence."""
+    """Apply masked grouped-query self-attention over one sequence."""
 
     causal_mask: torch.Tensor
     rope_cos: torch.Tensor
@@ -90,15 +91,15 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("rope_cos", angles.cos())
         self.register_buffer("rope_sin", angles.sin())
 
-    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H* Dh]
+    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H * Dh]
         """Split the projection into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H*, Dh]
-        return x.transpose(1, 2)  # [B, H*, T, Dh]
+        x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H, Dh]
+        return x.transpose(1, 2)  # [B, H, T, Dh]
 
     def repeat_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
         """Share each key or value head across its group of query heads."""
-        return x.repeat_interleave(NUM_QUERY_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
+        return x.repeat_interleave(NUM_Q_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
 
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hq, T, Dh]
         """Merge the attention heads back into one embedding axis."""
@@ -106,29 +107,30 @@ class CausalSelfAttention(nn.Module):
         x = x.transpose(1, 2)  # [B, T, Hq, Dh]
         return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
-    def rotate_half(self, x: torch.Tensor) -> torch.Tensor:  # [B, H*, T, Dh]
+    def rotate_half(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
         """Pair each feature with the one half a head apart and rotate the pair."""
-        x1, x2 = x.chunk(2, dim=-1)  # [B, H*, T, Dh/2] each
-        return torch.cat([-x2, x1], dim=-1)  # [B, H*, T, Dh]
+        x1, x2 = x.chunk(2, dim=-1)  # [B, H, T, Dh/2] each
+        return torch.cat([-x2, x1], dim=-1)  # [B, H, T, Dh]
 
-    def apply_rope(self, x: torch.Tensor) -> torch.Tensor:  # [B, H*, T, Dh]
+    def apply_rope(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
         """Rotate queries or keys by a position-dependent angle."""
         seq_len = x.size(2)
         cos = self.rope_cos[:seq_len]  # [T, Dh]
         sin = self.rope_sin[:seq_len]  # [T, Dh]
-        return x * cos + self.rotate_half(x) * sin  # [B, H*, T, Dh]
+        return x * cos + self.rotate_half(x) * sin  # [B, H, T, Dh]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
-        q = self.apply_rope(self.split_heads(self.q_proj(x), NUM_QUERY_HEADS))  # [B, Hq, T, Dh]
+        q = self.apply_rope(self.split_heads(self.q_proj(x), NUM_Q_HEADS))  # [B, Hq, T, Dh]
         k = self.apply_rope(self.split_heads(self.k_proj(x), NUM_KV_HEADS))  # [B, Hkv, T, Dh]
         v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
         k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
         v = self.repeat_kv_heads(v)  # [B, Hq, T, Dh]
 
         attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, Hq, T, T]
-        attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
+        causal_mask = self.causal_mask[:seq_len, :seq_len]  # [T, T]
+        attn_scores = attn_scores.masked_fill(causal_mask, -torch.inf)  # [B, Hq, T, T]
 
         attn_weights = attn_scores.softmax(dim=-1)  # [B, Hq, T, T]
         attn_output = attn_weights @ v  # [B, Hq, T, Dh]
@@ -191,7 +193,7 @@ class LanguageModel(nn.Module):
     """Embed tokens, run the decoder, and predict next-token logits."""
 
     def __init__(self, vocab_size: int):
-        """Create the embedding tables and the decoder stack."""
+        """Create the embedding table and the decoder stack."""
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.decoder = Decoder()
