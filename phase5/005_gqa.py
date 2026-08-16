@@ -97,6 +97,7 @@ class CausalSelfAttention(nn.Module):
         """Split the embedding axis into separate attention heads."""
         batch_size, seq_len, _ = x.size()
         x = x.reshape(batch_size, seq_len, NUM_KV_HEADS, D_HEAD)  # [B, T, H, Dh]
+        x = x.repeat(NUM_HEADS // NUM_KV_HEADS, dim=2)
         return x.transpose(1, 2)  # [B, H, T, Dh]
 
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
@@ -104,12 +105,6 @@ class CausalSelfAttention(nn.Module):
         batch_size, _, seq_len, _ = x.size()
         x = x.transpose(1, 2)  # [B, T, H, Dh]
         return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
-
-    def combine_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
-        """Merge the attention heads back into one embedding axis."""
-        batch_size, _, seq_len, _ = x.size()
-        x = x.transpose(1, 2)  # [B, T, H, Dh]
-        return x.reshape(batch_size, seq_len, NUM_KV_HEADS * D_HEAD)  # [B, T, D]
 
     def rotate_half(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
         """Pair each feature with the one half a head apart and rotate the pair."""
@@ -127,8 +122,8 @@ class CausalSelfAttention(nn.Module):
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
         q = self.apply_rope(self.split_heads(self.q_proj(x)))  # [B, H, T, Dh]
-        k = self.apply_rope(self.split_heads(self.k_proj(x)))  # [B, H, T, Dh]
-        v = self.split_heads(self.v_proj(x))  # [B, H, T, Dh]
+        k = self.apply_rope(self.split_kv_heads(self.k_proj(x)))  # [B, H, T, Dh]
+        v = self.split_kv_heads(self.v_proj(x))  # [B, H, T, Dh]
 
         attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, H, T, T]
         attn_scores = attn_scores.masked_fill(self.causal_mask[:seq_len, :seq_len], -torch.inf)
