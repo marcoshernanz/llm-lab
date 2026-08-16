@@ -135,8 +135,8 @@ class DecoderBlock(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the residual output of one decoder block."""
-        x = self.attn_norm(x + self.attn(x))  # [B, T, D]
-        x = self.ffn_norm(x + self.ffn(x))  # [B, T, D]
+        x = x + self.attn_norm(self.attn(x))  # [B, T, D]
+        x = x + self.ffn_norm(self.ffn(x))  # [B, T, D]
         return x
 
 
