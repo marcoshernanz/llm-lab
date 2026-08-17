@@ -131,8 +131,8 @@ class CausalSelfAttention(nn.Module):
         q = self.apply_rope(q)  # [B, Hq, T, Dh]
 
         k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)
-        k = self.apply_rope(k)  # [B, Hkv, T, Dh]
         k = self.k_norm(k)
+        k = self.apply_rope(k)  # [B, Hkv, T, Dh]
         k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
 
         v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
