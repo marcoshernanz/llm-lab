@@ -205,7 +205,9 @@ class Decoder(nn.Module):
     def __init__(self):
         """Create the block stack and the final norm."""
         super().__init__()
-        self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
+        self.blocks = nn.ModuleList(
+            [DecoderBlock(i % GLOBAL_EVERY == GLOBAL_EVERY - 1) for i in range(NUM_BLOCKS)]
+        )
         self.out_norm = RMSNorm(D_MODEL)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
