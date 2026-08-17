@@ -15,12 +15,21 @@ For the run history from this path, see `learning_log.md`, which is created when
 As of 2026-08-16:
 
 - The roadmap is written and the target architecture is chosen.
-- Milestones 501, 502, and 503 are complete, recorded as `P5-001`, `P5-002`, and `P5-003`.
-- Validation loss so far: `3.0537` for the vanilla post-norm baseline, `1.0161` for pre-norm, `0.9563` for RMSNorm with no biases.
+- Milestones 501 through 505 are complete, recorded as `P5-001` through `P5-005`.
+
+| Milestone | Val loss | Parameters | Seconds |
+| --- | ---: | ---: | ---: |
+| 501 vanilla post-norm | `3.0537` | `1631488` | `689.90` |
+| 502 pre-norm | `1.0161` | `1631744` | `663.90` |
+| 503 RMSNorm, no biases | `0.9563` | `1620352` | `601.10` |
+| 504 RoPE | `0.8760` | `1587584` | `762.50` |
+| 505 grouped-query attention | `0.8712` | `1456512` | `692.80` |
+
+- Every milestone so far has been a simplification as well as an improvement: loss fell from `3.0537` to `0.8712` while the model shrank by `174976` parameters.
 - The baseline does not learn at the control learning rate. It collapses to character-unigram loss by step `250`, with the smallest gradient norms of any configuration tested. A control sweep confirms the code is correct: the same script reaches `2.15` at lr `3e-4`.
-- RMSNorm plus bias removal improved loss, parameter count, and wall-clock simultaneously, which makes it the cheapest win in the ladder so far.
-- Milestone 504 is next.
-- Still outstanding: the supplementary `post-norm, lr 3e-4` run at full length, so the `501` to `502` comparison is not credited entirely to norm placement.
+- Two control settings were added after they corrupted a run. macOS Low Power Mode must be off, since it doubled one run's wall-clock. And the run-to-run noise floor on `mps` is about `0.003` validation loss, because kernel non-determinism makes runs irreproducible even at a fixed seed, so differences under roughly `0.01` cannot be called from a single run.
+- Milestone 506, the SwiGLU feed-forward, is next.
+- Still outstanding: the supplementary `post-norm, lr 3e-4` run at full length, so the `501` to `502` comparison is not credited entirely to norm placement. The wall-clock times for `P5-001` through `P5-003` are also provisional, since they were measured before the Low Power Mode problem was found.
 
 ## Why This Phase Is Separate
 
