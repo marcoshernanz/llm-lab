@@ -79,6 +79,7 @@ class CausalSelfAttention(nn.Module):
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.k_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
         self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
+        self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
         self.q_norm = RMSNorm(D_HEAD)
@@ -145,6 +146,10 @@ class CausalSelfAttention(nn.Module):
         attn_weights = attn_scores.softmax(dim=-1)  # [B, Hq, T, T]
         attn_output = attn_weights @ v  # [B, Hq, T, Dh]
         attn_output = self.combine_heads(attn_output)  # [B, T, D]
+
+        gate = F.sigmoid(self.g_proj(x))
+        attn_output = gate * attn_output
+
         return self.o_proj(attn_output)  # [B, T, D]
 
 
