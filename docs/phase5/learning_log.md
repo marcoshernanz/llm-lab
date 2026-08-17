@@ -14,6 +14,7 @@ The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 | P5-003 | [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py) | 3000 | 0.9358 | 0.9563 | 601.10 | 1620352 |
 | P5-004 | [`phase5/004_rope.py`](../../phase5/004_rope.py) | 3000 | 0.8548 | 0.8760 | 762.50 | 1587584 |
 | P5-005 | [`phase5/005_gqa.py`](../../phase5/005_gqa.py) | 3000 | 0.8488 | 0.8712 | 692.80 | 1456512 |
+| P5-006 | [`phase5/006_swiglu.py`](../../phase5/006_swiglu.py) | 3000 | 0.8359 | 0.8584 | 724.60 | 1464704 |
 
 ## P5-001 Milestone 501 Vanilla Decoder Baseline
 
@@ -302,3 +303,43 @@ Main lesson:
 - The real payoff is invisible in this experiment. The KV cache at this configuration drops from `2.00MB` to `1.00MB` at `T=256`, and there is no cache during training, so nothing in the loss curve or wall-clock reflects the mechanism's actual purpose. This is a systems change measured in a setting that cannot show its benefit.
 - The wall-clock gain that does appear comes from the smaller key and value projections, partly offset by the `repeat_interleave` that materializes the shared heads. An `expand` plus `reshape` would avoid that copy, at the cost of readability.
 - Implementation notes worth keeping: `Tensor.repeat` has no `dim` argument, so `x.repeat(n, dim=2)` raises `TypeError`; the correct call is `repeat_interleave`, which also gives the group-contiguous pairing that HuggingFace uses. Verified directly that query heads `0` and `1` share key/value head `0` while heads `1` and `2` do not share.
+
+## P5-006 Milestone 506 SwiGLU Feed-Forward
+
+- Script: [`phase5/006_swiglu.py`](../../phase5/006_swiglu.py)
+- Date: `2026-08-16`
+- Parameters: `1464704`
+- Final train loss: `0.8359`
+- Final validation loss: `0.8584`
+- Wall-clock time: `724.60s`
+- Feed-forward dim: `344`, down from `512`
+
+What changed from `M-505`:
+
+- the two-matrix GELU MLP became a three-matrix gated MLP, `down(silu(gate(x)) * up(x))`,
+- `D_FFN` fell from `512` to `344`, two thirds of `4 * D_MODEL` rounded to a multiple of eight, so the gated block has the same parameter count as the dense one it replaces.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.2226 val_loss=4.2222 seconds=6.1
+step=250 train_loss=1.5637 val_loss=1.5618 seconds=61.6
+step=500 train_loss=1.1870 val_loss=1.1924 seconds=117.6
+step=750 train_loss=1.0589 val_loss=1.0598 seconds=173.8
+step=1000 train_loss=0.9858 val_loss=0.9867 seconds=229.8
+step=1250 train_loss=0.9520 val_loss=0.9552 seconds=286.1
+step=1500 train_loss=0.9275 val_loss=0.9321 seconds=345.5
+step=1750 train_loss=0.8997 val_loss=0.8969 seconds=408.0
+step=2000 train_loss=0.8831 val_loss=0.8970 seconds=471.2
+step=2250 train_loss=0.8775 val_loss=0.8805 seconds=532.7
+step=2500 train_loss=0.8663 val_loss=0.8720 seconds=597.1
+step=2750 train_loss=0.8499 val_loss=0.8664 seconds=660.5
+step=3000 train_loss=0.8359 val_loss=0.8584 seconds=724.6
+```
+
+Main lesson:
+
+- Gating is a genuine quality mechanism, not an artifact of extra capacity. Validation loss falls from `0.8712` to `0.8584` for `0.56%` more parameters, and the gap of `0.0128` is roughly four times the measured noise floor.
+- The parameter matching is what makes that claim possible. A gated block has three matrices where the dense block has two, so keeping `D_FFN = 4 * D_MODEL` would have added `524288` parameters, a `36%` larger model, and any improvement would have been unattributable. The `2/3` rule brings the feed-forward block to `132096` parameters against `131072`.
+- The cost is wall-clock: `724.60s` against `692.80s`, about `4.6%` slower. Three narrower matrix multiplications are slower here than two wider ones, because each launch has fixed overhead and the narrower shapes use the hardware less efficiently.
+- What the gate buys mechanically is a multiplicative interaction. A projection followed by an activation can only add contributions; gating lets one projection scale another elementwise, per token and per feature. Half the gate values are negative at initialization, because Swish dips below zero near the origin, so the gate can flip a feature's sign rather than only attenuate it. A sigmoid gate bounded in `[0, 1]` cannot do that, which is part of why SwiGLU beat the original GLU.
