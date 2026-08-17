@@ -152,7 +152,7 @@ class FeedForward(nn.Module):
         """Return the feed-forward block output."""
         content = self.c_up_proj(x)
         gate = self.g_up_proj(x)
-        gate = x * F.sigmoid(x)  # [B, T, Dff]
+        gate = gate * F.sigmoid(gate)  # [B, T, Dff]
         x = content * gate
         x = self.down_proj(x)  # [B, T, D]
         return x
