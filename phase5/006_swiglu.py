@@ -1,4 +1,4 @@
-"""Phase 5 experiment 005: the decoder with grouped-query attention."""
+"""Phase 5 experiment 006: the decoder with a SwiGLU feed-forward."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ NUM_KV_HEADS = 2
 assert NUM_Q_HEADS % NUM_KV_HEADS == 0
 assert D_MODEL % NUM_Q_HEADS == 0
 D_HEAD = D_MODEL // NUM_Q_HEADS
-D_FFN = 4 * D_MODEL
+D_FFN = 344
 NUM_BLOCKS = 8
 INIT_STD = 0.02
 ROPE_BASE = 10000.0
@@ -139,21 +139,20 @@ class CausalSelfAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    """Project up, apply a nonlinearity, and project back down."""
+    """Gate one projection of the input by another and project back down."""
 
     def __init__(self):
-        """Create the two linear layers of the MLP."""
+        """Create the three linear layers of the gated MLP."""
         super().__init__()
-        self.g_up_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
-        self.c_up_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
+        self.gate_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
+        self.up_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
         self.down_proj = nn.Linear(D_FFN, D_MODEL, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the feed-forward block output."""
-        content = self.c_up_proj(x)
-        gate = self.g_up_proj(x)
-        gate = gate * F.sigmoid(gate)  # [B, T, Dff]
-        x = content * gate
+        gate = F.silu(self.gate_proj(x))  # [B, T, Dff]
+        up = self.up_proj(x)  # [B, T, Dff]
+        x = gate * up  # [B, T, Dff]
         x = self.down_proj(x)  # [B, T, D]
         return x
 
