@@ -136,12 +136,14 @@ class CausalSelfAttention(nn.Module):
 
         q = self.split_heads(self.q_proj(x), NUM_Q_HEADS)  # [B, Hq, T, Dh]
         q = self.q_norm(q)  # [B, Hq, T, Dh]
-        q = self.apply_rope(q)  # [B, Hq, T, Dh]
 
         k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
         k = self.k_norm(k)  # [B, Hkv, T, Dh]
-        k = self.apply_rope(k)  # [B, Hkv, T, Dh]
         k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
+
+        if not self.is_global:
+            q = self.apply_rope(q)  # [B, Hq, T, Dh]
+            k = self.apply_rope(k)  # [B, Hkv, T, Dh]
 
         v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
         v = self.repeat_kv_heads(v)  # [B, Hq, T, Dh]
