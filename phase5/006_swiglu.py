@@ -144,13 +144,16 @@ class FeedForward(nn.Module):
     def __init__(self):
         """Create the two linear layers of the MLP."""
         super().__init__()
-        self.up_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
+        self.g_up_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
+        self.c_up_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
         self.down_proj = nn.Linear(D_FFN, D_MODEL, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the feed-forward block output."""
-        x = self.up_proj(x)  # [B, T, Dff]
-        x = F.gelu(x)  # [B, T, Dff]
+        content = self.c_up_proj(x)
+        gate = self.g_up_proj(x)
+        gate = x * F.sigmoid(x)  # [B, T, Dff]
+        x = content * gate
         x = self.down_proj(x)  # [B, T, D]
         return x
 
