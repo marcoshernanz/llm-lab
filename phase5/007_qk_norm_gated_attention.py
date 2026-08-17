@@ -1,4 +1,4 @@
-"""Phase 5 experiment 006: the decoder with a SwiGLU feed-forward."""
+"""Phase 5 experiment 007: the decoder with QK-Norm and gated attention."""
 
 from __future__ import annotations
 
@@ -54,16 +54,16 @@ class RMSNorm(nn.Module):
     """Scale each embedding vector by its root mean square and a learned gain."""
 
     def __init__(self, dim: int):
-        """Create the learned gain parameter."""
+        """Create the learned gain parameter for one normalized axis."""
         super().__init__()
         self.weight = nn.Parameter(torch.ones(dim))
         self.eps = NORM_EPS
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Return the normalized and scaled embeddings."""
-        mean_square = x.pow(2).mean(dim=-1, keepdim=True)  # [B, T, 1]
-        normalized = x * torch.rsqrt(mean_square + self.eps)  # [B, T, D]
-        return normalized * self.weight  # [B, T, D]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [..., dim]
+        """Return the normalized and scaled input."""
+        mean_square = x.pow(2).mean(dim=-1, keepdim=True)  # [..., 1]
+        normalized = x * torch.rsqrt(mean_square + self.eps)  # [..., dim]
+        return normalized * self.weight  # [..., dim]
 
 
 class CausalSelfAttention(nn.Module):
@@ -74,7 +74,7 @@ class CausalSelfAttention(nn.Module):
     rope_sin: torch.Tensor
 
     def __init__(self):
-        """Create the projections, the causal mask, and the rotation tables."""
+        """Create the projections, the norms, the causal mask, and the rotation tables."""
         super().__init__()
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.k_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
@@ -127,12 +127,12 @@ class CausalSelfAttention(nn.Module):
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
 
-        q = self.split_heads(self.q_proj(x), NUM_Q_HEADS)
-        q = self.q_norm(q)
+        q = self.split_heads(self.q_proj(x), NUM_Q_HEADS)  # [B, Hq, T, Dh]
+        q = self.q_norm(q)  # [B, Hq, T, Dh]
         q = self.apply_rope(q)  # [B, Hq, T, Dh]
 
-        k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)
-        k = self.k_norm(k)
+        k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
+        k = self.k_norm(k)  # [B, Hkv, T, Dh]
         k = self.apply_rope(k)  # [B, Hkv, T, Dh]
         k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
 
@@ -147,8 +147,8 @@ class CausalSelfAttention(nn.Module):
         attn_output = attn_weights @ v  # [B, Hq, T, Dh]
         attn_output = self.combine_heads(attn_output)  # [B, T, D]
 
-        gate = F.sigmoid(self.g_proj(x))
-        attn_output = gate * attn_output
+        gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
+        attn_output = gate * attn_output  # [B, T, D]
 
         return self.o_proj(attn_output)  # [B, T, D]
 
