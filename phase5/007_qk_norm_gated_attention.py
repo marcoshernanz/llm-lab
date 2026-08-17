@@ -81,6 +81,9 @@ class CausalSelfAttention(nn.Module):
         self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
+        self.q_norm = RMSNorm()
+        self.k_norm = RMSNorm()
+
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
@@ -122,11 +125,15 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
+
         q = self.apply_rope(self.split_heads(self.q_proj(x), NUM_Q_HEADS))  # [B, Hq, T, Dh]
         k = self.apply_rope(self.split_heads(self.k_proj(x), NUM_KV_HEADS))  # [B, Hkv, T, Dh]
         v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
         k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
         v = self.repeat_kv_heads(v)  # [B, Hq, T, Dh]
+
+        q = self.q_norm(q)
+        k = self.k_norm(k)
 
         attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, Hq, T, T]
         causal_mask = self.causal_mask[:seq_len, :seq_len]  # [T, T]
