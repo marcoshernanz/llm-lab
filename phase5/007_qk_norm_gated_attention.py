@@ -53,10 +53,10 @@ EVAL_BATCHES = 32
 class RMSNorm(nn.Module):
     """Scale each embedding vector by its root mean square and a learned gain."""
 
-    def __init__(self):
+    def __init__(self, dim: int = D_MODEL):
         """Create the learned gain parameter."""
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(D_MODEL))
+        self.weight = nn.Parameter(torch.ones(dim))
         self.eps = NORM_EPS
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
