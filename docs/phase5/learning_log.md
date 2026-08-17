@@ -13,6 +13,7 @@ The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 | P5-002 | [`phase5/002_pre_norm.py`](../../phase5/002_pre_norm.py) | 3000 | 0.9948 | 1.0161 | 663.90 | 1631744 |
 | P5-003 | [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py) | 3000 | 0.9358 | 0.9563 | 601.10 | 1620352 |
 | P5-004 | [`phase5/004_rope.py`](../../phase5/004_rope.py) | 3000 | 0.8548 | 0.8760 | 762.50 | 1587584 |
+| P5-005 | [`phase5/005_gqa.py`](../../phase5/005_gqa.py) | 3000 | 0.8488 | 0.8712 | 692.80 | 1456512 |
 
 ## P5-001 Milestone 501 Vanilla Decoder Baseline
 
@@ -259,3 +260,45 @@ The two `M-504` runs also did not reproduce each other exactly, despite identica
 - Step `1` agrees to four decimals and the runs drift apart after that, which points at floating-point non-determinism in MPS kernels rather than at a data or seeding difference.
 - This gives an accidental estimate of the run-to-run noise floor: about `0.003` in final validation loss.
 - Differences smaller than roughly `0.01` therefore cannot be called from a single run. The `0.08` gap from `M-003` to `M-004` is far above the floor, but milestones expected to be near-neutral, such as grouped-query attention, will need repeated seeds before any claim is made.
+
+## P5-005 Milestone 505 Grouped-Query Attention
+
+- Script: [`phase5/005_gqa.py`](../../phase5/005_gqa.py)
+- Date: `2026-08-16`
+- Parameters: `1456512`
+- Final train loss: `0.8488`
+- Final validation loss: `0.8712`
+- Wall-clock time: `692.80s`
+- Query heads: `4`, key and value heads: `2`, group size `2`
+
+What changed from `M-504`:
+
+- `k_proj` and `v_proj` now project to `NUM_KV_HEADS * D_HEAD` instead of `D_MODEL`, which is where the saving comes from,
+- keys and values are rotated as `Hkv` heads and only then repeated to `Hq` with `repeat_interleave`, so the rotation runs on half as many heads,
+- `split_heads` takes the head count as an argument, since queries and keys no longer agree on it.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.1674 val_loss=4.1652 seconds=5.5
+step=250 train_loss=1.6551 val_loss=1.6515 seconds=59.5
+step=500 train_loss=1.2323 val_loss=1.2411 seconds=113.0
+step=750 train_loss=1.1044 val_loss=1.1019 seconds=166.5
+step=1000 train_loss=1.0175 val_loss=1.0153 seconds=220.0
+step=1250 train_loss=0.9753 val_loss=0.9782 seconds=275.0
+step=1500 train_loss=0.9503 val_loss=0.9568 seconds=333.5
+step=1750 train_loss=0.9155 val_loss=0.9125 seconds=392.9
+step=2000 train_loss=0.8945 val_loss=0.9098 seconds=452.1
+step=2250 train_loss=0.8890 val_loss=0.8925 seconds=511.7
+step=2500 train_loss=0.8769 val_loss=0.8823 seconds=571.9
+step=2750 train_loss=0.8588 val_loss=0.8744 seconds=632.7
+step=3000 train_loss=0.8488 val_loss=0.8712 seconds=692.8
+```
+
+Main lesson:
+
+- Grouped-query attention is close to free at this scale. Parameters fall by `131072` (`8.3%`), wall-clock falls from `762.50s` to `692.80s` (`9.1%`), and validation loss does not get worse.
+- The quality result must be stated carefully. `M-505` reaches `0.8712` against `0.8760` for `M-504`, but the two `M-504` runs of identical code spanned `0.8727` to `0.8760`. A gap of `0.0048` is at the edge of that spread, so the defensible claim is that halving the key and value heads costs nothing measurable here, not that it helps.
+- The real payoff is invisible in this experiment. The KV cache at this configuration drops from `2.00MB` to `1.00MB` at `T=256`, and there is no cache during training, so nothing in the loss curve or wall-clock reflects the mechanism's actual purpose. This is a systems change measured in a setting that cannot show its benefit.
+- The wall-clock gain that does appear comes from the smaller key and value projections, partly offset by the `repeat_interleave` that materializes the shared heads. An `expand` plus `reshape` would avoid that copy, at the cost of readability.
+- Implementation notes worth keeping: `Tensor.repeat` has no `dim` argument, so `x.repeat(n, dim=2)` raises `TypeError`; the correct call is `repeat_interleave`, which also gives the group-contiguous pairing that HuggingFace uses. Verified directly that query heads `0` and `1` share key/value head `0` while heads `1` and `2` do not share.
