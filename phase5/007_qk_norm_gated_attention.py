@@ -81,8 +81,8 @@ class CausalSelfAttention(nn.Module):
         self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
-        self.q_norm = RMSNorm()
-        self.k_norm = RMSNorm()
+        self.q_norm = RMSNorm(D_HEAD)
+        self.k_norm = RMSNorm(D_HEAD)
 
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
