@@ -1,4 +1,4 @@
-"""Phase 5 experiment 007: the decoder with QK-Norm and gated attention."""
+"""Phase 5 experiment 008: the decoder with layerwise hybrid attention."""
 
 from __future__ import annotations
 
@@ -70,14 +70,14 @@ class RMSNorm(nn.Module):
 
 
 class CausalSelfAttention(nn.Module):
-    """Apply masked grouped-query self-attention over one sequence."""
+    """Attend over the whole sequence when global, or the last WINDOW_SIZE tokens when local."""
 
     causal_mask: torch.Tensor
     rope_cos: torch.Tensor
     rope_sin: torch.Tensor
 
     def __init__(self, is_global: bool):
-        """Create the projections, the norms, the causal mask, and the rotation tables."""
+        """Create the projections, the norms, the attention mask, and the rotation tables."""
         super().__init__()
         self.is_global = is_global
 
@@ -90,9 +90,10 @@ class CausalSelfAttention(nn.Module):
         self.q_norm = RMSNorm(D_HEAD)
         self.k_norm = RMSNorm(D_HEAD)
 
-        mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(1)  # [T, T]
+        ones = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool)  # [T, T]
+        mask = ones.triu(diagonal=1)  # [T, T] block the future
         if not is_global:
-            mask |= torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).tril(-WINDOW_SIZE)
+            mask |= ones.tril(diagonal=-WINDOW_SIZE)  # [T, T] block beyond the window
         self.register_buffer("causal_mask", mask)
 
         inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))  # [Dh/2]
@@ -139,11 +140,12 @@ class CausalSelfAttention(nn.Module):
 
         k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
         k = self.k_norm(k)  # [B, Hkv, T, Dh]
-        k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
 
         if not self.is_global:
             q = self.apply_rope(q)  # [B, Hq, T, Dh]
             k = self.apply_rope(k)  # [B, Hkv, T, Dh]
+
+        k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
 
         v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
         v = self.repeat_kv_heads(v)  # [B, Hq, T, Dh]
@@ -200,10 +202,10 @@ class DecoderBlock(nn.Module):
 
 
 class Decoder(nn.Module):
-    """Stack the decoder blocks and normalize the final residual stream."""
+    """Stack the decoder blocks, one global for every GLOBAL_EVERY, and normalize the output."""
 
     def __init__(self):
-        """Create the block stack and the final norm."""
+        """Create the block stack, making every GLOBAL_EVERY-th block global, and the final norm."""
         super().__init__()
         self.blocks = nn.ModuleList(
             [DecoderBlock(i % GLOBAL_EVERY == GLOBAL_EVERY - 1) for i in range(NUM_BLOCKS)]
