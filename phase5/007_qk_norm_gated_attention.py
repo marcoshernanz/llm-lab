@@ -174,9 +174,9 @@ class DecoderBlock(nn.Module):
         """Create the attention, feed-forward, and normalization sublayers."""
         super().__init__()
         self.attn = CausalSelfAttention()
-        self.attn_norm = RMSNorm()
+        self.attn_norm = RMSNorm(D_MODEL)
         self.ffn = FeedForward()
-        self.ffn_norm = RMSNorm()
+        self.ffn_norm = RMSNorm(D_MODEL)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the residual output of one decoder block."""
@@ -192,7 +192,7 @@ class Decoder(nn.Module):
         """Create the block stack and the final norm."""
         super().__init__()
         self.blocks = nn.ModuleList([DecoderBlock() for _ in range(NUM_BLOCKS)])
-        self.out_norm = RMSNorm()
+        self.out_norm = RMSNorm(D_MODEL)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Run the full decoder stack."""
