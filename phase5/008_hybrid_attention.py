@@ -76,9 +76,11 @@ class CausalSelfAttention(nn.Module):
     rope_cos: torch.Tensor
     rope_sin: torch.Tensor
 
-    def __init__(self):
+    def __init__(self, is_global: bool):
         """Create the projections, the norms, the causal mask, and the rotation tables."""
         super().__init__()
+        self.is_global = is_global
+
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.k_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
         self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
@@ -88,7 +90,9 @@ class CausalSelfAttention(nn.Module):
         self.q_norm = RMSNorm(D_HEAD)
         self.k_norm = RMSNorm(D_HEAD)
 
-        mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
+        mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(1)  # [T, T]
+        if not is_global:
+            mask |= torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).tril(-WINDOW_SIZE)
         self.register_buffer("causal_mask", mask)
 
         inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))  # [Dh/2]
