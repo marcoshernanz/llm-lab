@@ -184,10 +184,10 @@ class FeedForward(nn.Module):
 class DecoderBlock(nn.Module):
     """Apply one pre-norm attention sublayer and one pre-norm MLP sublayer."""
 
-    def __init__(self):
+    def __init__(self, is_global: bool):
         """Create the attention, feed-forward, and normalization sublayers."""
         super().__init__()
-        self.attn = CausalSelfAttention()
+        self.attn = CausalSelfAttention(is_global)
         self.attn_norm = RMSNorm(D_MODEL)
         self.ffn = FeedForward()
         self.ffn_norm = RMSNorm(D_MODEL)
