@@ -108,10 +108,6 @@ class CausalSelfAttention(nn.Module):
         x = x.reshape(batch_size, seq_len, NUM_HEADS, D_HEAD)  # [B, T, H, Dh]
         return x.transpose(1, 2)  # [B, H, T, Dh]
 
-    def repeat_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
-        """Share each key or value head across its group of query heads."""
-        return x.repeat_interleave(NUM_Q_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
-
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hq, T, Dh]
         """Merge the attention heads back into one embedding axis."""
         batch_size, _, seq_len, _ = x.size()
