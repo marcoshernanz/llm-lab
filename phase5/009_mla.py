@@ -71,110 +71,131 @@ class RMSNorm(nn.Module):
         return normalized * self.weight  # [..., dim]
 
 
-class CausalSelfAttention(nn.Module):
-    """Attend globally with latent keys and values, or locally over a window with shared heads."""
+def split_heads(x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H*Dh]
+    """Split the projection into separate attention heads."""
+    batch_size, seq_len, _ = x.size()
+    x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H, Dh]
+    return x.transpose(1, 2)  # [B, H, T, Dh]
+
+
+def combine_heads(x: torch.Tensor) -> torch.Tensor:  # [B, Hq, T, Dh]
+    """Merge the attention heads back into one embedding axis."""
+    batch_size, _, seq_len, _ = x.size()
+    x = x.transpose(1, 2)  # [B, T, Hq, Dh]
+    return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
+
+
+def repeat_kv_heads(x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
+    """Share each key or value head across its group of query heads."""
+    return x.repeat_interleave(NUM_Q_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
+
+
+def rotate_half(x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
+    """Pair each feature with the one half a head apart and rotate the pair."""
+    x1, x2 = x.chunk(2, dim=-1)  # [B, H, T, Dh/2] each
+    return torch.cat([-x2, x1], dim=-1)  # [B, H, T, Dh]
+
+
+def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """Rotate queries or keys by a position-dependent angle."""
+    seq_len = x.size(2)
+    return x * cos[:seq_len] + rotate_half(x) * sin[:seq_len]  # [B, H, T, Dh]
+
+
+def rope_tables() -> tuple[torch.Tensor, torch.Tensor]:
+    """Build the cosine and sine tables for the split-half rotation."""
+    inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))  # [Dh/2]
+    positions = torch.arange(CONTEXT_LEN)  # [T]
+    angles = positions[:, None] * inv_freq[None, :]  # [T, Dh/2]
+    angles = torch.cat([angles, angles], dim=-1)  # [T, Dh]
+    return angles.cos(), angles.sin()
+
+
+def attend(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """Score queries against keys, mask, and return the attended values."""
+    seq_len = q.size(2)
+    attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, Hq, T, T]
+    attn_scores = attn_scores.masked_fill(mask[:seq_len, :seq_len], -torch.inf)  # [B, Hq, T, T]
+    attn_weights = attn_scores.softmax(dim=-1)  # [B, Hq, T, T]
+    return attn_weights @ v  # [B, Hq, T, Dh]
+
+
+class LocalSelfAttention(nn.Module):
+    """Attend over the last WINDOW_SIZE tokens with rotary positions and shared key heads."""
 
     causal_mask: torch.Tensor
     rope_cos: torch.Tensor
     rope_sin: torch.Tensor
 
-    def __init__(self, is_global: bool):
-        """Create the projections, the norms, the attention mask, and the rotation tables."""
+    def __init__(self):
+        """Create the projections, the norms, the window mask, and the rotation tables."""
         super().__init__()
-        self.is_global = is_global
-
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.k_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
+        self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
-
-        if is_global:
-            self.kv_down_proj = nn.Linear(D_MODEL, D_LATENT, bias=False)
-            self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
-            self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
-        else:
-            self.k_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
-            self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
 
         self.q_norm = RMSNorm(D_HEAD)
         self.k_norm = RMSNorm(D_HEAD)
 
         ones = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool)  # [T, T]
-        mask = ones.triu(diagonal=1)  # [T, T] block the future
-        if not is_global:
-            mask |= ones.tril(diagonal=-WINDOW_SIZE)  # [T, T] block beyond the window
+        mask = ones.triu(diagonal=1) | ones.tril(diagonal=-WINDOW_SIZE)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
-        inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))  # [Dh/2]
-        positions = torch.arange(CONTEXT_LEN)  # [T]
-        angles = positions[:, None] * inv_freq[None, :]  # [T, Dh/2]
-        angles = torch.cat([angles, angles], dim=-1)  # [T, Dh]
-        self.register_buffer("rope_cos", angles.cos())
-        self.register_buffer("rope_sin", angles.sin())
-
-    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H*Dh]
-        """Split the projection into separate attention heads."""
-        batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H, Dh]
-        return x.transpose(1, 2)  # [B, H, T, Dh]
-
-    def repeat_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
-        """Share each key or value head across its group of query heads."""
-        return x.repeat_interleave(NUM_Q_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
-
-    def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hq, T, Dh]
-        """Merge the attention heads back into one embedding axis."""
-        batch_size, _, seq_len, _ = x.size()
-        x = x.transpose(1, 2)  # [B, T, Hq, Dh]
-        return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
-
-    def rotate_half(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
-        """Pair each feature with the one half a head apart and rotate the pair."""
-        x1, x2 = x.chunk(2, dim=-1)  # [B, H, T, Dh/2] each
-        return torch.cat([-x2, x1], dim=-1)  # [B, H, T, Dh]
-
-    def apply_rope(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
-        """Rotate queries or keys by a position-dependent angle."""
-        seq_len = x.size(2)
-        cos = self.rope_cos[:seq_len]  # [T, Dh]
-        sin = self.rope_sin[:seq_len]  # [T, Dh]
-        return x * cos + self.rotate_half(x) * sin  # [B, H, T, Dh]
-
-    def key_value(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # [B, T, D]
-        """Return keys and values, from a latent when global or from shared heads when local."""
-        if self.is_global:
-            kv_latent = self.kv_down_proj(x)  # [B, T, Dc]
-            k = self.split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS)  # [B, Hq, T, Dh]
-            v = self.split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS)  # [B, Hq, T, Dh]
-            return self.k_norm(k), v  # global layers are NoPE, so no rotation
-
-        k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
-        k = self.apply_rope(self.k_norm(k))  # [B, Hkv, T, Dh]
-        v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
-        return self.repeat_kv_heads(k), self.repeat_kv_heads(v)  # [B, Hq, T, Dh] each
+        cos, sin = rope_tables()
+        self.register_buffer("rope_cos", cos)
+        self.register_buffer("rope_sin", sin)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Return attention outputs for one batch of embeddings."""
-        seq_len = x.size(1)
+        """Return windowed attention outputs for one batch of embeddings."""
+        q = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS))  # [B, Hq, T, Dh]
+        q = apply_rope(q, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
 
-        q = self.split_heads(self.q_proj(x), NUM_Q_HEADS)  # [B, Hq, T, Dh]
-        q = self.q_norm(q)  # [B, Hq, T, Dh]
-        if not self.is_global:
-            q = self.apply_rope(q)  # [B, Hq, T, Dh]
+        k = self.k_norm(split_heads(self.k_proj(x), NUM_KV_HEADS))  # [B, Hkv, T, Dh]
+        k = repeat_kv_heads(apply_rope(k, self.rope_cos, self.rope_sin))  # [B, Hq, T, Dh]
+        v = repeat_kv_heads(split_heads(self.v_proj(x), NUM_KV_HEADS))  # [B, Hq, T, Dh]
 
-        k, v = self.key_value(x)  # [B, Hq, T, Dh] each
-
-        attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, Hq, T, T]
-        causal_mask = self.causal_mask[:seq_len, :seq_len]  # [T, T]
-        attn_scores = attn_scores.masked_fill(causal_mask, -torch.inf)  # [B, Hq, T, T]
-
-        attn_weights = attn_scores.softmax(dim=-1)  # [B, Hq, T, T]
-        attn_output = attn_weights @ v  # [B, Hq, T, Dh]
-        attn_output = self.combine_heads(attn_output)  # [B, T, D]
-
+        attn_output = combine_heads(attend(q, k, v, self.causal_mask))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
-        attn_output = gate * attn_output  # [B, T, D]
+        return self.o_proj(gate * attn_output)  # [B, T, D]
 
-        return self.o_proj(attn_output)  # [B, T, D]
+
+class GlobalSelfAttention(nn.Module):
+    """Attend over the whole sequence, rebuilding keys and values from a compressed latent."""
+
+    causal_mask: torch.Tensor
+
+    def __init__(self):
+        """Create the projections, the norms, and the causal mask."""
+        super().__init__()
+        self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.kv_down_proj = nn.Linear(D_MODEL, D_LATENT, bias=False)
+        self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
+        self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
+        self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+
+        self.q_norm = RMSNorm(D_HEAD)
+        self.k_norm = RMSNorm(D_HEAD)
+
+        mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
+        self.register_buffer("causal_mask", mask)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Return global attention outputs for one batch of embeddings.
+
+        These layers carry no positional encoding, so the latent keys need no rotation.
+        """
+        q = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS))  # [B, Hq, T, Dh]
+
+        kv_latent = self.kv_down_proj(x)  # [B, T, Dc]
+        k = self.k_norm(split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS))  # [B, Hq, T, Dh]
+        v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS)  # [B, Hq, T, Dh]
+
+        attn_output = combine_heads(attend(q, k, v, self.causal_mask))  # [B, T, D]
+        gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
+        return self.o_proj(gate * attn_output)  # [B, T, D]
 
 
 class FeedForward(nn.Module):
@@ -202,7 +223,7 @@ class DecoderBlock(nn.Module):
     def __init__(self, is_global: bool):
         """Create the attention, feed-forward, and normalization sublayers."""
         super().__init__()
-        self.attn = CausalSelfAttention(is_global)
+        self.attn = GlobalSelfAttention() if is_global else LocalSelfAttention()
         self.attn_norm = RMSNorm(D_MODEL)
         self.ffn = FeedForward()
         self.ffn_norm = RMSNorm(D_MODEL)
