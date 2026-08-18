@@ -144,10 +144,7 @@ class CausalSelfAttention(nn.Module):
             q = self.apply_rope(q)  # [B, Hq, T, Dh]
             k = self.apply_rope(k)  # [B, Hkv, T, Dh]
 
-        k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
-
         v = self.split_heads(v)  # [B, Hkv, T, Dh]
-        v = self.repeat_kv_heads(v)  # [B, Hq, T, Dh]
 
         attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, Hq, T, T]
         causal_mask = self.causal_mask[:seq_len, :seq_len]  # [T, T]
