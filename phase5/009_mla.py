@@ -139,6 +139,10 @@ class CausalSelfAttention(nn.Module):
         q = self.split_heads(self.q_proj(x), NUM_Q_HEADS)  # [B, Hq, T, Dh]
         q = self.q_norm(q)  # [B, Hq, T, Dh]
 
+        c_kv = self.kv_down_proj(x)
+        k = self.k_up_proj(c_kv)
+        v = self.v_up_proj(c_kv)
+
         k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
         k = self.k_norm(k)  # [B, Hkv, T, Dh]
 
