@@ -105,7 +105,7 @@ class CausalSelfAttention(nn.Module):
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, H*Dh]
         """Split the projection into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, NUM_Q_HEADS, D_HEAD)  # [B, T, H, Dh]
+        x = x.reshape(batch_size, seq_len, NUM_HEADS, D_HEAD)  # [B, T, H, Dh]
         return x.transpose(1, 2)  # [B, H, T, Dh]
 
     def repeat_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
