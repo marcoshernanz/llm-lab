@@ -130,7 +130,7 @@ class CausalSelfAttention(nn.Module):
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
 
-        q = self.split_heads(self.q_proj(x), NUM_Q_HEADS)  # [B, Hq, T, Dh]
+        q = self.split_heads(self.q_proj(x), NUM_HEADS)  # [B, Hq, T, Dh]
         q = self.q_norm(q)  # [B, Hq, T, Dh]
 
         c_kv = self.kv_down_proj(x)
