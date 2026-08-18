@@ -80,7 +80,7 @@ class CausalSelfAttention(nn.Module):
         self.is_global = is_global
 
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
-        self.kv_down_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
+        self.kv_down_proj = nn.Linear(D_MODEL, NUM_HEADS * D_HEAD, bias=False)
         self.k_up_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.v_up_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
