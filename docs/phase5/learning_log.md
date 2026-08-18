@@ -15,6 +15,7 @@ The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 | P5-004 | [`phase5/004_rope.py`](../../phase5/004_rope.py) | 3000 | 0.8548 | 0.8760 | 762.50 | 1587584 |
 | P5-005 | [`phase5/005_gqa.py`](../../phase5/005_gqa.py) | 3000 | 0.8488 | 0.8712 | 692.80 | 1456512 |
 | P5-006 | [`phase5/006_swiglu.py`](../../phase5/006_swiglu.py) | 3000 | 0.8359 | 0.8584 | 724.60 | 1464704 |
+| P5-007 | [`phase5/007_qk_norm_gated_attention.py`](../../phase5/007_qk_norm_gated_attention.py) | 3000 | 0.7888 | 0.8147 | 879.50 | 1596288 |
 
 ## P5-001 Milestone 501 Vanilla Decoder Baseline
 
@@ -343,3 +344,55 @@ Main lesson:
 - The parameter matching is what makes that claim possible. A gated block has three matrices where the dense block has two, so keeping `D_FFN = 4 * D_MODEL` would have added `524288` parameters, a `36%` larger model, and any improvement would have been unattributable. The `2/3` rule brings the feed-forward block to `132096` parameters against `131072`.
 - The cost is wall-clock: `724.60s` against `692.80s`, about `4.6%` slower. Three narrower matrix multiplications are slower here than two wider ones, because each launch has fixed overhead and the narrower shapes use the hardware less efficiently.
 - What the gate buys mechanically is a multiplicative interaction. A projection followed by an activation can only add contributions; gating lets one projection scale another elementwise, per token and per feature. Half the gate values are negative at initialization, because Swish dips below zero near the origin, so the gate can flip a feature's sign rather than only attenuate it. A sigmoid gate bounded in `[0, 1]` cannot do that, which is part of why SwiGLU beat the original GLU.
+
+## P5-007 Milestone 507 QK-Norm And Gated Attention
+
+- Script: [`phase5/007_qk_norm_gated_attention.py`](../../phase5/007_qk_norm_gated_attention.py)
+- Date: `2026-08-16`
+- Parameters: `1596288`
+- Final train loss: `0.7888`
+- Final validation loss: `0.8147`
+- Wall-clock time: `879.50s`
+
+What changed from `M-506`:
+
+- `RMSNorm` gained a `dim` argument so it can normalize the head axis as well as the model axis,
+- queries and keys are normalized per head, after the head split and before the rotation,
+- a full-rank sigmoid gate, computed from the layer input, scales the attention output before the output projection.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.4165 val_loss=4.4168 seconds=6.6
+step=250 train_loss=1.2731 val_loss=1.2727 seconds=75.1
+step=500 train_loss=1.0464 val_loss=1.0548 seconds=143.1
+step=750 train_loss=0.9654 val_loss=0.9674 seconds=210.8
+step=1000 train_loss=0.9162 val_loss=0.9159 seconds=277.8
+step=1250 train_loss=0.8847 val_loss=0.8893 seconds=345.6
+step=1500 train_loss=0.8648 val_loss=0.8722 seconds=416.7
+step=1750 train_loss=0.8420 val_loss=0.8414 seconds=489.7
+step=2000 train_loss=0.8279 val_loss=0.8449 seconds=567.0
+step=2250 train_loss=0.8233 val_loss=0.8261 seconds=644.3
+step=2500 train_loss=0.8157 val_loss=0.8234 seconds=719.0
+step=2750 train_loss=0.8005 val_loss=0.8199 seconds=793.5
+step=3000 train_loss=0.7888 val_loss=0.8147 seconds=879.5
+```
+
+Main lesson:
+
+- This is the largest single-milestone gain since pre-norm: validation loss falls from `0.8584` to `0.8147`, a gap of `0.0437`, roughly fifteen times the noise floor.
+- The gain is not cleanly attributable. The gate is a full `D x D` matrix, so the model grew by `131584` parameters (`9.0%`), and this is the first milestone in the ladder that buys capacity rather than shedding it. Some of the improvement is the mechanism and some is size; this run does not separate them. The cheap control, if it is ever needed, is a QK-Norm-only variant, since the norms cost only `512` parameters.
+- The mechanism QK-Norm defends against was measured directly rather than assumed. Feeding activations scaled by `1`, `10`, and `100` into the attention path gives maximum absolute logits of `1.48`, `158.78`, and `17464.14` without QK-Norm, and `3.50`, `3.50`, `3.50` with it. Softmax at a logit of `17464` is exactly one-hot, its gradient is zero, and in `bf16` the exponential overflows.
+- Cost is `21%` wall-clock, `879.50s` against `724.60s`, from two extra normalizations per attention layer and one extra `D x D` projection.
+
+### Choosing The Gate Granularity
+
+The gate can be one scalar per head, roughly `1K` parameters, or one value per feature, `131K`. The per-head form was tempting because it would have kept the parameter comparison clean.
+
+The elementwise form was chosen instead, on evidence:
+
+- the paper that introduced the mechanism ablated about thirty variants and recommends elementwise, with `headwise_attn_output_gate: false` and `elementwise_attn_output_gate: true` as its default configuration, reporting that elementwise gating produces sparser and more structured attention maps,
+- Kimi K3 states plainly that its gate projection is full rank,
+- Qwen3-Next, Qwen3.5, and Arcee Trinity all ship gated attention in production, applied after the attention output and before the output projection, at under `2%` wall-clock overhead.
+
+The granularity is part of the mechanism rather than a cost knob, so the frontier form was kept and the parameter caveat recorded instead.
