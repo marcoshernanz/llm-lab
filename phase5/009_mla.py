@@ -1,4 +1,4 @@
-"""Phase 5 experiment 008: the decoder with layerwise hybrid attention."""
+"""Phase 5 experiment 009: the decoder with latent attention on the global layers."""
 
 from __future__ import annotations
 
@@ -28,13 +28,16 @@ SEED = 1337
 # Hkv: number of key and value heads
 # Dh: head dim, D // Hq
 # Dff: feed-forward dim
+# Dc: latent dim for compressed keys and values
 
 CONTEXT_LEN = 256
 D_MODEL = 128
+NUM_Q_HEADS = 4
+NUM_KV_HEADS = 2
+assert NUM_Q_HEADS % NUM_KV_HEADS == 0
+assert D_MODEL % NUM_Q_HEADS == 0
+D_HEAD = D_MODEL // NUM_Q_HEADS
 D_LATENT = 64
-NUM_HEADS = 4
-assert D_MODEL % NUM_HEADS == 0
-D_HEAD = D_MODEL // NUM_HEADS
 D_FFN = 344
 NUM_BLOCKS = 8
 INIT_STD = 0.02
@@ -69,7 +72,7 @@ class RMSNorm(nn.Module):
 
 
 class CausalSelfAttention(nn.Module):
-    """Attend over the whole sequence when global, or the last WINDOW_SIZE tokens when local."""
+    """Attend globally with latent keys and values, or locally over a window with shared heads."""
 
     causal_mask: torch.Tensor
     rope_cos: torch.Tensor
@@ -81,11 +84,16 @@ class CausalSelfAttention(nn.Module):
         self.is_global = is_global
 
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
-        self.kv_down_proj = nn.Linear(D_MODEL, D_LATENT, bias=False)
-        self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
-        self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+
+        if is_global:
+            self.kv_down_proj = nn.Linear(D_MODEL, D_LATENT, bias=False)
+            self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
+            self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
+        else:
+            self.k_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
+            self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
 
         self.q_norm = RMSNorm(D_HEAD)
         self.k_norm = RMSNorm(D_HEAD)
@@ -103,11 +111,15 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("rope_cos", angles.cos())
         self.register_buffer("rope_sin", angles.sin())
 
-    def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, H*Dh]
+    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H*Dh]
         """Split the projection into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, NUM_HEADS, D_HEAD)  # [B, T, H, Dh]
+        x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H, Dh]
         return x.transpose(1, 2)  # [B, H, T, Dh]
+
+    def repeat_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
+        """Share each key or value head across its group of query heads."""
+        return x.repeat_interleave(NUM_Q_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
 
     def combine_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hq, T, Dh]
         """Merge the attention heads back into one embedding axis."""
@@ -127,25 +139,29 @@ class CausalSelfAttention(nn.Module):
         sin = self.rope_sin[:seq_len]  # [T, Dh]
         return x * cos + self.rotate_half(x) * sin  # [B, H, T, Dh]
 
+    def key_value(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # [B, T, D]
+        """Return keys and values, from a latent when global or from shared heads when local."""
+        if self.is_global:
+            kv_latent = self.kv_down_proj(x)  # [B, T, Dc]
+            k = self.split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS)  # [B, Hq, T, Dh]
+            v = self.split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS)  # [B, Hq, T, Dh]
+            return self.k_norm(k), v  # global layers are NoPE, so no rotation
+
+        k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
+        k = self.apply_rope(self.k_norm(k))  # [B, Hkv, T, Dh]
+        v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
+        return self.repeat_kv_heads(k), self.repeat_kv_heads(v)  # [B, Hq, T, Dh] each
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return attention outputs for one batch of embeddings."""
         seq_len = x.size(1)
 
-        q = self.split_heads(self.q_proj(x))  # [B, Hq, T, Dh]
+        q = self.split_heads(self.q_proj(x), NUM_Q_HEADS)  # [B, Hq, T, Dh]
         q = self.q_norm(q)  # [B, Hq, T, Dh]
-
-        c_kv = self.kv_down_proj(x)
-        k = self.k_up_proj(c_kv)
-        v = self.v_up_proj(c_kv)
-
-        k = self.split_heads(k)  # [B, Hkv, T, Dh]
-        k = self.k_norm(k)  # [B, Hkv, T, Dh]
-
         if not self.is_global:
             q = self.apply_rope(q)  # [B, Hq, T, Dh]
-            k = self.apply_rope(k)  # [B, Hkv, T, Dh]
 
-        v = self.split_heads(v)  # [B, Hkv, T, Dh]
+        k, v = self.key_value(x)  # [B, Hq, T, Dh] each
 
         attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, Hq, T, T]
         causal_mask = self.causal_mask[:seq_len, :seq_len]  # [T, T]
