@@ -31,11 +31,9 @@ SEED = 1337
 
 CONTEXT_LEN = 256
 D_MODEL = 128
-NUM_Q_HEADS = 4
-NUM_KV_HEADS = 2
-assert NUM_Q_HEADS % NUM_KV_HEADS == 0
-assert D_MODEL % NUM_Q_HEADS == 0
-D_HEAD = D_MODEL // NUM_Q_HEADS
+NUM_HEADS = 4
+assert D_MODEL % NUM_HEADS == 0
+D_HEAD = D_MODEL // NUM_HEADS
 D_FFN = 344
 NUM_BLOCKS = 8
 INIT_STD = 0.02
@@ -104,10 +102,10 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("rope_cos", angles.cos())
         self.register_buffer("rope_sin", angles.sin())
 
-    def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H*Dh]
+    def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, H*Dh]
         """Split the projection into separate attention heads."""
         batch_size, seq_len, _ = x.size()
-        x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H, Dh]
+        x = x.reshape(batch_size, seq_len, NUM_Q_HEADS, D_HEAD)  # [B, T, H, Dh]
         return x.transpose(1, 2)  # [B, H, T, Dh]
 
     def repeat_kv_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
@@ -143,7 +141,7 @@ class CausalSelfAttention(nn.Module):
         k = self.k_up_proj(c_kv)
         v = self.v_up_proj(c_kv)
 
-        k = self.split_heads(self.k_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
+        k = self.split_heads(k)  # [B, Hkv, T, Dh]
         k = self.k_norm(k)  # [B, Hkv, T, Dh]
 
         if not self.is_global:
@@ -152,7 +150,7 @@ class CausalSelfAttention(nn.Module):
 
         k = self.repeat_kv_heads(k)  # [B, Hq, T, Dh]
 
-        v = self.split_heads(self.v_proj(x), NUM_KV_HEADS)  # [B, Hkv, T, Dh]
+        v = self.split_heads(v)  # [B, Hkv, T, Dh]
         v = self.repeat_kv_heads(v)  # [B, Hq, T, Dh]
 
         attn_scores = (q @ k.mT) / math.sqrt(D_HEAD)  # [B, Hq, T, T]
