@@ -17,6 +17,7 @@ The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 | P5-006 | [`phase5/006_swiglu.py`](../../phase5/006_swiglu.py) | 3000 | 0.8483 | 0.8663 | 285.30 | 1464704 |
 | P5-007 | [`phase5/007_qk_norm_gated_attention.py`](../../phase5/007_qk_norm_gated_attention.py) | 3000 | 0.7874 | 0.8056 | 329.20 | 1596288 |
 | P5-008 | [`phase5/008_hybrid_attention.py`](../../phase5/008_hybrid_attention.py) | 3000 | 0.7814 | 0.8008 | 313.90 | 1596288 |
+| P5-009 | [`phase5/009_mla.py`](../../phase5/009_mla.py) | 3000 | 0.7878 | 0.8079 | 321.70 | 1633152 |
 
 All runs above were produced on a Kaggle `Tesla T4` at seed `1337`.
 They replace an earlier set measured on local `mps`, which turned out not to be reproducible.
@@ -81,6 +82,7 @@ Results are **not** comparable across devices. The same script and seed gives `0
 | 506 | SwiGLU | `0.8663` | `+0.0069` | `1464704` |
 | 507 | QK-Norm and gated attention | `0.8056` | `-0.0607` | `1596288` |
 | 508 | layerwise hybrid attention | `0.8008` | `-0.0048` | `1596288` |
+| 509 | latent attention on the global layers | `0.8079` | `+0.0071` | `1633152` |
 
 Three changes move the loss clearly:
 
@@ -88,15 +90,15 @@ Three changes move the loss clearly:
 - **RoPE**, by `0.085`, while removing `32768` parameters,
 - **QK-Norm with gated attention**, by `0.061`, but with `9%` more parameters, so mechanism and capacity are confounded in that number.
 
-Four changes do not move it: RMSNorm `+0.0144`, GQA `-0.0050`, SwiGLU `+0.0069`, hybrid attention `-0.0048`. RMSNorm and SwiGLU actually came out marginally worse here, having looked like wins on `mps`, which is what reading a result out of noise looks like in hindsight.
+Five changes do not move it: RMSNorm `+0.0144`, GQA `-0.0050`, SwiGLU `+0.0069`, hybrid attention `-0.0048`, and latent attention `+0.0071`. RMSNorm and SwiGLU actually came out marginally worse here, having looked like wins on `mps`, which is what reading a result out of noise looks like in hindsight.
 
 That is the expected outcome rather than a disappointment:
 
 - RMSNorm is a **simplification**. It removed `11392` parameters and one reduction pass per norm at no measurable quality cost, which is exactly the claim the literature makes.
-- GQA and hybrid attention are **inference-economics mechanisms**. GQA halves the KV cache, hybrid attention bounds the local layers' cache at `WINDOW_SIZE` tokens. Neither can pay off in a training-only benchmark, and both cost nothing measurable here, which is the result that matters.
+- GQA, hybrid attention, and latent attention are **inference-economics mechanisms**. GQA halves the KV cache, hybrid attention bounds the local layers' cache at `WINDOW_SIZE` tokens, and latent attention cuts a global layer's cache from `128` numbers per token to `80`. None can pay off in a training-only benchmark, and none cost anything measurable here, which is the result that matters.
 - SwiGLU at matched parameters is a modest effect that a `1.5M`-parameter character model over `3000` steps cannot resolve.
 
-**What is still missing is seeds.** Every number here is one deterministic run at seed `1337`. Determinism means each run reproduces itself, not that the measurement is precise; a different seed changes initialization and data order. Differences under roughly `0.02` should not be called from a single seed. At `5` minutes per T4 run, three seeds for all eight milestones is about `2` hours of quota, and that is the step that would turn this table into a measurement.
+**What is still missing is seeds.** Every number here is one deterministic run at seed `1337`. Determinism means each run reproduces itself, not that the measurement is precise; a different seed changes initialization and data order. Differences under roughly `0.02` should not be called from a single seed. At `5` minutes per T4 run, three seeds for all nine milestones is about `2.5` hours of quota, and that is the step that would turn this table into a measurement.
 
 ## P5-001 Milestone 501 Vanilla Decoder Baseline
 
@@ -519,3 +521,55 @@ Main lesson:
 - The NoPE global layers still receive position information indirectly. With the final token held fixed and the preceding `127` shuffled, the last-position logits still move by `0.898`, so position is reaching them through what the local RoPE layers wrote into the residual stream.
 - No speedup is expected or observed. The implementation computes the full `[T, T]` score matrix and then masks it, so masking makes the answer correct without making the arithmetic cheaper. At `T=256` the quadratic part is only about half of attention's cost anyway; at `T=4096` it is `94%`, and at `1M` tokens essentially all of it. This mechanism is aimed at a problem this context length does not have.
 - The genuine payoff is invisible here: a local layer never needs more than `WINDOW_SIZE` keys and values in cache regardless of sequence length, which is what makes million-token context affordable.
+
+## P5-009 Milestone 509 Multi-Head Latent Attention
+
+- Script: [`phase5/009_mla.py`](../../phase5/009_mla.py)
+- Date: `2026-08-16`
+- Parameters: `1633152`
+- Final train loss: `0.7878`
+- Final validation loss: `0.8079`
+- Wall-clock time: `321.70s` on a Kaggle `T4`
+- Latent dim: `64`, rope dim `16`, applied to the two global layers only
+
+What changed from `M-508`:
+
+- the two global layers replace `k_proj` and `v_proj` with a shared down-projection to a `64`-dim latent plus two up-projections, so keys and values are rebuilt from one cached vector,
+- those layers regain full `Hq` heads for keys and values, so `repeat_kv_heads` is gone from the global path,
+- position returns to the global layers through a decoupled rope path: `32` content dims per head carry no rotation, and `16` rope dims per head are rotated, with a single shared rope key broadcast across heads,
+- the six local layers keep grouped-query attention unchanged,
+- `CausalSelfAttention` split into `LocalSelfAttention` and `GlobalSelfAttention`, with the shared machinery moved to module-level functions.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.2231 val_loss=4.2201 seconds=3.2
+step=250 train_loss=1.2182 val_loss=1.2239 seconds=28.7
+step=500 train_loss=1.0310 val_loss=1.0327 seconds=54.8
+step=750 train_loss=0.9563 val_loss=0.9614 seconds=81.6
+step=1000 train_loss=0.9078 val_loss=0.9155 seconds=108.5
+step=1250 train_loss=0.8786 val_loss=0.8940 seconds=135.0
+step=1500 train_loss=0.8726 val_loss=0.8701 seconds=161.6
+step=1750 train_loss=0.8530 val_loss=0.8540 seconds=188.4
+step=2000 train_loss=0.8338 val_loss=0.8446 seconds=215.0
+step=2250 train_loss=0.8244 val_loss=0.8243 seconds=241.7
+step=2500 train_loss=0.8145 val_loss=0.8248 seconds=268.3
+step=2750 train_loss=0.8023 val_loss=0.8141 seconds=295.0
+step=3000 train_loss=0.7878 val_loss=0.8079 seconds=321.7
+```
+
+Main lesson:
+
+- Latent attention costs nothing measurable and buys nothing measurable here: `0.8079` against `0.8008`, a difference inside single-seed noise, for `36864` more parameters. That is the fourth mechanism in a row whose payoff is invisible in a training-only benchmark.
+- The cache arithmetic is the actual result. A global layer now caches `64 + 16 = 80` numbers per token instead of `128`, and every query head gets its own keys and values again rather than sharing. Local layers still cache `128`, but bounded to a `64`-token window.
+- DeepSeek's own sizing rule does not transfer. They set the latent to `4 * d_head`, which at this scale is `4 * 32 = 128 = D_MODEL`, meaning no compression at all. Their `28x` saving comes from having `128` heads of `128` dims to compress into `512`; a four-head model has far less redundancy to exploit. `D_LATENT = 64` was chosen instead as half the model dim, which beats the GQA cache while staying a real bottleneck.
+- Decoupled rope was implemented even though the NoPE variant would have worked, because that conflict is the entire reason MLA has its shape. The absorption trick, `q_content . (W_uk c) = (W_uk^T q_content) . c`, only holds when the matrix between query and latent is constant. A rotation makes it `R_(n-m)`, which depends on the key's position, so one folded query would serve exactly one key. Verified directly: folding once and reusing it gives zero error at `n = m` and growing error everywhere else.
+- The split is exact rather than approximate. A dot product over concatenated vectors equals the sum of the dot products over the pieces, so scoring on `cat(content, rope)` is identical to `content . content + rope . rope`. Confirmed the rope half stays relative: the same gap gives the same score at different absolute positions, `5.483795` at `(3, 5)` against `5.483794` at `(20, 22)`.
+- Values stay `Dh`-wide while scores use `Dh + Dr`. Rope dims decide how much to attend and carry nothing to retrieve, which is why `combine_heads` and `o_proj` are untouched and DeepSeek's head dims read as an odd `128 + 64`.
+- Worth recording against the ladder: **DeepSeek V4 has since abandoned MLA.** It uses shared key-equals-value multi-query attention with `num_key_value_heads = 1` plus compression along the *sequence* dimension, on the grounds that at a million tokens sequence length dominates memory, not head count. So this milestone implements a mechanism the frontier is already moving past, which is worth knowing while building it.
+
+### Structural Note
+
+`CausalSelfAttention` was split into two classes here, with `split_heads`, `combine_heads`, `repeat_kv_heads`, `rotate_half`, `apply_rope`, `rope_tables`, and `attend` lifted to module-level functions.
+
+The trigger was that local and global layers stopped sharing weights, not just a mask. Keeping one class would have meant branching in both `__init__` and the key/value path, and the branchy version would have been copied forward into `010`, `011`, and `012` before being torn out at `513` anyway. Module-level helpers keep duplication near zero without inheritance, and they degrade gracefully: when the local mixer becomes a linear-attention recurrence, that class simply stops calling `attend` and `apply_rope` instead of needing them carved out of a shared parent.
