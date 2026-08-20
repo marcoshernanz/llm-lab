@@ -187,6 +187,10 @@ class GlobalSelfAttention(nn.Module):
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
+        cos, sin = rope_tables()
+        self.register_buffer("rope_cos", cos)
+        self.register_buffer("rope_sin", sin)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return global attention outputs for one batch of embeddings.
 
