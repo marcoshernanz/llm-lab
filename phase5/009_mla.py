@@ -166,6 +166,8 @@ class GlobalSelfAttention(nn.Module):
     """Attend over the whole sequence, rebuilding keys and values from a compressed latent."""
 
     causal_mask: torch.Tensor
+    rope_cos: torch.Tensor
+    rope_sin: torch.Tensor
 
     def __init__(self):
         """Create the projections, the norms, and the causal mask."""
@@ -198,6 +200,7 @@ class GlobalSelfAttention(nn.Module):
         """
         q_c = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS, D_HEAD))  # [B, Hq, T, Dh]
         q_r = self.q_norm(split_heads(self.q_rope_proj(x), 1, D_ROPE))  # [B, Hq, T, Dh]
+        q_r = apply_rope(q_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
         q = torch.cat([q_c, q_r], dim=-1)
 
         kv_latent = self.kv_down_proj(x)  # [B, T, Dc]
@@ -205,6 +208,7 @@ class GlobalSelfAttention(nn.Module):
             split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)
         )  # [B, Hq, T, Dh]
         k_r = self.k_norm(split_heads(self.k_rope_proj(x), NUM_Q_HEADS, D_ROPE))  # [B, Hq, T, Dh]
+        k_r = apply_rope(k_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
         k = torch.cat([k_c, k_r], dim=-1)
         v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
 
