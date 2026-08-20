@@ -29,6 +29,7 @@ SEED = 1337
 # Dh: head dim, D // Hq
 # Dff: feed-forward dim
 # Dc: latent dim for compressed keys and values
+# Dr: rope dim, the position-only dims added to each head on the global layers
 
 CONTEXT_LEN = 256
 D_MODEL = 128
@@ -113,7 +114,10 @@ def rope_tables(head_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def attend(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    """Score queries against keys, mask, and return the attended values."""
+    """Score queries against keys, mask, and return the attended values.
+
+    The scale follows the query width, which is Dh on local layers and Dh+Dr on global ones.
+    """
     seq_len = q.size(2)
     attn_scores = (q @ k.mT) / math.sqrt(q.size(-1))  # [B, Hq, T, T]
     attn_scores = attn_scores.masked_fill(mask[:seq_len, :seq_len], -torch.inf)  # [B, Hq, T, T]
@@ -163,14 +167,14 @@ class LocalSelfAttention(nn.Module):
 
 
 class GlobalSelfAttention(nn.Module):
-    """Attend over the whole sequence, rebuilding keys and values from a compressed latent."""
+    """Attend over the whole sequence, with latent keys and values and a separate rope path."""
 
     causal_mask: torch.Tensor
     rope_cos: torch.Tensor
     rope_sin: torch.Tensor
 
     def __init__(self):
-        """Create the projections, the norms, and the causal mask."""
+        """Create the projections, the norms, the causal mask, and the rotation tables."""
         super().__init__()
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.kv_down_proj = nn.Linear(D_MODEL, D_LATENT, bias=False)
@@ -196,21 +200,21 @@ class GlobalSelfAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return global attention outputs for one batch of embeddings.
 
-        These layers carry no positional encoding, so the latent keys need no rotation.
+        Keys and queries are split in two: content dims carry no rotation so the latent
+        up-projection stays foldable, and a small rope path carries position instead.
         """
         q_c = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS, D_HEAD))  # [B, Hq, T, Dh]
-        q_r = split_heads(self.q_rope_proj(x), NUM_Q_HEADS, D_ROPE)  # [B, Hq, T, Dh]
-        q_r = apply_rope(q_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
-        q = torch.cat([q_c, q_r], dim=-1)
+        q_r = split_heads(self.q_rope_proj(x), NUM_Q_HEADS, D_ROPE)  # [B, Hq, T, Dr]
+        q_r = apply_rope(q_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dr]
+        q = torch.cat([q_c, q_r], dim=-1)  # [B, Hq, T, Dh+Dr]
 
         kv_latent = self.kv_down_proj(x)  # [B, T, Dc]
-        k_c = self.k_norm(
-            split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)
-        )  # [B, Hq, T, Dh]
-        k_r = split_heads(self.k_rope_proj(x), 1, D_ROPE)  # [B, Hq, T, Dh]
-        k_r = apply_rope(k_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
+        k_c = split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
+        k_c = self.k_norm(k_c)  # [B, Hq, T, Dh]
+        k_r = split_heads(self.k_rope_proj(x), 1, D_ROPE)  # [B, 1, T, Dr] one shared head
+        k_r = apply_rope(k_r, self.rope_cos, self.rope_sin)  # [B, 1, T, Dr]
         k_r = k_r.expand(-1, NUM_Q_HEADS, -1, -1)  # [B, Hq, T, Dr]
-        k = torch.cat([k_c, k_r], dim=-1)
+        k = torch.cat([k_c, k_r], dim=-1)  # [B, Hq, T, Dh+Dr]
         v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
 
         attn_output = combine_heads(attend(q, k, v, self.causal_mask))  # [B, T, D]
