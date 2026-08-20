@@ -14,22 +14,31 @@ For the run history from this path, see `learning_log.md`, which is created when
 
 As of 2026-08-16:
 
-- The roadmap is written and the target architecture is chosen.
-- Milestones 501 through 505 are complete, recorded as `P5-001` through `P5-005`.
+- Milestones 501 through 508 are complete and recorded as `P5-001` through `P5-008`.
+- All runs live on a Kaggle `Tesla T4` at seed `1337`. The earlier `mps` numbers were discarded: `mps` is not reproducible, two identical runs diverging by up to `0.053` validation loss, and a laptop cannot hold wall-clock steady across a batch of runs.
 
-| Milestone | Val loss | Parameters | Seconds |
-| --- | ---: | ---: | ---: |
-| 501 vanilla post-norm | `3.0537` | `1631488` | `689.90` |
-| 502 pre-norm | `1.0161` | `1631744` | `663.90` |
-| 503 RMSNorm, no biases | `0.9563` | `1620352` | `601.10` |
-| 504 RoPE | `0.8760` | `1587584` | `762.50` |
-| 505 grouped-query attention | `0.8712` | `1456512` | `692.80` |
+| Milestone | Val loss | Delta | Parameters | Seconds |
+| --- | ---: | ---: | ---: | ---: |
+| 501 vanilla post-norm | `3.0557` | — | `1631488` | `267.8` |
+| 502 pre-norm | `0.9354` | `-2.1203` | `1631744` | `273.3` |
+| 503 RMSNorm, no biases | `0.9498` | `+0.0144` | `1620352` | `264.7` |
+| 504 RoPE | `0.8644` | `-0.0854` | `1587584` | `300.4` |
+| 505 grouped-query attention | `0.8594` | `-0.0050` | `1456512` | `291.6` |
+| 506 SwiGLU | `0.8663` | `+0.0069` | `1464704` | `285.3` |
+| 507 QK-Norm and gated attention | `0.8056` | `-0.0607` | `1596288` | `329.2` |
+| 508 layerwise hybrid attention | `0.8008` | `-0.0048` | `1596288` | `313.9` |
 
-- Every milestone so far has been a simplification as well as an improvement: loss fell from `3.0537` to `0.8712` while the model shrank by `174976` parameters.
-- The baseline does not learn at the control learning rate. It collapses to character-unigram loss by step `250`, with the smallest gradient norms of any configuration tested. A control sweep confirms the code is correct: the same script reaches `2.15` at lr `3e-4`.
-- Two control settings were added after they corrupted a run. macOS Low Power Mode must be off, since it doubled one run's wall-clock. And the run-to-run noise floor on `mps` is about `0.003` validation loss, because kernel non-determinism makes runs irreproducible even at a fixed seed, so differences under roughly `0.01` cannot be called from a single run.
-- Milestone 506, the SwiGLU feed-forward, is next.
-- Still outstanding: the supplementary `post-norm, lr 3e-4` run at full length, so the `501` to `502` comparison is not credited entirely to norm placement. The wall-clock times for `P5-001` through `P5-003` are also provisional, since they were measured before the Low Power Mode problem was found.
+- Three mechanisms move the loss: pre-norm, RoPE, and QK-Norm with gated attention. The last of those also adds `9%` parameters, so its number confounds mechanism with capacity.
+- Four do not: RMSNorm, GQA, SwiGLU, and hybrid attention are all within single-seed noise. That is the expected result. RMSNorm is a simplification, GQA and hybrid attention are inference-economics mechanisms with no cache present during training, and SwiGLU at matched parameters is too small an effect for this model size.
+- The baseline does not learn at the control learning rate. It collapses to character-unigram loss by step `250`. A control sweep confirms the code is correct and the failure is a post-norm and learning-rate interaction.
+- Milestone 509, latent attention on the global layers, is written but not yet run.
+
+### Additions To The Frozen Control
+
+- Runs execute on a Kaggle `T4`, which reproduces itself bit-exactly at default settings. `P100` is not an option: it fails with `no kernel image is available for execution on the device`, since Kaggle's PyTorch no longer ships `sm_60` kernels.
+- Kaggle permits two concurrent GPU sessions, and reports the limit as ordinary output rather than a failing exit code.
+- Results are not comparable across devices. The same script and seed gives `0.8040` on `mps` and `0.8008` on `T4`.
+- Single deterministic runs are reproducible but not precise. Differences under roughly `0.02` cannot be claimed without repeated seeds; three seeds per milestone is about two hours of quota for the whole ladder.
 
 ## Why This Phase Is Separate
 
