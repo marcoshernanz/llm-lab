@@ -177,8 +177,8 @@ class GlobalSelfAttention(nn.Module):
         self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
         self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
 
-        self.q_rope_proj = nn.Linear(D_MODEL, D_ROPE * NUM_Q_HEADS)
-        self.k_rope_proj = nn.Linear(D_MODEL, D_ROPE)
+        self.q_rope_proj = nn.Linear(D_MODEL, D_ROPE * NUM_Q_HEADS, bias=False)
+        self.k_rope_proj = nn.Linear(D_MODEL, D_ROPE, bias=False)
 
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
