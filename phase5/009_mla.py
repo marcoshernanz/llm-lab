@@ -103,9 +103,9 @@ def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.T
     return x * cos[:seq_len] + rotate_half(x) * sin[:seq_len]  # [B, H, T, Dh]
 
 
-def rope_tables() -> tuple[torch.Tensor, torch.Tensor]:
+def rope_tables(head_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Build the cosine and sine tables for the split-half rotation."""
-    inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))  # [Dh/2]
+    inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, head_dim, 2) / head_dim))  # [Dh/2]
     positions = torch.arange(CONTEXT_LEN)  # [T]
     angles = positions[:, None] * inv_freq[None, :]  # [T, Dh/2]
     angles = torch.cat([angles, angles], dim=-1)  # [T, Dh]
