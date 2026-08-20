@@ -115,7 +115,7 @@ def rope_tables(head_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
 def attend(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """Score queries against keys, mask, and return the attended values."""
     seq_len = q.size(2)
-    attn_scores = (q @ k.mT) / math.sqrt(v.size(-1))  # [B, Hq, T, T]
+    attn_scores = (q @ k.mT) / math.sqrt(q.size(-1))  # [B, Hq, T, T]
     attn_scores = attn_scores.masked_fill(mask[:seq_len, :seq_len], -torch.inf)  # [B, Hq, T, T]
     attn_weights = attn_scores.softmax(dim=-1)  # [B, Hq, T, T]
     return attn_weights @ v  # [B, Hq, T, Dh]
