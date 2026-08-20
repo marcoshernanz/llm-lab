@@ -15,7 +15,7 @@ DATASET_CONFIG = None
 TRAIN_SPLIT = "train[:20000]"
 VAL_SPLIT = "validation[:2000]"
 TEXT_COLUMN = "text"
-DEVICE = "mps"
+DEVICE = "cuda" if torch.cuda.is_available() else "mps"
 SEED = 1337
 
 # Tensor shapes:
