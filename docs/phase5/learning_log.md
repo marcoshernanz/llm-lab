@@ -9,13 +9,94 @@ The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 
 | Run | Script | Steps | Train Loss | Val Loss | Wall Seconds | Parameters |
 | --- | ------ | ----: | ---------: | -------: | -----------: | ---------: |
-| P5-001 | [`phase5/001_vanilla_decoder.py`](../../phase5/001_vanilla_decoder.py) | 3000 | 3.0721 | 3.0537 | 689.90 | 1631488 |
-| P5-002 | [`phase5/002_pre_norm.py`](../../phase5/002_pre_norm.py) | 3000 | 0.9948 | 1.0161 | 663.90 | 1631744 |
-| P5-003 | [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py) | 3000 | 0.9358 | 0.9563 | 601.10 | 1620352 |
-| P5-004 | [`phase5/004_rope.py`](../../phase5/004_rope.py) | 3000 | 0.8548 | 0.8760 | 762.50 | 1587584 |
-| P5-005 | [`phase5/005_gqa.py`](../../phase5/005_gqa.py) | 3000 | 0.8488 | 0.8712 | 692.80 | 1456512 |
-| P5-006 | [`phase5/006_swiglu.py`](../../phase5/006_swiglu.py) | 3000 | 0.8359 | 0.8584 | 724.60 | 1464704 |
-| P5-007 | [`phase5/007_qk_norm_gated_attention.py`](../../phase5/007_qk_norm_gated_attention.py) | 3000 | 0.7888 | 0.8147 | 879.50 | 1596288 |
+| P5-001 | [`phase5/001_vanilla_decoder.py`](../../phase5/001_vanilla_decoder.py) | 3000 | 3.0669 | 3.0557 | 267.80 | 1631488 |
+| P5-002 | [`phase5/002_pre_norm.py`](../../phase5/002_pre_norm.py) | 3000 | 0.9227 | 0.9354 | 273.30 | 1631744 |
+| P5-003 | [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py) | 3000 | 0.9369 | 0.9498 | 264.70 | 1620352 |
+| P5-004 | [`phase5/004_rope.py`](../../phase5/004_rope.py) | 3000 | 0.8487 | 0.8644 | 300.40 | 1587584 |
+| P5-005 | [`phase5/005_gqa.py`](../../phase5/005_gqa.py) | 3000 | 0.8432 | 0.8594 | 291.60 | 1456512 |
+| P5-006 | [`phase5/006_swiglu.py`](../../phase5/006_swiglu.py) | 3000 | 0.8483 | 0.8663 | 285.30 | 1464704 |
+| P5-007 | [`phase5/007_qk_norm_gated_attention.py`](../../phase5/007_qk_norm_gated_attention.py) | 3000 | 0.7874 | 0.8056 | 329.20 | 1596288 |
+| P5-008 | [`phase5/008_hybrid_attention.py`](../../phase5/008_hybrid_attention.py) | 3000 | 0.7814 | 0.8008 | 313.90 | 1596288 |
+
+All runs above were produced on a Kaggle `Tesla T4` at seed `1337`.
+They replace an earlier set measured on local `mps`, which turned out not to be reproducible.
+The per-milestone sections below were written against the `mps` numbers; their mechanism analysis stands, but every loss figure quoted inside them is superseded by this table.
+
+## Platform Migration, And What It Invalidated
+
+The first eight milestones were measured on Apple `mps`. Three separate problems made those numbers unusable as a comparison set.
+
+**macOS Low Power Mode halved throughput.** One `M-504` run took `1390.6s` against `762.5s` for the identical script with the setting off. Wall-clock is only comparable when the power mode is fixed.
+
+**`mps` is not reproducible.** Two runs of identical code, identical seed, and identical data diverge:
+
+| Milestone | Run A | Run B | Spread |
+| --- | ---: | ---: | ---: |
+| `M-001` | `3.0537` | `3.0537` | `0.0000` |
+| `M-002` | `1.0161` | `0.9628` | `0.0533` |
+| `M-003` | `0.9563` | `0.9773` | `0.0210` |
+| `M-004` | `0.8760` | `0.8727` | `0.0033` |
+
+A short probe locates the divergence precisely: two `200`-step `mps` runs agree exactly at step `1` and step `10`, differ by `0.000003` at step `50`, and by `0.002513` at step `200`. The same test on CPU is bit-identical at every checkpoint, so the cause is `mps` kernel non-determinism in the backward pass, compounding over training. `torch.use_deterministic_algorithms(True)` does not fix it and does not raise; the runs still diverge by `0.014435` at step `100`.
+
+`M-001` is the exception that proves the mechanism: its collapsed solution is a strong enough attractor that float noise cannot move it.
+
+**Thermal drift across sequential runs.** Rerunning `M-001` through `M-003` back to back gave `770.3s`, `850.4s`, and `724.8s` against original figures of `689.9s`, `663.9s`, and `601.1s`. Every rerun was slower, so a laptop cannot hold wall-clock steady across a batch.
+
+### Why Kaggle T4
+
+A benchmark of the phase-5 model shape, pushed to Kaggle as a self-contained script:
+
+| | local `mps` | Kaggle `T4` |
+| --- | ---: | ---: |
+| benchmark step time | about `300ms` | `90.0ms` |
+| real `M-008` run, `3000` steps | `917.7s` | `313.9s` |
+| same seed twice | diverges by `0.02` to `0.05` | bit-identical |
+| deterministic flags needed | ineffective | none |
+
+The T4 reproduces itself exactly at default settings, at every checkpoint, without `use_deterministic_algorithms`. Enabling that flag costs about `6%` and changes nothing.
+
+Two operational findings worth keeping:
+
+- **`P100` cannot run current PyTorch.** It fails immediately with `CUDA error: no kernel image is available for execution on the device`. `P100` is compute capability `6.0` and Kaggle's PyTorch `2.10+cu128` no longer ships `sm_60` kernels. The accelerator preference is now `T4`, with `P100` removed rather than demoted.
+- **Kaggle allows two concurrent GPU sessions.** Pushing more returns `Maximum batch GPU session count of 2 reached` as an ordinary output line, not a failing exit code, so a batch script that discards push output loses jobs silently. Five of the first eight pushes vanished this way.
+
+Migration cost was one line, because the phase-5 scripts import nothing from the repo:
+
+```python
+DEVICE = "cuda" if torch.cuda.is_available() else "mps"
+```
+
+Results are **not** comparable across devices. The same script and seed gives `0.8040` on `mps` and `0.8008` on `T4`, which is why the whole ladder was rerun rather than extended.
+
+## Revised Conclusions On One Consistent Platform
+
+| Step | Change | Val loss | Delta | Parameters |
+| --- | --- | ---: | ---: | ---: |
+| 501 | vanilla post-norm baseline | `3.0557` | — | `1631488` |
+| 502 | pre-norm | `0.9354` | `-2.1203` | `1631744` |
+| 503 | RMSNorm, no biases | `0.9498` | `+0.0144` | `1620352` |
+| 504 | RoPE | `0.8644` | `-0.0854` | `1587584` |
+| 505 | grouped-query attention | `0.8594` | `-0.0050` | `1456512` |
+| 506 | SwiGLU | `0.8663` | `+0.0069` | `1464704` |
+| 507 | QK-Norm and gated attention | `0.8056` | `-0.0607` | `1596288` |
+| 508 | layerwise hybrid attention | `0.8008` | `-0.0048` | `1596288` |
+
+Three changes move the loss clearly:
+
+- **pre-norm**, by `2.12`, which is the difference between a model that learns and one that does not,
+- **RoPE**, by `0.085`, while removing `32768` parameters,
+- **QK-Norm with gated attention**, by `0.061`, but with `9%` more parameters, so mechanism and capacity are confounded in that number.
+
+Four changes do not move it: RMSNorm `+0.0144`, GQA `-0.0050`, SwiGLU `+0.0069`, hybrid attention `-0.0048`. RMSNorm and SwiGLU actually came out marginally worse here, having looked like wins on `mps`, which is what reading a result out of noise looks like in hindsight.
+
+That is the expected outcome rather than a disappointment:
+
+- RMSNorm is a **simplification**. It removed `11392` parameters and one reduction pass per norm at no measurable quality cost, which is exactly the claim the literature makes.
+- GQA and hybrid attention are **inference-economics mechanisms**. GQA halves the KV cache, hybrid attention bounds the local layers' cache at `WINDOW_SIZE` tokens. Neither can pay off in a training-only benchmark, and both cost nothing measurable here, which is the result that matters.
+- SwiGLU at matched parameters is a modest effect that a `1.5M`-parameter character model over `3000` steps cannot resolve.
+
+**What is still missing is seeds.** Every number here is one deterministic run at seed `1337`. Determinism means each run reproduces itself, not that the measurement is precise; a different seed changes initialization and data order. Differences under roughly `0.02` should not be called from a single seed. At `5` minutes per T4 run, three seeds for all eight milestones is about `2` hours of quota, and that is the step that would turn this table into a measurement.
 
 ## P5-001 Milestone 501 Vanilla Decoder Baseline
 
@@ -396,3 +477,45 @@ The elementwise form was chosen instead, on evidence:
 - Qwen3-Next, Qwen3.5, and Arcee Trinity all ship gated attention in production, applied after the attention output and before the output projection, at under `2%` wall-clock overhead.
 
 The granularity is part of the mechanism rather than a cost knob, so the frontier form was kept and the parameter caveat recorded instead.
+
+## P5-008 Milestone 508 Layerwise Hybrid Attention
+
+- Script: [`phase5/008_hybrid_attention.py`](../../phase5/008_hybrid_attention.py)
+- Date: `2026-08-16`
+- Parameters: `1596288`, identical to `M-507`
+- Final train loss: `0.7814`
+- Final validation loss: `0.8008`
+- Wall-clock time: `313.90s` on a Kaggle `T4`
+- Window size: `64`, one global layer every `4`
+
+What changed from `M-507`:
+
+- six of the eight layers attend only to the last `WINDOW_SIZE` tokens, using a mask that blocks both the future and the distant past,
+- the remaining two layers, at indices `3` and `7`, attend over the whole sequence and carry no positional encoding at all,
+- no parameters were added or removed, since masks are buffers and RoPE has no weights.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.4791 val_loss=4.4798 seconds=3.2
+step=250 train_loss=1.2486 val_loss=1.2554 seconds=27.8
+step=500 train_loss=1.0442 val_loss=1.0431 seconds=53.1
+step=750 train_loss=0.9639 val_loss=0.9651 seconds=79.4
+step=1000 train_loss=0.9070 val_loss=0.9169 seconds=105.8
+step=1250 train_loss=0.8747 val_loss=0.8906 seconds=131.7
+step=1500 train_loss=0.8673 val_loss=0.8649 seconds=157.6
+step=1750 train_loss=0.8478 val_loss=0.8481 seconds=183.7
+step=2000 train_loss=0.8279 val_loss=0.8423 seconds=209.7
+step=2250 train_loss=0.8183 val_loss=0.8192 seconds=235.7
+step=2500 train_loss=0.8073 val_loss=0.8188 seconds=261.8
+step=2750 train_loss=0.7954 val_loss=0.8080 seconds=287.8
+step=3000 train_loss=0.7814 val_loss=0.8008 seconds=313.9
+```
+
+Main lesson:
+
+- Restricting three quarters of the layers to a `64`-token window, and stripping positional encoding from the rest, costs nothing measurable: `0.8008` against `0.8056`, a difference well inside single-seed noise. This is the cleanest attribution in the ladder because the parameter count is unchanged.
+- Local layers do not limit what the model can see, only what each layer sees directly. Reach compounds with depth: `64` tokens at layer `0`, `127` at layer `1`, `190` at layer `2`, then the global layer at `3` makes it exact. The global layers exist to make long range **precise**, not possible, since information arriving through stacked local layers has been averaged at every hop.
+- The NoPE global layers still receive position information indirectly. With the final token held fixed and the preceding `127` shuffled, the last-position logits still move by `0.898`, so position is reaching them through what the local RoPE layers wrote into the residual stream.
+- No speedup is expected or observed. The implementation computes the full `[T, T]` score matrix and then masks it, so masking makes the answer correct without making the arithmetic cheaper. At `T=256` the quadratic part is only about half of attention's cost anyway; at `T=4096` it is `94%`, and at `1M` tokens essentially all of it. This mechanism is aimed at a problem this context length does not have.
+- The genuine payoff is invisible here: a local layer never needs more than `WINDOW_SIZE` keys and values in cache regardless of sequence length, which is what makes million-token context affordable.
