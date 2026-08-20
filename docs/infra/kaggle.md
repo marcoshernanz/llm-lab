@@ -6,17 +6,40 @@ This is a practical repo-local note for running BareTensor experiments on Kaggle
 
 Use this order:
 
-1. TPU `v5e-8`
-2. GPU `T4 x2`
-3. GPU `P100`
+1. TPU `v5e-8`, for JAX work
+2. GPU `T4`, for PyTorch work
+3. GPU `P100`, **broken for PyTorch as of 2026-08**
 
 Rule:
 
-- Try TPU first.
-- If it stays queued too long, cancel it.
-- Then try `T4 x2`.
-- If `T4 x2` stays queued too long, cancel it.
-- Then use `P100`.
+- For PyTorch, use `T4`.
+- `P100` fails immediately with `CUDA error: no kernel image is available for execution on the device`. It is compute capability `6.0` and Kaggle's PyTorch `2.10+cu128` no longer ships `sm_60` kernels. Do not fall back to it.
+- Try TPU first only for JAX.
+
+## Concurrency Limit
+
+Kaggle allows **two concurrent GPU sessions**. Pushing a third returns:
+
+```text
+Kernel push error: Maximum batch GPU session count of 2 reached.
+```
+
+This arrives as ordinary stdout, not a failing exit code, so a batch script that pipes push output to `/dev/null` will silently lose jobs. Always check for `successfully pushed` and retry on the limit message.
+
+## PyTorch Determinism On T4
+
+A `T4` reproduces a training run bit-exactly at default settings, same seed, at every checkpoint. `torch.use_deterministic_algorithms(True)` is unnecessary and costs about `6%`.
+
+For contrast, local Apple `mps` is not reproducible: identical runs diverge by up to `0.05` validation loss over `3000` steps, and `use_deterministic_algorithms` neither fixes it nor raises. Results are also not comparable across devices, so a results table must live on one platform.
+
+## Speed Reference, Phase-5 Model
+
+A `1.6M`-parameter character decoder, `batch 32`, `context 256`, `3000` steps:
+
+| Device | Step time | Full run |
+| --- | ---: | ---: |
+| Apple M4 `mps` | about `300ms` | `918s` |
+| Kaggle `T4` | `90ms` | `314s` |
 
 ## Important Kaggle Constraints
 
