@@ -144,7 +144,7 @@ class LocalSelfAttention(nn.Module):
         mask = ones.triu(diagonal=1) | ones.tril(diagonal=-WINDOW_SIZE)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
-        cos, sin = rope_tables()
+        cos, sin = rope_tables(D_HEAD)
         self.register_buffer("rope_cos", cos)
         self.register_buffer("rope_sin", sin)
 
@@ -189,7 +189,7 @@ class GlobalSelfAttention(nn.Module):
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
 
-        cos, sin = rope_tables()
+        cos, sin = rope_tables(D_ROPE)
         self.register_buffer("rope_cos", cos)
         self.register_buffer("rope_sin", sin)
 
