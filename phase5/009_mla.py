@@ -37,6 +37,7 @@ NUM_KV_HEADS = 2
 assert NUM_Q_HEADS % NUM_KV_HEADS == 0
 assert D_MODEL % NUM_Q_HEADS == 0
 D_HEAD = D_MODEL // NUM_Q_HEADS
+D_ROPE = 16
 D_LATENT = 64
 D_FFN = 344
 NUM_BLOCKS = 8
@@ -170,9 +171,14 @@ class GlobalSelfAttention(nn.Module):
         """Create the projections, the norms, and the causal mask."""
         super().__init__()
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.q_rope_proj = nn.Linear()
         self.kv_down_proj = nn.Linear(D_MODEL, D_LATENT, bias=False)
         self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
         self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
+        self.q_rope_proj = nn.Linear(
+            D_MODEL,
+        )
+
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
