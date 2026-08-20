@@ -199,7 +199,7 @@ class GlobalSelfAttention(nn.Module):
         These layers carry no positional encoding, so the latent keys need no rotation.
         """
         q_c = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS, D_HEAD))  # [B, Hq, T, Dh]
-        q_r = self.q_norm(split_heads(self.q_rope_proj(x), 1, D_ROPE))  # [B, Hq, T, Dh]
+        q_r = self.q_norm(split_heads(self.q_rope_proj(x), NUM_Q_HEADS, D_ROPE))  # [B, Hq, T, Dh]
         q_r = apply_rope(q_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
         q = torch.cat([q_c, q_r], dim=-1)
 
@@ -207,7 +207,7 @@ class GlobalSelfAttention(nn.Module):
         k_c = self.k_norm(
             split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)
         )  # [B, Hq, T, Dh]
-        k_r = self.k_norm(split_heads(self.k_rope_proj(x), NUM_Q_HEADS, D_ROPE))  # [B, Hq, T, Dh]
+        k_r = self.k_norm(split_heads(self.k_rope_proj(x), 1, D_ROPE))  # [B, Hq, T, Dh]
         k_r = apply_rope(k_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
         k = torch.cat([k_c, k_r], dim=-1)
         v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
