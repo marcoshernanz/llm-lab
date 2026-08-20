@@ -209,7 +209,7 @@ class GlobalSelfAttention(nn.Module):
         )  # [B, Hq, T, Dh]
         k_r = self.k_norm(split_heads(self.k_rope_proj(x), 1, D_ROPE))  # [B, Hq, T, Dh]
         k_r = apply_rope(k_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
-        k_r = k_r.expand(-1, NUM_Q_HEADS, -1, -1)  # [B, 1, T, Dr] -> [B, Hq, T, Dr]
+        k_r = k_r.expand(-1, NUM_Q_HEADS, -1, -1)  # [B, Hq, T, Dr]
         k = torch.cat([k_c, k_r], dim=-1)
         v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
 
