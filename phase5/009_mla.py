@@ -171,13 +171,12 @@ class GlobalSelfAttention(nn.Module):
         """Create the projections, the norms, and the causal mask."""
         super().__init__()
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
-        self.q_rope_proj = nn.Linear()
         self.kv_down_proj = nn.Linear(D_MODEL, D_LATENT, bias=False)
         self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
         self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
-        self.q_rope_proj = nn.Linear(
-            D_MODEL,
-        )
+
+        self.q_rope_proj = nn.Linear(D_MODEL, D_ROPE * NUM_Q_HEADS)
+        self.k_rope_proj = nn.Linear(D_MODEL, D_ROPE)
 
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
@@ -193,7 +192,8 @@ class GlobalSelfAttention(nn.Module):
 
         These layers carry no positional encoding, so the latent keys need no rotation.
         """
-        q = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS))  # [B, Hq, T, Dh]
+        q = torch.cat([self.q_proj(x), self.q_rope_proj(x)])
+        q = self.q_norm(split_heads(q, NUM_Q_HEADS))  # [B, Hq, T, Dh]
 
         kv_latent = self.kv_down_proj(x)  # [B, T, Dc]
         k = self.k_norm(split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS))  # [B, Hq, T, Dh]
