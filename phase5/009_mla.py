@@ -192,15 +192,17 @@ class GlobalSelfAttention(nn.Module):
 
         These layers carry no positional encoding, so the latent keys need no rotation.
         """
-        q_c = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS))  # [B, Hq, T, Dh]
-        q_r = self.q_norm(split_heads(self.q_rope_proj(x), 1))  # [B, Hq, T, Dh]
+        q_c = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS, D_HEAD))  # [B, Hq, T, Dh]
+        q_r = self.q_norm(split_heads(self.q_rope_proj(x), 1, D_ROPE))  # [B, Hq, T, Dh]
         q = torch.cat([q_c, q_r], dim=-1)
 
         kv_latent = self.kv_down_proj(x)  # [B, T, Dc]
-        k_c = self.k_norm(split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS))  # [B, Hq, T, Dh]
-        k_r = self.k_norm(split_heads(self.k_rope_proj(x), NUM_Q_HEADS))  # [B, Hq, T, Dh]
+        k_c = self.k_norm(
+            split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)
+        )  # [B, Hq, T, Dh]
+        k_r = self.k_norm(split_heads(self.k_rope_proj(x), NUM_Q_HEADS, D_ROPE))  # [B, Hq, T, Dh]
         k = torch.cat([k_c, k_r], dim=-1)
-        v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS)  # [B, Hq, T, Dh]
+        v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
 
         attn_output = combine_heads(attend(q, k, v, self.causal_mask))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
