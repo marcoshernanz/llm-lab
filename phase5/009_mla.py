@@ -72,10 +72,10 @@ class RMSNorm(nn.Module):
         return normalized * self.weight  # [..., dim]
 
 
-def split_heads(x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H*Dh]
+def split_heads(x: torch.Tensor, num_heads: int, head_dim: int) -> torch.Tensor:  # [B, T, H*Dh]
     """Split the projection into separate attention heads."""
     batch_size, seq_len, _ = x.size()
-    x = x.reshape(batch_size, seq_len, num_heads, D_HEAD)  # [B, T, H, Dh]
+    x = x.reshape(batch_size, seq_len, num_heads, head_dim)  # [B, T, H, Dh]
     return x.transpose(1, 2)  # [B, H, T, Dh]
 
 
