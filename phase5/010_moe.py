@@ -253,8 +253,10 @@ class MixtureOfExperts(nn.Module):
         self.experts = nn.ModuleList([FeedForward(D_EXPERT) for _ in range(NUM_ACTIVE_EXPERTS)])
 
     def forward(self, x: torch.Tensor):
-        r = self.router(x)
-        r = r.topk(dim=-1)
+        batch_size, seq_len, _ = x.size()
+        x = x.resize(-1, D_MODEL)
+
+        scores = torch.sigmoid(self.router(x))
 
 
 class DecoderBlock(nn.Module):
