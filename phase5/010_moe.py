@@ -226,6 +226,8 @@ class MoE(nn.Module):
     def __init__(self):
         super().__init__()
 
+        self.router = nn.Linear(D_MODEL, NUM_EXPERTS)
+
 
 class FeedForward(nn.Module):
     """Gate one projection of the input by another and project back down."""
