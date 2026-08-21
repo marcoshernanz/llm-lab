@@ -228,15 +228,15 @@ class GlobalSelfAttention(nn.Module):
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
 
-class MoE(nn.Module):
+class MixtureOfExperts(nn.Module):
     def __init__(self):
         super().__init__()
 
         self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS)
+        self.up_proj = nn.Linear(D_MODEL, D_EXPERT)
 
     def forward(self, x: torch.Tensor):
         r: torch.Tensor = self.router(x)
-        experts = r.topk(NUM_ACTIVE_EXPERTS, dim=-1)
 
 
 class FeedForward(nn.Module):
