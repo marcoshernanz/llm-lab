@@ -257,6 +257,9 @@ class MixtureOfExperts(nn.Module):
         x = x.resize(-1, D_MODEL)
 
         scores = torch.sigmoid(self.router(x))
+        weights, experts = scores.topk(NUM_ACTIVE_EXPERTS, dim=-1)
+
+        weights /= weights.sum(dim=-1, keepdim=True)
 
 
 class DecoderBlock(nn.Module):
