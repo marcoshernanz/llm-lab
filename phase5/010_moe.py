@@ -222,6 +222,11 @@ class GlobalSelfAttention(nn.Module):
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
 
+class MoE(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+
 class FeedForward(nn.Module):
     """Gate one projection of the input by another and project back down."""
 
