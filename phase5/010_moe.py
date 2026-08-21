@@ -251,7 +251,7 @@ class MixtureOfExperts(nn.Module):
     def __init__(self):
         super().__init__()
         self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS, bias=False)
-        self.experts = nn.ModuleList()
+        self.experts = nn.ModuleList([FeedForward(D_EXPERT) for _ in range(NUM_ACTIVE_EXPERTS)])
 
     def forward(self, x: torch.Tensor):
         pass
