@@ -232,7 +232,10 @@ class MoE(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.router = nn.Linear(D_MODEL, NUM_EXPERTS)
+        self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS)
+
+    def forward(self, x: torch.Tensor):
+        pass
 
 
 class FeedForward(nn.Module):
