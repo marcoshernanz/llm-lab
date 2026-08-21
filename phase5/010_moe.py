@@ -235,7 +235,8 @@ class MoE(nn.Module):
         self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS)
 
     def forward(self, x: torch.Tensor):
-        pass
+        r: torch.Tensor = self.router(x)
+        experts = r.topk(NUM_ACTIVE_EXPERTS, dim=-1)
 
 
 class FeedForward(nn.Module):
