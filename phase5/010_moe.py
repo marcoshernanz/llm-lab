@@ -231,12 +231,12 @@ class GlobalSelfAttention(nn.Module):
 class FeedForward(nn.Module):
     """Gate one projection of the input by another and project back down."""
 
-    def __init__(self):
+    def __init__(self, d_hidden: int):
         """Create the three linear layers of the gated MLP."""
         super().__init__()
-        self.gate_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
-        self.up_proj = nn.Linear(D_MODEL, D_FFN, bias=False)
-        self.down_proj = nn.Linear(D_FFN, D_MODEL, bias=False)
+        self.gate_proj = nn.Linear(D_MODEL, d_hidden, bias=False)
+        self.up_proj = nn.Linear(D_MODEL, d_hidden, bias=False)
+        self.down_proj = nn.Linear(d_hidden, D_MODEL, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the feed-forward block output."""
