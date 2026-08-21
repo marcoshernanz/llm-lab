@@ -228,17 +228,6 @@ class GlobalSelfAttention(nn.Module):
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
 
-class MixtureOfExperts(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS)
-        self.up_proj = nn.Linear(D_MODEL, D_EXPERT)
-
-    def forward(self, x: torch.Tensor):
-        r: torch.Tensor = self.router(x)
-
-
 class FeedForward(nn.Module):
     """Gate one projection of the input by another and project back down."""
 
@@ -256,6 +245,16 @@ class FeedForward(nn.Module):
         x = gate * up  # [B, T, Dff]
         x = self.down_proj(x)  # [B, T, D]
         return x
+
+
+class MixtureOfExperts(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS, bias=False)
+        self.experts = nn.ModuleList()
+
+    def forward(self, x: torch.Tensor):
+        pass
 
 
 class DecoderBlock(nn.Module):
