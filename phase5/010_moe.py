@@ -293,7 +293,10 @@ class Decoder(nn.Module):
         """Create the block stack, making every GLOBAL_EVERY-th block global, and the final norm."""
         super().__init__()
         self.blocks = nn.ModuleList(
-            [DecoderBlock(i % GLOBAL_EVERY == GLOBAL_EVERY - 1) for i in range(NUM_BLOCKS)]
+            [
+                DecoderBlock(i % GLOBAL_EVERY == GLOBAL_EVERY - 1, i < DENSE_BLOCKS)
+                for i in range(NUM_BLOCKS)
+            ]
         )
         self.out_norm = RMSNorm(D_MODEL)
 
