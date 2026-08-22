@@ -268,6 +268,9 @@ class MixtureOfExperts(nn.Module):
             expert_out = expert(tokens[token_index])  # [n, D]
             routed.index_add_(0, token_index, weights[token_index, slot, None] * expert_out)
 
+        out = routed + self.shared(tokens)
+        return out.reshape(batch_size, seq_len, D_MODEL)
+
 
 class DecoderBlock(nn.Module):
     """Apply one pre-norm attention sublayer and one pre-norm MLP sublayer."""
