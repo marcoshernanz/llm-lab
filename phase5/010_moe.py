@@ -255,12 +255,17 @@ class MixtureOfExperts(nn.Module):
 
     def forward(self, x: torch.Tensor):
         batch_size, seq_len, _ = x.size()
-        x = x.resize(-1, D_MODEL)
+        tokens = x.reshape(-1, D_MODEL)  # [B*T, D]
 
-        scores = torch.sigmoid(self.router(x))
-        weights, experts = scores.topk(NUM_ACTIVE_EXPERTS, dim=-1)
+        scores = torch.sigmoid(self.router(tokens))  # [B*T, E]
+        weights, experts = scores.topk(NUM_ACTIVE_EXPERTS, dim=-1)  # [B*T, K] each
+        weights = weights / weights.sum(dim=-1, keepdim=True)  # [B*T, K]
 
-        weights /= weights.sum(dim=-1, keepdim=True)
+        routed = torch.zeros_like(tokens)  # [B*T, D]
+        for index, expert in enumerate(self.experts):
+            token_index, slot = (experts == index).nonzero(as_tuple=True)  # [n], [n]
+            expert_out = expert(tokens[token_index])  # [n, D]
+            routed.index_add_(0, token_index, weights[token_index, slot, None] * expert_out)
 
 
 class DecoderBlock(nn.Module):
