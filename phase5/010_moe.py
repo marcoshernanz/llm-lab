@@ -271,18 +271,18 @@ class MixtureOfExperts(nn.Module):
 class DecoderBlock(nn.Module):
     """Apply one pre-norm attention sublayer and one pre-norm MLP sublayer."""
 
-    def __init__(self, is_global: bool):
+    def __init__(self, is_global: bool, is_dense: bool):
         """Create the attention, feed-forward, and normalization sublayers."""
         super().__init__()
         self.attn = GlobalSelfAttention() if is_global else LocalSelfAttention()
         self.attn_norm = RMSNorm(D_MODEL)
-        self.moe = MixtureOfExperts()
+        self.ffn = FeedForward(D_FFN) if is_dense else MixtureOfExperts()
         self.ffn_norm = RMSNorm(D_MODEL)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the residual output of one decoder block."""
         x = x + self.attn(self.attn_norm(x))  # [B, T, D]
-        x = x + self.ffn(self.moe(x))  # [B, T, D]
+        x = x + self.ffn(self.ffn(x))  # [B, T, D]
         return x
 
 
