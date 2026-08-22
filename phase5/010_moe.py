@@ -276,13 +276,13 @@ class DecoderBlock(nn.Module):
         super().__init__()
         self.attn = GlobalSelfAttention() if is_global else LocalSelfAttention()
         self.attn_norm = RMSNorm(D_MODEL)
-        self.ffn = FeedForward()
+        self.moe = MixtureOfExperts()
         self.ffn_norm = RMSNorm(D_MODEL)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the residual output of one decoder block."""
         x = x + self.attn(self.attn_norm(x))  # [B, T, D]
-        x = x + self.ffn(self.ffn_norm(x))  # [B, T, D]
+        x = x + self.ffn(self.moe(x))  # [B, T, D]
         return x
 
 
