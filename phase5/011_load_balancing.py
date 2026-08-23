@@ -260,6 +260,7 @@ class MixtureOfExperts(nn.Module):
         """Create the router, the routed experts, and the shared expert."""
         super().__init__()
         self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS, bias=False)
+        self.router_bias = nn.Buffer(torch.zeros(NUM_ROUTED_EXPERTS))
         self.experts = nn.ModuleList([FeedForward(D_EXPERT) for _ in range(NUM_ROUTED_EXPERTS)])
         self.shared_expert = FeedForward(D_SHARED)
         self.register_buffer("expert_load", torch.zeros(NUM_ROUTED_EXPERTS), persistent=False)
@@ -270,7 +271,8 @@ class MixtureOfExperts(nn.Module):
         tokens = x.reshape(-1, D_MODEL)  # [B*T, D]
 
         scores = torch.sigmoid(self.router(tokens))  # [B*T, E]
-        weights, chosen = scores.topk(NUM_ACTIVE_EXPERTS, dim=-1)  # [B*T, K] each
+        _, chosen = (scores + self.router_bias).topk(NUM_ACTIVE_EXPERTS, dim=-1)  # [B*T, K] each
+        weights = scores.gather(-1, chosen)  # [B*T, K] each
         weights = weights / weights.sum(dim=-1, keepdim=True)  # [B*T, K]
         if self.training:
             self.expert_load.copy_(torch.bincount(chosen.flatten(), minlength=NUM_ROUTED_EXPERTS))
