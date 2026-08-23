@@ -74,7 +74,7 @@ As of 2026-08-23:
 - The baseline does not learn at the control learning rate. It collapses to character-unigram loss by step `250`. A control sweep confirms the code is correct and the failure is a post-norm and learning-rate interaction.
 - Milestone 511 was rescoped after `M-510` measured no routing collapse at `4` of `8` experts. It now changes the sparsity ratio first and balances second.
 
-### Additions To The Frozen Control
+### Platform Notes
 
 - Runs execute on a Kaggle `T4`, which reproduces itself bit-exactly at default settings. `P100` is not an option: it fails with `no kernel image is available for execution on the device`, since Kaggle's PyTorch no longer ships `sm_60` kernels.
 - Kaggle permits two concurrent GPU sessions, and reports the limit as ordinary output rather than a failing exit code.
@@ -162,7 +162,7 @@ These are the rows where all three agree. They are the only ones that deserve to
 | Reduced or removed RoPE | `NoPE` (K3) or partial RoPE on `64` dims (V4, GLM) — nobody rotates the full head |
 | Multi-token prediction at depth `1` | All three; all three reuse it for speculative decoding |
 
-### What Is Newly Converging, And Was Missing From The Old Roadmap
+### Two Mechanisms Converging Right Now
 
 Two mechanisms went from "one lab does it" to "two of three independently shipped it" in this window. Both are now milestones.
 
@@ -178,7 +178,7 @@ The shared diagnosis is stated plainly in both reports: SwiGLU multiplies two un
 - Kimi K3 ships **Attention Residuals**: each layer attends over the outputs of all preceding layers instead of reading one accumulated sum.
 - DeepSeek-V4 ships **mHC**: the residual stream is widened `4x` and mixed by a matrix constrained to the doubly-stochastic Birkhoff polytope, which bounds its spectral norm at `1`.
 
-The old roadmap listed this as speculative and "a plausible loser." Two frontier models shipping it in one quarter upgrades it to a real mechanism with a real justification.
+Two frontier models shipping this in one quarter, by different routes, is what makes it a real mechanism rather than a speculative one.
 
 ### Where They Genuinely Disagree
 
@@ -254,7 +254,7 @@ vocabulary that is `4.585`, and every milestone starts within `0.07` of it. PyTo
 against `45x` for the standard init. Nothing about this is exotic; it is what every reference
 implementation does, and the ladder simply did not have it until it was audited.
 
-Model size envelope, revised `2026-08-23`:
+Model size envelope:
 
 - Embedding dim: `256`
 - Attention heads: `8` query, `4` key/value, head dim `32`
@@ -283,12 +283,11 @@ So the small model was wasting a quarter of the GPU, and the fix is a wider mode
 larger batch: widening buys capacity *and* utilization, while a larger batch would change the
 optimization and force the learning rate to be re-probed.
 
-Head count moved from `4` to `8` for a separate reason. Five of the first nine measured deltas were
-invisible, and four of those five — GQA, hybrid attention, latent attention, and arguably MoE — are
-attention- and width-shape mechanisms that a `4`-head, `128`-wide model starves. Sharing `4` heads
-down to `2` is barely a ratio, and compressing `128` dims into a `64`-wide latent leaves almost no
-redundancy to exploit, which is exactly why DeepSeek's `4 * d_head` latent rule did not transfer.
-Head dim stays at `32`, so per-head behavior is unchanged and only the count moves.
+Head count is `8` rather than `4` because the attention-shape mechanisms need something to work
+with. GQA, hybrid attention, and latent attention all trade head structure for memory, and a
+four-head model has almost nothing to trade: sharing `4` heads down to `2` is barely a ratio, and
+there is little redundancy across four heads for a latent to compress. Head dim is `32`, so each
+head behaves the same as it would at any other count.
 
 Cost at this size: one `3000`-step run is roughly `12` to `17` minutes on a `T4`, and the full
 `18`-milestone ladder at three seeds is about `11` to `15` hours, against a weekly GPU quota near
@@ -734,7 +733,7 @@ Track: Numerical stability
 
 **Goal.** Cap both branches of the gated feed-forward block so activation outliers cannot form.
 
-**Why this milestone is new.** It did not exist in the previous roadmap. It is here because two of the three frontier models independently added it in the same quarter, each having hit the same wall and patched it differently. That is the strongest possible signal that the defect is real and belongs to a mechanism this ladder already built.
+**Why this milestone exists.** Two of the three frontier models independently added activation bounding in the same quarter, each having hit the same wall and patched it differently. That is the strongest possible signal that the defect is real and belongs to a mechanism this ladder already built.
 
 **The problem.** Look again at what `M-506` shipped:
 
@@ -872,7 +871,7 @@ Track: Depth
 
 **Goal.** Replace the plain residual connection with one that lets each layer read from all preceding layers selectively.
 
-**Why this milestone was upgraded.** The previous roadmap listed residual-stream changes as speculative and "a plausible loser at `8` layers." Two of the three frontier models then shipped one, independently, in the same quarter. It is now a real mechanism with a real justification.
+**Why this milestone matters.** Two of the three frontier models ship a residual-stream replacement, independently and by different routes. At `8` layers it is a plausible loser, which is exactly why it is worth measuring rather than assuming.
 
 **The problem.** Kimi K3 states it in one sentence: standard residual connections "compress all prior information into a single state `h_l` over depth — a bottleneck reminiscent of RNNs over time." Layer `l` sees exactly one vector, the running sum of everything before it. It cannot ask for layer `3`'s output specifically; that output has already been added into an undifferentiated total, possibly swamped by later contributions.
 
