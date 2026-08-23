@@ -35,15 +35,15 @@ SEED = 1337
 # N: number of tokens routed to one expert, which varies per expert
 
 CONTEXT_LEN = 256
-D_MODEL = 128
-NUM_Q_HEADS = 4
-NUM_KV_HEADS = 2
+D_MODEL = 256
+NUM_Q_HEADS = 8
+NUM_KV_HEADS = 4
 assert NUM_Q_HEADS % NUM_KV_HEADS == 0
 assert D_MODEL % NUM_Q_HEADS == 0
 D_HEAD = D_MODEL // NUM_Q_HEADS
-D_ROPE = 16
+D_ROPE = D_HEAD // 2
 D_LATENT = 64
-D_FFN = 344
+D_FFN = 8 * D_MODEL // 3
 NUM_BLOCKS = 8
 INIT_STD = 0.02
 ROPE_BASE = 10000.0
@@ -54,8 +54,8 @@ assert NUM_BLOCKS % GLOBAL_EVERY == 0
 
 NUM_ROUTED_EXPERTS = 8
 NUM_ACTIVE_EXPERTS = 4
-D_EXPERT = 64
-D_SHARED = 88
+D_EXPERT = 128
+D_SHARED = 128
 DENSE_BLOCKS = 1
 
 BATCH_SIZE = 32
@@ -197,7 +197,7 @@ class GlobalSelfAttention(nn.Module):
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
         self.q_norm = RMSNorm(D_HEAD)
-        self.k_norm = RMSNorm(D_HEAD)
+        self.kv_norm = RMSNorm(D_LATENT)
 
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.register_buffer("causal_mask", mask)
@@ -211,15 +211,16 @@ class GlobalSelfAttention(nn.Module):
 
         Keys and queries are split in two: content dims carry no rotation so the latent
         up-projection stays foldable, and a small rope path carries position instead.
+        The norm sits on the latent for the same reason, since normalizing the
+        reconstructed key would put a per-key rescale in front of that projection.
         """
         q_c = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS, D_HEAD))  # [B, Hq, T, Dh]
         q_r = split_heads(self.q_rope_proj(x), NUM_Q_HEADS, D_ROPE)  # [B, Hq, T, Dr]
         q_r = apply_rope(q_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dr]
         q = torch.cat([q_c, q_r], dim=-1)  # [B, Hq, T, Dh+Dr]
 
-        kv_latent = self.kv_down_proj(x)  # [B, T, Dc]
+        kv_latent = self.kv_norm(self.kv_down_proj(x))  # [B, T, Dc]
         k_c = split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
-        k_c = self.k_norm(k_c)  # [B, Hq, T, Dh]
         k_r = split_heads(self.k_rope_proj(x), 1, D_ROPE)  # [B, 1, T, Dr] one shared head
         k_r = apply_rope(k_r, self.rope_cos, self.rope_sin)  # [B, 1, T, Dr]
         k_r = k_r.expand(-1, NUM_Q_HEADS, -1, -1)  # [B, Hq, T, Dr]
@@ -271,7 +272,8 @@ class MixtureOfExperts(nn.Module):
         scores = torch.sigmoid(self.router(tokens))  # [B*T, E]
         weights, chosen = scores.topk(NUM_ACTIVE_EXPERTS, dim=-1)  # [B*T, K] each
         weights = weights / weights.sum(dim=-1, keepdim=True)  # [B*T, K]
-        self.expert_load = torch.bincount(chosen.flatten(), minlength=NUM_ROUTED_EXPERTS)  # [E]
+        if self.training:
+            self.expert_load.copy_(torch.bincount(chosen.flatten(), minlength=NUM_ROUTED_EXPERTS))
 
         routed = torch.zeros_like(tokens)  # [B*T, D]
         for index, expert in enumerate(self.experts):
@@ -322,15 +324,24 @@ class Decoder(nn.Module):
         return self.out_norm(x)  # [B, T, D]
 
 
+def init_weights(module: nn.Module) -> None:
+    """Draw every weight from one narrow normal, as modern language models do."""
+    if isinstance(module, (nn.Linear, nn.Embedding)):
+        nn.init.normal_(module.weight, std=INIT_STD)
+    bias = getattr(module, "bias", None)
+    if isinstance(bias, nn.Parameter):
+        nn.init.zeros_(bias)
+
+
 class LanguageModel(nn.Module):
     """Embed tokens, run the decoder, and predict next-token logits."""
 
     def __init__(self, vocab_size: int):
-        """Create the embedding table and the decoder stack."""
+        """Create the embedding table and the decoder stack, then initialize the weights."""
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.decoder = Decoder()
-        nn.init.normal_(self.embed_tokens.weight, std=INIT_STD)
+        self.apply(init_weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
         """Return next-token logits for one batch of token ids."""
@@ -373,9 +384,9 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:  # [B,
 
 
 def expert_load_share(model: LanguageModel) -> torch.Tensor:  # [E]
-    """Return the fraction of routed tokens each expert received in the last forward pass."""
+    """Return the fraction of routed tokens each expert received in the last training step."""
     mixtures = [m for m in model.modules() if isinstance(m, MixtureOfExperts)]
-    load = torch.stack([m.expert_load for m in mixtures]).sum(dim=0).float()  # [E]
+    load = torch.stack([m.expert_load for m in mixtures]).sum(dim=0)  # [E]
     return load / load.sum()  # [E]
 
 
