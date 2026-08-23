@@ -28,8 +28,8 @@ SEED = 1337
 # Dff: feed-forward dim
 
 CONTEXT_LEN = 256
-D_MODEL = 128
-NUM_HEADS = 4
+D_MODEL = 256
+NUM_HEADS = 8
 assert D_MODEL % NUM_HEADS == 0
 D_HEAD = D_MODEL // NUM_HEADS
 D_FFN = 4 * D_MODEL
@@ -158,17 +158,25 @@ class Decoder(nn.Module):
         return self.out_norm(x)  # [B, T, D]
 
 
+def init_weights(module: nn.Module) -> None:
+    """Draw every weight from one narrow normal, as modern language models do."""
+    if isinstance(module, (nn.Linear, nn.Embedding)):
+        nn.init.normal_(module.weight, std=INIT_STD)
+    bias = getattr(module, "bias", None)
+    if isinstance(bias, nn.Parameter):
+        nn.init.zeros_(bias)
+
+
 class LanguageModel(nn.Module):
     """Embed tokens, run the decoder, and predict next-token logits."""
 
     def __init__(self, vocab_size: int):
-        """Create the embedding tables and the decoder stack."""
+        """Create the embedding tables and the decoder stack, then initialize the weights."""
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.embed_positions = nn.Embedding(CONTEXT_LEN, D_MODEL)
         self.decoder = Decoder()
-        nn.init.normal_(self.embed_tokens.weight, std=INIT_STD)
-        nn.init.normal_(self.embed_positions.weight, std=INIT_STD)
+        self.apply(init_weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
         """Return next-token logits for one batch of token ids."""
