@@ -3,16 +3,47 @@
 This document defines the fifth learning phase of the repo.
 
 Phase 5 exists because the repo has never built a *current* language model.
-It has built a correct one, a scaled one, a handwritten one, and a modestly modernized one, but the architecture that frontier labs actually shipped in 2026 contains roughly ten mechanisms that this repo has never implemented.
+It has built a correct one, a scaled one, a handwritten one, and a modestly modernized one, but the architecture that frontier labs actually shipped in 2026 contains roughly fifteen mechanisms that this repo has never implemented.
 
 The goal of phase 5 is to close that gap the same way phase 1 closed the transformer gap:
 start from a vanilla decoder-only transformer and add one mechanism at a time until the model is the modern thing.
 
-For the run history from this path, see `learning_log.md`, which is created when the first milestone completes.
+Every milestone below is written to the same five-part shape, because the *why* is the part that survives:
+
+1. **Goal** — the one sentence version.
+2. **The problem** — what is actually broken in the architecture we have.
+3. **What the field tried** — the dead ends and partial fixes, in order, because the solution only makes sense against them.
+4. **The solution that won** — thorough, with the mathematics.
+5. **Implementation decisions** — the small forks resolved in advance, so a later session does not re-litigate them.
+
+For the run history, see [learning_log.md](learning_log.md).
+
+## Milestone Index
+
+| # | Milestone | One line | Status |
+| --- | --- | --- | --- |
+| 501 | Vanilla decoder-only transformer | The 2017/GPT-2 reference point everything is measured against | done |
+| 502 | Pre-norm residual stream | Move the norm inside the branch so depth has an identity path | done |
+| 503 | RMSNorm and bias removal | Drop mean-centering and every bias; same loss, fewer parameters | done |
+| 504 | Rotary position embeddings | Rotate q and k so attention scores depend on distance, not index | done |
+| 505 | Grouped-query attention | Share KV heads across query heads to shrink the KV cache | done |
+| 506 | SwiGLU feed-forward | Multiplicative gating in the MLP, at matched parameters | done |
+| 507 | QK-Norm and gated attention | Normalize q/k before the score; gate the attention output | done |
+| 508 | Layerwise hybrid attention | Three sliding-window layers per one global NoPE layer | done |
+| 509 | Multi-head latent attention | Compress KV to a latent on the global layers, with decoupled RoPE | done |
+| 510 | Sparse mixture-of-experts | Fine-grained routed experts plus a shared expert, matched active cost | done |
+| 511 | Real sparsity and loss-free balancing | Make routing actually sparse, then balance it with a selection-only bias | next |
+| 512 | Bounded feed-forward activations | Cap both GLU branches so outliers cannot form | planned |
+| 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | planned |
+| 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | planned |
+| 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | planned |
+| 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | planned |
+| 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | planned |
+| 518 | Modern reference model | One integrated model plus the full ablation table | planned |
 
 ## Current Status
 
-As of 2026-08-16:
+As of 2026-08-23:
 
 - Milestones 501 through 510 are complete and recorded as `P5-001` through `P5-010`.
 - All runs live on a Kaggle `Tesla T4` at seed `1337`. The earlier `mps` numbers were discarded: `mps` is not reproducible, two identical runs diverging by up to `0.053` validation loss, and a laptop cannot hold wall-clock steady across a batch of runs.
@@ -33,7 +64,7 @@ As of 2026-08-16:
 - Three mechanisms move the loss: pre-norm, RoPE, and QK-Norm with gated attention. The last of those also adds `9%` parameters, so its number confounds mechanism with capacity.
 - Five do not: RMSNorm, GQA, SwiGLU, hybrid attention, and latent attention are all within single-seed noise. That is the expected result. RMSNorm is a simplification, the three attention mechanisms are inference economics with no cache present during training, and SwiGLU at matched parameters is too small an effect for this model size.
 - The baseline does not learn at the control learning rate. It collapses to character-unigram loss by step `250`. A control sweep confirms the code is correct and the failure is a post-norm and learning-rate interaction.
-- Milestone 511 needs rescoping before it is run. Routing did not collapse at `4` of `8` experts, so auxiliary-loss-free balancing has nothing to fix; a genuinely sparse configuration is a prerequisite, and it costs roughly `7x` the feed-forward parameters.
+- Milestone 511 was rescoped after `M-510` measured no routing collapse at `4` of `8` experts. It now changes the sparsity ratio first and balances second.
 
 ### Additions To The Frozen Control
 
@@ -51,7 +82,7 @@ That leaves phase 4 blocked on a question it cannot answer itself: **profile wha
 
 `phase4/006_char_decoder_rope_gqa_swiglu.py` is a 2023-era architecture.
 Profiling it, then writing Triton kernels for it, would teach the workflow against a workload nobody runs anymore.
-The hot paths in a 2026 model are not the hot paths in a dense multi-head decoder: they are sparse expert dispatch, compressed KV attention, and chunked linear-attention recurrences.
+The hot paths in a 2026 model are not the hot paths in a dense multi-head decoder: they are sparse expert dispatch, compressed or selected KV attention, and chunked linear-attention recurrences.
 
 So phase 5 comes first and produces the thing phase 4 profiles.
 This matches the repo thesis in [project_direction.md](../meta/project_direction.md): freeze a real target, then rebuild the important parts at a lower level.
@@ -68,69 +99,116 @@ Build a vanilla decoder-only transformer, then modernize it one mechanism at a t
 2. normalization and position modernization,
 3. attention modernization,
 4. feed-forward and sparsity modernization,
-5. objective and optimizer modernization,
-6. one integrated modern reference model with an ablation table.
+5. numerical-stability modernization,
+6. objective, depth, and optimizer modernization,
+7. one integrated modern reference model with an ablation table.
 
 Every milestone must be explainable from mechanism.
 If a change cannot be explained beyond "the frontier labs do it," it does not belong in this phase yet.
 
-## What The 2026 Frontier Converged On
+## The Evidence Base: Three Frontier Models, August 2026
 
-This section is the evidence base for the target architecture.
-It was compiled from the Kimi K3 and DeepSeek-V4 technical reports directly, plus secondary coverage of GLM-5, Qwen3.5, MiniMax, and the open-weight architecture galleries.
+This section was rebuilt from the primary technical reports rather than from recollection, and it is deliberately narrow: only models that were state of the art within three months of `2026-08-23`.
 
-Near-universal across every serious 2026 model:
+Sources read directly:
 
-| Component | Status | Notes |
-| --- | --- | --- |
-| Pre-norm + RMSNorm, no biases | universal | LayerNorm survives only in legacy models |
-| RoPE | universal | often partial RoPE, or NoPE on a subset of layers |
-| SwiGLU feed-forward | universal | Kimi K3 caps both branches (SiTU-GLU) to control activation outliers |
-| GQA as the floor, MLA at flagship scale | universal | KV-cache pressure is the driver |
-| QK-Norm on queries and keys | near-universal | dropped only where it interacts badly with very long context |
-| Sparse MoE with fine-grained routed experts plus shared experts | universal above roughly 100B | first block or blocks stay dense |
-| Sigmoid router with auxiliary-loss-free load balancing | universal in MoE models | a per-expert bias steers dispatch without touching the mixture weights |
-| Layerwise hybrid attention, roughly 3 local to 1 global | the dominant 2026 shift | local mixer is sliding-window, linear, or delta-rule |
-| Gated attention output | rapidly standard | data-dependent gate on the attention output; mitigates attention sinks |
-| Multi-token prediction | common, not universal | training-time auxiliary head, optionally reused for speculative decoding |
-| Muon for matrix parameters | frontier standard | Kimi K3 uses a per-head variant; DeepSeek-V4 adopted Muon in V4 |
-| Untied input and output embeddings | modern default at scale | small models still tie |
+- **Kimi K3**, [arXiv:2607.24653](https://arxiv.org/abs/2607.24653), full architecture section (§2.1 through §2.5).
+- **DeepSeek-V4**, [arXiv:2606.19348](https://arxiv.org/abs/2606.19348), architecture (§2) and model setups (§4.2.1).
+- **GLM-5.2 / GLM-5.3**, architecture teardown and release notes. GLM-5.3 shipped `2026-08-14` on the **same architecture as GLM-5.2**; its entire gain came from scaled post-training. So for architectural purposes GLM-5.3 *is* GLM-5.2, and that itself is a finding: one of the three frontier labs shipped a major release with zero architecture change.
 
-Concrete anchors:
+### Side-By-Side
 
-- **Kimi K3** (2.78T total, 104.2B active, 93 layers): 3 Kimi-Delta-Attention layers to 1 Gated MLA layer, plus one extra global layer at the end of the backbone; **NoPE everywhere**, with position carried by the linear-attention recurrence; 896 routed experts with 16 active per token and 2 shared experts; sigmoid router with Quantile Balancing instead of an auxiliary loss; SiTU-GLU; an RMSNorm inserted between routed-expert aggregation and the up-projection; attention residuals across depth; 1 MTP layer; 1 dense layer; per-head Muon.
-- **DeepSeek-V4** (V4-Pro 1.6T total / 49B active, V4-Flash 284B / 13B): keeps DeepSeekMoE and the V3 MTP configuration unchanged; changes the router affinity function from sigmoid to `sqrt(softplus)`; keeps auxiliary-loss-free balancing plus a small sequence-wise balance loss; replaces the dense FFN in the first several blocks with hash-routed MoE; introduces manifold-constrained hyper-connections (`mHC`) in place of plain residual connections; interleaves Compressed Sparse Attention with Heavily Compressed Attention; uses Muon.
-- **GLM-5** (744B / 40B active): MLA plus DeepSeek Sparse Attention, partial RoPE, QK-Norm, 256 routed experts with top-8 and 1 shared expert, sigmoid loss-free routing.
-- **Qwen3.5** (397B / 17B active): hybrid Gated DeltaNet with gated full attention, sparse MoE.
+| | Kimi K3 | DeepSeek-V4-Pro | GLM-5.2 / 5.3 |
+| --- | --- | --- | --- |
+| Total / active | `2.78T` / `104.2B` | `1.6T` / `49B` | `744B` / `~40B` |
+| Layers | `93` | `61` | `78` |
+| Hidden dim | `7168` | `7168` | `6144` |
+| Attention | hybrid `3` KDA : `1` gated MLA | interleaved CSA / HCA | MLA + DeepSeek Sparse Attention |
+| Sequence trick | linear-attention recurrence | KV compressed along *sequence* | top-`2048` token selection per query |
+| Position | **NoPE everywhere** | partial RoPE, last `64` dims | partial RoPE, `64` of `256` |
+| Routed experts | `896`, top-`16`, `2` shared | `384`, top-`6`, `1` shared | `256`, top-`8`, `1` shared |
+| Expert hidden | `3072` (in a `3584` latent) | `3072` | `2048` |
+| Sparsity | `1.8%` | `1.6%` | `3.1%` |
+| Router affinity | `Sigmoid` | `Sqrt(Softplus)` | `Sigmoid` |
+| Balancing | Quantile Balancing | loss-free bias + small sequence-wise loss | loss-free bias |
+| Dense blocks | `1` | `0`, first `3` are hash-routed MoE | `3` |
+| FFN activation | **SiTU-GLU**, softcapped | **SwiGLU clamped** to `[-10, 10]` | SwiGLU |
+| Attention normalization | `L2Norm` on q/k, head RMSNorm | RMSNorm on q and KV entries | MLA-internal |
+| "Attend to nothing" | full-rank sigmoid output gate | learnable sink logit in denominator | — |
+| Residual stream | **Block Attention Residuals** | **mHC**, width `4`, Sinkhorn `20` | plain |
+| MTP | `1` layer | depth `1` | `1` layer |
+| Optimizer | Per-Head Muon | Muon + AdamW split | not documented |
 
-The useful counter-signal:
+### What Is Actually Unanimous
 
-- **MiniMax M2 and M2.5 went back to plain full attention.** They trained hundreds of billions to trillions of tokens on sliding-window and hybrid variants and found all of them worse on retrieval, multi-hop reasoning, and in-context learning, with the gap widening above 32K context after fine-tuning. They only shipped sparse attention in M3, once it was production-ready.
+These are the rows where all three agree. They are the only ones that deserve to be called settled.
 
-That matters for this phase.
-It means the hybrid-attention milestone is a **measurement**, not a foregone conclusion, and the honest result may be that full attention wins at this scale.
+| Mechanism | Why it is unanimous |
+| --- | --- |
+| Pre-norm, RMSNorm, no biases | Nobody has shipped a post-norm or LayerNorm frontier model in years |
+| Fine-grained MoE with shared experts | All three; the ratios differ, the shape does not |
+| Sparsity near `2%`, not `50%` | `1.6%`, `1.8%`, `3.1%` — the ladder's `50%` is not sparse |
+| Auxiliary-loss-free balancing | A bias on *selection only*, never on the mixture weights |
+| Sub-quadratic attention | Unanimous in intent, three different mechanisms |
+| Query/key normalization before the score | Unanimous, and it is why DeepSeek-V4 could drop QK-Clip entirely |
+| Reduced or removed RoPE | `NoPE` (K3) or partial RoPE on `64` dims (V4, GLM) — nobody rotates the full head |
+| Multi-token prediction at depth `1` | All three; all three reuse it for speculative decoding |
+
+### What Is Newly Converging, And Was Missing From The Old Roadmap
+
+Two mechanisms went from "one lab does it" to "two of three independently shipped it" in this window. Both are now milestones.
+
+**1. Bounded feed-forward activations.** Two labs hit the same wall and patched it two different ways in the same quarter:
+
+- Kimi K3 introduced **SiTU-GLU**, applying a smooth cap `softcap(x, β) = β·tanh(x/β)` to *both* branches, with `β₁ = 4` on the gate and `β₂ = 25` on the up branch, bounding the product at `100`.
+- DeepSeek-V4 **clamped SwiGLU** to `[-10, 10]` on the linear branch and capped the gate at `10`, reporting that it "effectively eliminates outliers" and was one of only two techniques that fixed their loss spikes.
+
+The shared diagnosis is stated plainly in both reports: SwiGLU multiplies two unbounded factors, so coincident large coordinates produce activation outliers that break low-precision arithmetic. That is a real, explainable defect in a mechanism this ladder already built at `M-506`.
+
+**2. The residual stream is a bottleneck.** Also two of three, also independently:
+
+- Kimi K3 ships **Attention Residuals**: each layer attends over the outputs of all preceding layers instead of reading one accumulated sum.
+- DeepSeek-V4 ships **mHC**: the residual stream is widened `4x` and mixed by a matrix constrained to the doubly-stochastic Birkhoff polytope, which bounds its spectral norm at `1`.
+
+The old roadmap listed this as speculative and "a plausible loser." Two frontier models shipping it in one quarter upgrades it to a real mechanism with a real justification.
+
+### Where They Genuinely Disagree
+
+Honesty requires listing these separately, because the roadmap must not present a contested choice as settled.
+
+- **How to make attention sub-quadratic.** K3 uses a linear-attention recurrence, V4 compresses along the sequence axis, GLM selects top-`k` real tokens. These are three different bets. MiniMax is a fourth: after publicly reporting that sliding-window and hybrid variants were *worse* on retrieval and multi-hop reasoning, they shipped M3 in June 2026 with block-level selection over uncompressed KV — closest to GLM's approach, and a pointed rejection of compression.
+- **Router affinity.** Two use `Sigmoid`; DeepSeek-V4 switched to `Sqrt(Softplus)`. One lab changing its mind once is not a trend.
+- **Whether early blocks stay dense.** GLM keeps `3` dense, K3 keeps `1`, V4 keeps **none** and hash-routes the first `3` instead. Complete disagreement on a detail this ladder has already made a decision about.
+- **MLA's future.** GLM-5.2 still uses it. DeepSeek invented it and has now moved past it, on the grounds that at a million tokens the sequence length dominates memory, not the head count.
+
+### The One Result That Should Temper Everything Below
+
+MiniMax trained hundreds of billions to trillions of tokens on sliding-window and hybrid attention and found them **worse**, with the gap widening above `32K` context. They shipped sparse attention only once their own variant was production-ready, and it is the least aggressive of the four.
+
+That matters here. It means the attention-layout milestones are **measurements, not foregone conclusions**, and the honest result at this scale may well be that full attention wins.
 
 ## Target Architecture
 
-This is the frozen end state for milestone 516.
+This is the frozen end state for milestone 518.
 Every milestone before it is a step along one of these rows.
 
-| Component | Vanilla start (M-501) | Phase-5 end state (M-516) |
+| Component | Vanilla start (M-501) | Phase-5 end state (M-518) |
 | --- | --- | --- |
 | Normalization | LayerNorm, post-norm, biases everywhere | RMSNorm, pre-norm plus final norm, no biases anywhere |
 | Positions | learned absolute position embedding | RoPE on local layers, NoPE on global layers |
-| Attention layout | dense multi-head attention in every layer | 3 local to 1 global, last layer always global |
+| Attention layout | dense multi-head attention in every layer | `3` local to `1` global, last layer always global |
 | Local mixer | — | gated linear attention with a delta-rule update |
-| Global mixer | — | gated MLA with QK-Norm and a data-dependent output gate |
-| Feed-forward | GELU MLP at 4x width | block 0 dense SwiGLU; the rest fine-grained MoE with routed plus shared experts, sigmoid top-k router, auxiliary-loss-free balancing bias, RMSNorm before the up-projection |
-| Residual stream | plain residual | attention residuals or hyper-connections, kept only if measured to earn it |
-| Objective | next-token cross-entropy | next-token cross-entropy plus a multi-token-prediction auxiliary loss |
+| Global mixer | — | gated MLA, QK-Norm, output gate, learnable attention sink |
+| Feed-forward | GELU MLP at `4x` width | block `0` dense; the rest fine-grained MoE, `~3%` sparsity, shared expert, sigmoid router, loss-free balancing bias |
+| Activation bounds | none | both GLU branches softcapped |
+| Residual stream | plain residual | block attention residuals |
+| Objective | next-token cross-entropy | plus a depth-`1` multi-token-prediction loss |
 | Embeddings | tied input and output | untied |
-| Optimizer | AdamW | Muon on 2D matrices, AdamW on everything else |
+| Optimizer | AdamW | Muon on 2D matrices, AdamW on embeddings, norms, and the head |
 
 ## The Frozen Control
 
-Everything in this list is identical across all sixteen milestones.
+Everything in this list is identical across all eighteen milestones.
 A milestone that changes the control is not a valid milestone.
 
 Data:
@@ -143,12 +221,12 @@ Data:
 
 Trainer:
 
-- Device: `mps`
+- Device: Kaggle `Tesla T4`
 - Seed: `1337`
 - Sequence length: `256`
 - Batch size: `32`
 - Train steps: `3000`
-- Optimizer: `AdamW`, learning rate `3e-3`, until milestone 515 changes it deliberately
+- Optimizer: `AdamW`, learning rate `3e-3`, until milestone 517 changes it deliberately
 - Gradient clipping: global norm `1.0`
 - Eval interval: `250` steps
 - Eval batches: `32`
@@ -158,16 +236,13 @@ Model size envelope:
 - Embedding dim: `128`
 - Attention heads: `4`, head dim `32`
 - Decoder blocks: `8`, divisible by four so the 3:1 hybrid pattern is exact
-- Dense feed-forward hidden dim: `512`
+- Dense feed-forward hidden dim: `512`, or `344` once gated
 - Roughly `1.6M` parameters at the vanilla starting point
 
-The size was chosen by measurement, not by taste.
-On the development machine (Apple M4, `16GB`), a timing sweep over candidate shapes gave `230ms` per step at `128`-dim and six blocks, `294ms` at the chosen shape, `549ms` at `192`-dim and eight blocks, and `935ms` at `256`-dim and eight blocks.
-The chosen shape puts a full `3000`-step run at roughly `15` minutes, which keeps sixteen milestones tractable on a laptop.
-Naive implementations of MoE dispatch and chunked linear attention will be several times slower than that, which is expected and must be reported rather than hidden.
+The size was chosen by measurement. On the development machine (Apple M4, `16GB`), a timing sweep gave `230ms` per step at `128`-dim and six blocks, `294ms` at the chosen shape, `549ms` at `192`-dim and eight blocks, and `935ms` at `256`-dim and eight blocks. On the `T4` the chosen shape runs a `3000`-step milestone in roughly five minutes.
 
 The learning rate deserves a specific note, because it is the one control setting that is unfair to milestone 501 on purpose.
-A short probe at `400` steps on the chosen shape gave:
+A short probe at `400` steps gave:
 
 | Configuration | Validation loss at step 400 |
 | --- | ---: |
@@ -176,7 +251,7 @@ A short probe at `400` steps on the chosen shape gave:
 | post-norm, learning rate `3e-4` | `2.332` |
 | pre-norm, learning rate `3e-3` | `1.713` |
 
-Post-norm at eight blocks cannot use the learning rate that the rest of the ladder wants, and lowering the learning rate to rescue it makes every later milestone worse.
+Post-norm at eight blocks cannot use the learning rate that the rest of the ladder wants, and lowering it to rescue the baseline makes every later milestone worse.
 So the control keeps `3e-3`, and milestone 501 reports the stall as its actual result.
 That is the honest historical lesson rather than a flaw in the baseline: pre-norm is what made depth trainable at aggressive learning rates without warmup.
 
@@ -195,6 +270,7 @@ Reporting, for every run:
 - Prefer explicit tensor math over fused framework calls while the mechanism is the lesson. `scaled_dot_product_attention` and other fused paths belong to phase 4 profiling work, not here.
 - Report wall-clock honestly. At this scale most modern efficiency mechanisms are slower, because their value is asymptotic and their fast implementations are kernels this repo has not written yet.
 - A modernization that does not improve loss at this scale is still kept if it is a genuine 2026 standard, but the learning log must say plainly that it did not pay for itself here and why.
+- **A mechanism whose failure mode does not occur at this scale must say so rather than perform the fix.** `M-510` established this the hard way: routing never collapsed, so balancing it would have been a ritual.
 - Do not build a framework. Standalone numbered scripts, module-level configuration constants, shared code only for artifacts.
 - Keep the learning log tied to completed milestones.
 
@@ -203,339 +279,656 @@ Reporting, for every run:
 ### Milestone 501: Vanilla Decoder-Only Transformer
 Track: Baseline
 
-Goal:
-- Establish the pre-modern reference point that every later milestone is measured against.
+**Goal.** Establish the pre-modern reference point that every later milestone is measured against.
 
-What changes:
-- Nothing yet. This is the starting architecture.
+**The problem.** There isn't one yet — this milestone *creates* the problems the rest of the ladder solves. Its job is to be a faithful 2017/GPT-2 decoder so that later deltas are attributable. The one thing it must not be is a strawman: every component here was state of the art for years.
 
-What it contains:
-- Learned absolute position embeddings.
-- Dense multi-head causal self-attention with biased q/k/v/o projections.
-- Post-norm LayerNorm around both sublayers.
-- A GELU feed-forward block at 4x width, with biases.
-- Tied input and output embeddings.
-- AdamW.
+**What the field tried.** The 2017 transformer replaced recurrence with attention because recurrence forced sequential computation and a fixed-size state between timesteps. The decoder-only variant then dropped the encoder and cross-attention once it became clear that a causal LM objective on one stack scaled better than encoder-decoder pretraining for generative use.
 
-Exit criteria:
-- One run completes end to end.
-- Parameter count and wall-clock are recorded.
-- Every tensor path in the file can be explained without reference to any other file.
+**The solution that won.** The block that every model still uses: a causal attention sublayer and a position-wise feed-forward sublayer, each wrapped in a residual connection and a normalization, stacked `N` times. Nothing below replaces this skeleton — every later milestone changes what goes *inside* one of those two sublayers, or how the normalization and residual are wired around them.
 
-Status:
-- Complete via `phase5/001_vanilla_decoder.py`, recorded as `P5-001`.
+**Implementation decisions.**
+- Learned absolute position embeddings, added to the token embedding.
+- Biases on every linear layer, including q/k/v/o — this is what 503 removes.
+- Post-norm: `x = norm(x + sublayer(x))`.
+- GELU feed-forward at `4x` width.
+- Tied input and output embeddings, since at a `98`-character vocabulary untying is pointless.
+- Scale attention scores by `sqrt(d_head)`, never `sqrt(d_model)`. The scale is per-head.
+
+Status: complete via [`phase5/001_vanilla_decoder.py`](../../phase5/001_vanilla_decoder.py), recorded as `P5-001`.
 
 Main lesson:
-- At the control learning rate the baseline collapses to character-unigram loss (`3.0537`) by step `250` and never recovers, so "loss decreases smoothly" was not met.
+- At the control learning rate the baseline collapses to character-unigram loss (`3.0557`) by step `250` and never recovers, so "loss decreases smoothly" was not met.
 - The collapse is an optimization failure, not a code bug and not a divergence: gradient norms are the smallest of any tested configuration, clipping fires on `1%` of steps, and the same script reaches `2.15` at lr `3e-4`.
 - Post-norm puts the normalization on the residual stream itself, so there is no identity path through depth and no single learning rate that works. That is the mechanism milestone 502 removes.
-
-Questions to answer:
-- What does post-norm actually do to the gradient path?
-- Where does the learned position table break down, and why did the field move away from it?
 
 ### Milestone 502: Pre-Norm Residual Stream
 Track: Normalization
 
-Goal:
-- Move the normalization inside the residual branch and add a final norm before the output projection.
+**Goal.** Move the normalization inside the residual branch and add a final norm before the output projection.
 
-Why it comes first:
-- Pre-norm is the change that makes every later depth-related mechanism trainable at all.
-- It is also the cleanest single-variable demonstration of why normalization placement is a gradient-flow decision, not a preprocessing decision.
+**The problem.** In post-norm, the residual stream passes *through* the normalization: `x = norm(x + f(x))`. That means there is no path from the loss back to the embedding that is the identity. Every layer's normalization rescales the gradient on its way down, and those rescalings compound multiplicatively over depth. At `8` blocks the result is measurable, and the failure is not divergence but the opposite — the gradients arriving at early layers are too small and too badly conditioned for one global learning rate to serve the whole stack.
 
-Exit criteria:
-- Loss curve compared against `M-501` at identical seed and budget.
-- The residual stream identity path is explicit in the code.
+**What the field tried.** The first fix was **learning-rate warmup**, which works and is why every 2017-era recipe has it: spend a few thousand steps at a tiny learning rate while the layers co-adapt, then ramp. The second was careful **initialization scaling** — schemes that shrink the residual branch by a factor depending on depth so the sum stays well-conditioned. Both are real fixes, and both are workarounds: they manage a badly-shaped optimization problem instead of reshaping it.
 
-Status:
-- Complete via `phase5/002_pre_norm.py`, recorded as `P5-002`.
+**The solution that won.** Move the norm inside the branch:
+
+```
+x = x + attn(norm(x))
+x = x + ffn(norm(x))
+```
+
+Now the residual stream itself is never normalized. There is a clean additive path from the embedding to the logits — the gradient reaches layer `0` with an unmodified term, plus whatever the branches contribute. Depth stops multiplying and starts adding. The cost is that the stream's magnitude now grows with depth, since nothing rescales it, which is why pre-norm requires **one final norm** before the LM head. That final norm is not decoration; without it the logits inherit the stream's accumulated scale.
+
+**Implementation decisions.**
+- Two norms per block, both inside the branch, plus one `out_norm` at the end of the stack.
+- Keep the same learning rate as 501, so the comparison is a single variable.
+- Do not add warmup. The whole point is that pre-norm does not need it.
+
+Status: complete via [`phase5/002_pre_norm.py`](../../phase5/002_pre_norm.py), recorded as `P5-002`.
 
 Main lesson:
-- Validation loss falls from `3.0537` to `1.0161` for four lines of code and `+256` parameters.
+- Validation loss falls from `3.0557` to `0.9354` for four lines of code and `+256` parameters.
 - The identity path is measurable outside training: activations scaled by `50x` leave a post-norm block at standard deviation `1.000` and a pre-norm block at `50.265`.
 - Pre-norm trains with much larger gradients, clipping on `50%` of steps against `1%` for the collapsed post-norm run, so heavy clipping here is a sign of health.
-
-Questions to answer:
-- Why does post-norm need warmup that pre-norm does not?
-- What does the final norm before the LM head actually protect?
 
 ### Milestone 503: RMSNorm And Bias Removal
 Track: Normalization
 
-Goal:
-- Replace LayerNorm with RMSNorm and remove biases from every linear layer.
+**Goal.** Replace LayerNorm with RMSNorm and remove biases from every linear layer.
 
-Why these are one milestone:
-- Both are the same decision: drop the mean-centering and shift degrees of freedom that modern models found unnecessary.
+**The problem.** LayerNorm does two things — re-center and re-scale — and carries two parameter vectors, gain and shift. Every linear layer additionally carries a bias. All of it costs parameters, memory traffic, and in LayerNorm's case a second reduction pass over the feature axis. The question is whether any of it is load-bearing.
 
-Exit criteria:
-- Parameter count drops and the loss does not.
-- The exact arithmetic difference between LayerNorm and RMSNorm is written down.
+**What the field tried.** The honest answer is that the field mostly *assumed* mean-centering mattered, because LayerNorm inherited the framing from BatchNorm, where centering genuinely does address covariate shift across a batch. The RMSNorm paper tested the assumption directly by ablating re-centering and finding it contributed essentially nothing to quality while costing a reduction. Bias removal followed a similar path: at scale, biases are a vanishing fraction of parameters but a real fraction of the optimizer state and the outlier surface, and removing them turned out to be free.
 
-Status:
-- Complete via `phase5/003_rms_norm.py`, recorded as `P5-003`.
+**The solution that won.** Normalize by the root mean square instead of the standard deviation, and keep only a gain:
+
+$$
+\mathrm{RMSNorm}(x) = \frac{x}{\sqrt{\frac{1}{d}\sum_i x_i^2 + \epsilon}} \odot g
+$$
+
+versus LayerNorm's
+
+$$
+\mathrm{LayerNorm}(x) = \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} \odot g + b
+$$
+
+RMSNorm fixes the vector's *length* and leaves its direction alone. LayerNorm additionally projects out the all-ones component first. All three frontier models use RMSNorm exclusively, and Kimi K3 goes further, stripping biases even from its vision encoder's projections and reporting that this "further stabilizes the from-scratch optimization."
+
+**Implementation decisions.**
+- `bias=False` on every `nn.Linear` in the model.
+- `eps = 1e-5`, applied inside the square root.
+- Use `x.pow(2).mean(-1)`, **not** `x.var(-1, correction=0)`. These agree only when the per-token mean is zero, and pre-norm is exactly the regime where the residual stream drifts off zero. This is a real trap that cost a debugging cycle.
+- Use `torch.rsqrt`, which is one op instead of a divide plus a sqrt.
+
+Status: complete via [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py), recorded as `P5-003`.
 
 Main lesson:
-- Everything improved at once: validation loss `1.0161` to `0.9563`, parameters down by `11392`, wall-clock down `9.5%` from `663.90s` to `601.10s`.
+- Parameters drop by `11392` and the loss does not meaningfully move (`0.9354` to `0.9498`, inside noise).
 - The claim that re-centering contributes little is reproduced directly: dropping the mean subtraction and all biases cost no quality.
-- Implementation trap: normalizing by `x.var(correction=0)` instead of the mean square agrees with RMSNorm only when the per-token mean is zero, and pre-norm is exactly the setting where the residual stream drifts away from it.
-
-Questions to answer:
-- What does mean subtraction buy, and why was losing it free?
-- Which biases actually mattered, if any?
+- Implementation trap: normalizing by `x.var(correction=0)` instead of the mean square agrees with RMSNorm only when the per-token mean is zero.
 
 ### Milestone 504: Rotary Position Embeddings
 Track: Positions
 
-Goal:
-- Replace learned absolute positions with RoPE applied to queries and keys.
+**Goal.** Replace learned absolute positions with RoPE applied to queries and keys.
 
-What stays fixed:
-- Dense attention. Only the position mechanism changes.
+**The problem.** A learned position table gives every absolute index its own free vector. Three things follow, all bad. First, position information is *added* to the token embedding at layer `0` and must survive eight layers of mixing to still be usable. Second, the model must *learn* that only differences matter — nothing in the parameterization says position `100` and `102` relate the way `3` and `5` do. Third, and fatally, index `4096` has no vector if you only trained to `2048`; the table cannot extrapolate at all.
 
-Exit criteria:
-- The position embedding table is gone.
-- Relative-position behavior is explained from the rotation math, not asserted.
+**What the field tried.** **Sinusoidal** encodings (2017) fixed extrapolation by making the table a fixed function of the index, but kept the additive-at-layer-0 problem, and in practice models did not extrapolate well anyway. **Learned absolute** (GPT-2) traded extrapolation for fit. **T5 relative bias** added a learned scalar per bucketed distance directly to the attention logits — genuinely relative, but a per-layer additive bias with limited expressivity. **ALiBi** simplified that to a fixed linear penalty on distance, which extrapolates beautifully but hard-codes a recency prior. Each fixed one thing.
 
-Questions to answer:
-- Why does rotating q and k give relative position for free?
-- What breaks at positions beyond the training length, and what do the frequency-scaling tricks actually do about it?
+**The solution that won.** Do not add position to the content; **rotate** the query and key by an angle proportional to their position. Split each head's `d_head` features into `d_head/2` pairs, and rotate pair `i` at position `m` by angle `mθ_i`, where `θ_i = base^(-2i/d_head)`.
+
+The whole trick is one property of rotation matrices:
+
+$$
+R(\alpha)^\top R(\beta) = R(\beta - \alpha)
+$$
+
+So when a query at position `n` meets a key at position `m`:
+
+$$
+\langle R(n\theta) q,\; R(m\theta) k \rangle = q^\top R(n\theta)^\top R(m\theta) k = q^\top R\big((m-n)\theta\big) k
+$$
+
+The absolute positions cancel and only `m - n` survives. Relative position is not learned or approximated; it is algebraically guaranteed. And because rotations are length-preserving, position can be injected at every layer without disturbing activation scale — which an additive table cannot do.
+
+The frequency spread is what makes it work across scales: high-`θ` pairs spin fast and resolve adjacent tokens, low-`θ` pairs spin slowly and encode coarse long-range position.
+
+**Implementation decisions.**
+- Apply to `q` and `k` only, never `v`. Position belongs in *which* token to attend to, not in *what* is retrieved.
+- Apply **after** the head split, per head.
+- Use the **split-half** convention (`rotate_half` pairs feature `i` with `i + d_head/2`), matching HuggingFace, rather than the interleaved convention in the original paper. They are equivalent up to a permutation of the feature axis, but mixing them silently breaks weight compatibility.
+- `ROPE_BASE = 10000.0`, precomputed `cos`/`sin` buffers of shape `[T, Dh]`.
+- Frontier note: nobody rotates the full head any more. DeepSeek-V4 and GLM-5.2 both apply RoPE to only the **last `64` dimensions**, and Kimi K3 uses none at all. Full-head RoPE is the pedagogically correct starting point and is already legacy.
+
+Status: complete via [`phase5/004_rope.py`](../../phase5/004_rope.py), recorded as `P5-004`.
+
+Main lesson:
+- RoPE is the largest quality win of the ladder after pre-norm, and it is also a simplification: `32768` parameters removed.
+- Relative behavior verified directly: the score for a gap of `2` is identical at positions `(3, 5)`, `(10, 12)`, and `(100, 102)`.
+- `rotate_half` is the expensive half of the operation, `0.410ms` of `1.067ms` per call, because `chunk` plus `cat` allocates instead of reading in place. Good phase-4 Triton candidate.
 
 ### Milestone 505: Grouped-Query Attention
 Track: Attention
 
-Goal:
-- Share key and value heads across query heads.
+**Goal.** Share key and value heads across query heads.
 
-Exit criteria:
-- KV parameter and KV-cache footprint reductions are computed explicitly.
-- Loss impact at fixed budget is reported.
+**The problem.** This one is not about quality at all, and pretending otherwise wastes the milestone. During autoregressive generation every past token's keys and values must be kept in memory. That cache is `2 · L · H · d_head` numbers per token, and at long context it dominates everything — it is larger than the weights, and every decode step must re-read all of it. Decoding is therefore **memory-bandwidth bound**, not compute bound. Halving the cache nearly doubles decode throughput.
 
-Questions to answer:
-- Is GQA a quality change or a memory change?
-- Why is the KV cache, and not the parameter count, the thing that forced this?
+**What the field tried.** **Multi-query attention** (MQA) went straight to the extreme: one shared K/V head for all query heads, an `H`-fold cache reduction. It works, but quality degrades measurably and training becomes less stable. The lesson was that the endpoints are wrong.
+
+**The solution that won.** Interpolate. Partition `H_q` query heads into `H_kv` groups; every head in a group shares one K/V head. `H_kv = H_q` is plain MHA, `H_kv = 1` is MQA, and everything between is GQA. Cache shrinks by `H_q / H_kv` while each query head keeps its own query projection and thus its own view. Empirically quality is close to MHA at `H_kv` around `8`, which is why essentially every open model from 2023 onward ships GQA as the floor.
+
+**Implementation decisions.**
+- `NUM_Q_HEADS = 4`, `NUM_KV_HEADS = 2`, group size `2`.
+- Expand with `repeat_interleave`, **not** `repeat`. `repeat_interleave` produces group-contiguous pairing (`[k0, k0, k1, k1]`), matching HuggingFace; `repeat` produces `[k0, k1, k0, k1]` and pairs the wrong heads. Note that `x.repeat(n, dim=2)` is not even a valid call — `Tensor.repeat` does not take a `dim`.
+- Expect **no quality signal** at this scale. Training has no KV cache, so the mechanism's entire benefit is invisible here. Report the cache arithmetic explicitly instead; that is the actual deliverable.
+
+Status: complete via [`phase5/005_gqa.py`](../../phase5/005_gqa.py), recorded as `P5-005`.
+
+Main lesson:
+- `0.8594` against `0.8644`, inside noise, with `131072` fewer parameters. Exactly the expected result.
+- The deliverable is the cache arithmetic, not the loss number.
 
 ### Milestone 506: SwiGLU Feed-Forward
 Track: Feed-forward
 
-Goal:
-- Replace the GELU MLP with a gated SwiGLU feed-forward block at matched parameter count.
+**Goal.** Replace the GELU MLP with a gated SwiGLU feed-forward block at matched parameter count.
 
-Rule:
-- Apply the `2/3` width rule so the three-matrix gated block has the same parameters as the two-matrix block it replaces. Otherwise the comparison measures width, not gating.
+**The problem.** `down(act(up(x)))` can only ever *add* contributions. Each output feature is a weighted sum of nonlinear functions of the input, and the nonlinearity is fixed and elementwise. There is no way for one part of the representation to *modulate* another — no multiplicative interaction, no data-dependent routing of information through the block.
 
-Exit criteria:
-- Matched-parameter comparison against `M-505`.
-- The gating mechanism is explained as multiplicative feature selection.
+**What the field tried.** The GLU family was explored systematically: swap the activation for a product of two projections, one passed through a nonlinearity acting as a gate. The original GLU used a sigmoid gate. Variants tried ReLU (`ReGLU`), GELU (`GEGLU`), and Swish (`SwiGLU`). The comparison paper that settled it tested them head-to-head and famously declined to explain the result, attributing the win to "divine benevolence." That honesty is worth preserving: **there is still no accepted theory for why SwiGLU wins**, and Kimi K3's 2026 report says the same, that "a complete account of its empirical effectiveness remains open."
 
-Questions to answer:
-- What does the gate branch let the block express that a single nonlinearity cannot?
-- Why did the field standardize on this specific variant?
+**The solution that won.** Three matrices instead of two:
+
+$$
+\mathrm{SwiGLU}(x) = W_{\text{down}}\big(\mathrm{Swish}(W_{\text{gate}}\,x) \odot W_{\text{up}}\,x\big), \qquad \mathrm{Swish}(z) = z\,\sigma(z)
+$$
+
+The gate branch scales the up branch elementwise, per token and per feature — a genuine multiplicative interaction. Swish specifically matters because it dips **below zero** near the origin, so the gate can *flip a feature's sign* rather than only attenuate it. A sigmoid gate bounded in `[0, 1]` cannot do that, which is a large part of why SwiGLU beat plain GLU.
+
+**Implementation decisions.**
+- **Apply the `2/3` rule.** Three matrices at `4·d` would add `50%` to the feed-forward block, and any improvement would be unattributable to gating. Set `D_FFN = round(2/3 · 4 · d)` to a multiple of `8`, giving `344` here, so the gated block matches the dense block it replaces.
+- `F.silu` is Swish; they are the same function.
+- Keep this milestone's activation **unbounded**. The cap is milestone 512's job, and merging them would confound gating with bounding.
+
+Status: complete via [`phase5/006_swiglu.py`](../../phase5/006_swiglu.py), recorded as `P5-006`.
+
+Main lesson:
+- On the `T4` control, `0.8663` against `0.8594` — inside noise. The earlier `mps` run showed a `0.0128` gain, but the `mps` noise floor was later measured at `0.053`, which retracts that claim.
+- The parameter matching is what makes any claim possible at all: without the `2/3` rule this would have been a `36%` larger model.
+- Cost is `~4.6%` wall-clock. Three narrow matmuls are slower than two wide ones at this size.
 
 ### Milestone 507: QK-Norm And Gated Attention
 Track: Attention stability
 
-Goal:
-- Add RMSNorm to queries and keys, and a data-dependent sigmoid gate on the attention output.
+**Goal.** Add RMSNorm to queries and keys, and a data-dependent sigmoid gate on the attention output.
 
-Why these are one milestone:
-- Both are stability mechanisms that act on the attention path, and both became near-standard in 2026 for the same reason: controlling outlier magnitudes.
+**The problem.** Two distinct failure modes on the attention path, both about magnitudes.
 
-Exit criteria:
-- Attention logit magnitudes are inspected before and after QK-Norm.
-- The gate's learned behavior is inspected, not just its loss effect.
+First, **attention logits explode.** The score `q·k/√d` has no bound. As `q` and `k` projections grow during training, some logits grow with them, softmax saturates to one-hot, gradients through that head vanish, and the head effectively dies. In `bf16` the logit can also simply overflow. This is a leading cause of loss spikes at scale.
 
-Questions to answer:
-- What failure mode does QK-Norm actually prevent, and would it appear at this scale?
-- What is an attention sink, and how does an output gate relate to it?
+Second, **softmax cannot output nothing.** Attention weights are forced to sum to `1`, so a head that has found nothing relevant must still return a weighted average of something. Models solve this by dumping attention onto an arbitrary token — usually the first — producing the **attention sink**. The sink's value vector then flows into the residual stream as a large, meaningless activation, and those *massive activations* are precisely the outliers that break low-precision inference and quantization.
+
+**What the field tried.** For exploding logits: **logit soft-capping** (`tanh`-based, used in Gemma 2) bounds the score directly but is a nonlinearity in the hot path and interferes with fused attention kernels. **QK-Clip**, from the Muon line of work, clips the q/k *weights* post-update whenever a logit exceeds a threshold — effective but a post-hoc optimizer intervention. For sinks: **StreamingLLM** established the diagnosis and worked around it by just always keeping the first few tokens in the cache, which manages the symptom rather than removing it.
+
+**The solution that won.** Two independent mechanisms, both now near-universal.
+
+**QK-Norm** applies RMSNorm to `q` and `k` per head, right before the score:
+
+$$
+\text{score} = \frac{\mathrm{RMSNorm}(q) \cdot \mathrm{RMSNorm}(k)}{\sqrt{d_{\text{head}}}}
+$$
+
+Once both vectors have fixed length, the dot product is bounded by `d_head` regardless of how large the projections grow. The logit magnitude is now structurally controlled rather than monitored. DeepSeek-V4 states this outright: because they RMSNorm the queries and KV entries, they "do not employ the QK-Clip technique" at all. The architectural fix retired the optimizer patch.
+
+**Gated attention** multiplies the attention output by a data-dependent sigmoid gate before the output projection:
+
+$$
+y = W_o\big(\sigma(W_g x) \odot \mathrm{attn\_out}\big)
+$$
+
+This is the direct fix for the sink. The head is no longer forced to emit something: if the gate closes, the output is near zero regardless of what softmax was forced to do. The paper that introduced it ablated roughly thirty variants at `15B` MoE scale and found it adds non-linearity, introduces input-dependent sparsity, and eliminates the sink — reporting reduced massive activations and better `bf16` stability as a consequence. Kimi K3 uses exactly this on **both** its KDA and MLA layers.
+
+**Implementation decisions.**
+- QK-Norm is **per head**, over the `d_head` axis, with its own learned gain — not one norm over the flattened `d_model`.
+- Normalize **after** the head split and **before** RoPE is not required either way here, but keep the ordering fixed once chosen; `M-508` regressed once by letting `repeat_kv_heads` drift above the RoPE block.
+- The gate is **elementwise** (`d_model` values), not per-head (`H` values). This was decided on evidence: the source paper's default is `elementwise_attn_output_gate: true, headwise_attn_output_gate: false`, and Kimi K3 explicitly upgraded its gate from low-rank to **full rank** in K3. The granularity is part of the mechanism, not a cost knob.
+- The gate reads `x`, the block input — not the attention output. It is data-dependent on the token, not on what attention retrieved.
+- Accept that this adds `~9%` parameters and record that the loss gain is therefore confounded with capacity.
+
+Status: complete via [`phase5/007_qk_norm_gated_attention.py`](../../phase5/007_qk_norm_gated_attention.py), recorded as `P5-007`.
+
+Main lesson:
+- Second-largest win of the ladder: `0.8663` to `0.8056`. But `+131712` parameters came with it, so mechanism and capacity are confounded. An honest attribution needs a parameter-matched control that has not been run.
 
 ### Milestone 508: Layerwise Hybrid Attention
 Track: Attention layout
 
-Goal:
-- Interleave three sliding-window local attention layers with one full global attention layer, and remove RoPE from the global layers.
+**Goal.** Interleave three sliding-window local attention layers with one full global attention layer, and remove RoPE from the global layers.
 
-What stays fixed:
-- All attention is still standard softmax attention. Only the receptive field and the position handling change per layer.
+**The problem.** Attention is `O(T²)` in both time and memory. At `1M` tokens that is `10¹²` pairs per head per layer — not a constant-factor problem, an asymptotic one. But the deeper observation is that full attention in *every* layer is redundant: most heads in most layers attend locally anyway, so the quadratic cost buys global reach that most layers never use.
 
-Why this ordering:
-- Sliding-window plus global is the simplest honest version of the 2026 hybrid pattern, and it isolates the layout question from the linear-attention question that follows in `M-513`.
+**What the field tried.** **Sparse/strided patterns** (Sparse Transformer) fixed the pattern in advance — cheap, but the pattern is a guess. **Longformer/BigBird** combined sliding windows with a few designated global tokens, which works but requires choosing those tokens. **Sliding window everywhere** (Mistral) is simple and relies on receptive field growing with depth — `L` layers of window `W` reach `L·W` — but that reach is indirect, mediated through intermediate representations, and it measurably hurts retrieval. **Full attention everywhere** remains the quality ceiling and the cost floor.
 
-Exit criteria:
-- The 3:1 pattern is exact and the last layer is global.
-- Loss and wall-clock are compared against full attention everywhere.
-- The MiniMax counter-result is explicitly tested at this scale rather than assumed.
+**The solution that won.** Put the two in the *same stack* at a fixed ratio. Most layers are cheap and local; a periodic minority are global and carry long-range information. All three frontier models do a version of this, and the ratio has converged on roughly `3:1`:
 
-Questions to answer:
-- How much does the model lose when most layers cannot see the whole sequence?
-- Why does NoPE work in the global layers when the local layers still carry RoPE?
+- **Kimi K3**: `3` KDA layers to `1` gated MLA layer, repeated, **plus one extra global layer at the very end** so the final layer always sees everything. `69` KDA + `24` MLA = `93`.
+- **DeepSeek-V4**: CSA and HCA interleaved, plus a sliding-window branch inside *both*.
+- **GLM-5.2**: one full indexer every `4` layers, the other three reusing its selection (IndexShare).
+
+The second half of this milestone is **NoPE on the global layers**. If the local layers already carry RoPE, position is in the residual stream by the time a global layer reads it; the global layer's job is unrestricted content matching, and forcing a distance-dependent phase onto it only limits its reach. Kimi K3 took this to its conclusion and removed positional encoding **entirely**, letting the KDA recurrence carry position implicitly — which, they note, also means no RoPE base to retune when extending context.
+
+**Implementation decisions.**
+- Ratio `3:1`, global at indices `3` and `7` with `NUM_BLOCKS = 8`, so the **last layer is always global**. This matches K3's explicit choice.
+- Window `64` at context `256`.
+- The local mask is `triu(1) | tril(-W)` — block the future *and* the distant past. Getting only the first half gives plain causal attention and silently invalidates the milestone.
+- Masks are buffers, so this milestone changes **zero parameters**. That makes it the cleanest comparison in the ladder.
+- **Treat the result as a measurement, not a confirmation.** MiniMax trained this exact family of variants at scale and found them worse on retrieval and multi-hop reasoning. A negative result here is a real result.
+
+Status: complete via [`phase5/008_hybrid_attention.py`](../../phase5/008_hybrid_attention.py), recorded as `P5-008`.
+
+Main lesson:
+- `0.8008` against `0.8056` at *identical* parameter count — inside noise. Six of eight layers lost `75%` of their receptive field for free.
+- At context `256` this is expected: the mechanism's value is asymptotic, and `256` is not long.
 
 ### Milestone 509: Multi-Head Latent Attention
 Track: Attention
 
-Goal:
-- Replace the global layers' key/value projections with a compressed latent representation that is up-projected during attention.
+**Goal.** Replace the global layers' key/value projections with a compressed latent representation that is up-projected during attention.
 
-Ordering note:
-- `M-508` already makes the global layers NoPE, which would let MLA skip the position problem entirely.
-- Implement the decoupled-RoPE form anyway, because that conflict is the whole reason MLA looks the way it does, and then compare it against the NoPE form that this ladder can actually afford to use.
+**The problem.** GQA shrinks the KV cache by sharing heads, but it does so by *removing* heads — every query head in a group sees literally the same keys. That is a real capacity loss, and it is a coarse knob: the cache only shrinks in integer divisors of the head count.
 
-Exit criteria:
-- KV-cache footprint per token is computed and compared against GQA.
-- The decoupled position handling required by KV compression is implemented correctly and explained.
-- Decoupled-RoPE MLA and NoPE MLA are both run, and the difference is recorded.
+**What the field tried.** MQA and GQA, covered at `M-505`, both trade heads for memory. The question MLA asks is whether the cache can shrink *without* any head sharing at all.
 
-Questions to answer:
-- Why does compressing KV into a latent conflict with RoPE, and what are the ways around it?
-- Is MLA a better GQA, or a different tradeoff entirely?
+**The solution that won.** Cache a **compressed latent** instead of the keys and values. Project each token down to `c_t = W_c x_t` of dimension `d_latent`, cache only `c_t`, and reconstruct per-head keys and values with learned up-projections during attention. Every query head gets its own distinct keys and values again; the compression is along the *feature* axis rather than the head axis.
+
+The reason it is efficient is the **absorption trick**. The score is
+
+$$
+q^\top (W_{uk}\, c) = (W_{uk}^\top q)^\top c
+$$
+
+so `W_uk` can be folded into the query projection once, and attention runs directly against the cached latent — the keys are never materialized at all.
+
+**And that is exactly what breaks RoPE.** Absorption requires the matrix sitting between query and latent to be *constant*. RoPE inserts `R(m-n)`, which depends on the key's position, so a folded query would serve exactly one key. The fix is **decoupled RoPE**: split the head into content dims (compressed, absorbed, no rotation) and a few rope dims (uncompressed, rotated, shared across heads). Scores are computed on the concatenation, which is exact because a dot product over a concatenation is the sum of the dot products over the pieces. Values stay content-width only — rope dims decide *how much* to attend and carry nothing to retrieve.
+
+**Implementation decisions.**
+- Apply MLA to **global layers only**; keep GQA on local layers. This matches every frontier model — nobody pays MLA's cost on a local mixer.
+- `D_LATENT = 64` (half of `d_model`), `D_ROPE = 16`. **DeepSeek's own sizing rule does not transfer**: they use `4 · d_head`, which here is `128 = D_MODEL`, i.e. no compression at all. Their `28x` saving comes from having `128` heads of `128` dims to squeeze into `512`; a four-head model has far less redundancy.
+- Implement the **decoupled-RoPE form even though `M-508` made these layers NoPE**, because that conflict is the entire reason MLA has its shape. Then compare against the NoPE form the ladder can actually use.
+- Record the frontier context honestly: **DeepSeek-V4 has moved past MLA**, to shared-KV MQA plus compression along the *sequence* axis, on the grounds that at `1M` tokens sequence length dominates memory, not head count. GLM-5.2 still uses MLA. This milestone builds a mechanism that is simultaneously current and being superseded.
+
+Status: complete via [`phase5/009_mla.py`](../../phase5/009_mla.py), recorded as `P5-009`.
+
+Main lesson:
+- `0.8079` against `0.8008` for `36864` more parameters — inside noise. Fourth mechanism in a row whose payoff is invisible in a training-only benchmark.
+- The cache arithmetic is the real result: a global layer caches `64 + 16 = 80` numbers per token instead of `128`, with per-head keys and values restored.
+- Absorption verified directly: folding once and reusing gives zero error at `n = m` and growing error everywhere else.
 
 ### Milestone 510: Sparse Mixture-Of-Experts Feed-Forward
 Track: Sparsity
 
-Goal:
-- Replace the dense feed-forward block with fine-grained routed experts plus a shared expert, keeping block 0 dense.
+**Goal.** Replace the dense feed-forward block with fine-grained routed experts plus a shared expert, keeping block `0` dense.
 
-Configuration principle:
-- Match active parameters per token to the dense baseline so the comparison isolates sparsity from capacity.
+**The problem.** Capacity and compute are welded together. Every parameter in a dense feed-forward block runs for every token, so the only way to make the model know more is to make every forward pass more expensive. But most tokens do not need most of the network — the knowledge required to continue `" the cat sat on the "` and to continue a line of Rust are almost disjoint.
 
-Exit criteria:
-- Total parameters and active parameters per token are both reported.
-- Routing is correct: every token reaches exactly top-k routed experts plus the shared expert.
-- Wall-clock is reported honestly against the dense baseline.
+**What the field tried.** **Sparsely-gated MoE** (Shazeer, 2017) established the shape: `N` expert FFNs, a router picking a few per token. It worked but was fragile. **Switch Transformer** simplified to top-`1` and scaled it, exposing the real problems — load imbalance, token dropping, and instability. The `2020-2022` generation used few, wide experts (`8` or `16` experts at full FFN width), and found that experts had to specialize in coarse, overlapping ways because there were so few of them.
 
-Questions to answer:
-- What is a fine-grained expert, and why did expert counts grow while expert width shrank?
-- What does the shared expert absorb that the routed experts should not have to?
+**The solution that won: DeepSeekMoE's two changes.**
 
-### Milestone 511: Auxiliary-Loss-Free Load Balancing
+**Fine-grained experts.** Instead of `8` experts at width `d_ff`, use `N·8` experts at width `d_ff/N`, and activate `N·k` of them. Active parameters are identical, but the number of *combinations* the router can express explodes — with `256` experts choosing `8`, there are `~10¹⁴` possible routings versus `28` for `8` choose `2`. Specialization becomes finer because each expert is smaller and can afford to be narrow. The frontier has pushed hard in this direction: `256` experts (GLM-5.2), `384` (DeepSeek-V4-Pro), `896` (Kimi K3).
+
+**Shared experts.** Reserve one or two experts that **every** token uses, unrouted. Without them every routed expert must independently learn the common transformations that all tokens need — grammar, basic syntax — wasting capacity on redundancy. The shared expert absorbs the common case so routed experts can afford to be genuinely specialized. All three frontier models have them: `1` (V4, GLM), `2` (K3).
+
+**Implementation decisions.**
+- **Match active parameters per token to the dense block**, within `1%`. Without this the comparison measures capacity, not sparsity.
+- Use an `Expert` class in an `nn.ModuleList` with a loop, not a batched 3D-tensor formulation. The loop is `O(N)` Python and slow, but it is the readable form and this phase optimizes for mechanism. Production speed comes from fused grouped-GEMM kernels, which is a phase-4 concern.
+- Dispatch via `(chosen == i).nonzero(as_tuple=True)` to get `(token_index, slot)`, then `index_add_` the weighted expert output. This is the standard scatter/gather shape without obscure ops.
+- Sigmoid router, top-`k`, then renormalize the chosen weights to sum to `1`. **The renormalization is for output scale, not competition** — it is not a softmax, there is no exponential. Sigmoid gives each expert an independent, bounded score, which matters at `M-511` because a fixed bias step then means the same thing for every expert.
+- Track `expert_load` in a **non-persistent buffer** via `torch.bincount(chosen.flatten(), minlength=N)`. `minlength` is essential: without it a dead expert vanishes from the statistic entirely instead of showing as zero.
+- Keep block `0` dense. Note that the frontier disagrees here — GLM keeps `3` dense, K3 keeps `1`, and **DeepSeek-V4 keeps none**, using hash routing on the first `3` MoE layers instead. The stated reason for dense-early is that the router needs decent features to route on, and layer-`0` hidden states are not good enough yet.
+
+Status: complete via [`phase5/010_moe.py`](../../phase5/010_moe.py), recorded as `P5-010`.
+
+Main lesson:
+- First milestone where total and active parameters diverge: total up `43%` to `2328448`, active per token at `100.8%` of dense. That decoupling is the entire point.
+- `0.7984` against `0.8079` — inside noise. `1.75x` the feed-forward capacity at matched active cost bought nothing measurable at this scale.
+- Cost is `48%` wall-clock. Eight small matmuls where there was one large one, at shapes too small to use the GPU.
+- **Routing did not collapse**, which was the milestone's most useful negative result and forced `M-511` to be rescoped. See below.
+
+### Milestone 511: Real Sparsity, Then Auxiliary-Loss-Free Load Balancing
 Track: Sparsity
 
-Goal:
-- Balance expert load with a per-expert routing bias instead of an auxiliary loss, and instrument the routing.
+**Goal.** Make the routing genuinely sparse, then balance it with a per-expert bias applied to selection only.
 
-Why it is separate from `M-510`:
-- Routing correctness and routing balance are different problems, and collapsed routing is easy to hide behind a working loss curve.
+**Why this milestone was rescoped.** As originally written, 511 was "add loss-free balancing." `M-510` then measured that **routing never collapsed**: expert share stayed between `0.106` and `0.141` against an ideal `0.125`, with zero unused experts, and became *more* balanced during training than at initialization.
 
-Exit criteria:
-- Per-expert load, routing entropy, and dead-expert count are tracked across training.
-- The balanced and unbalanced runs are compared on both loss and load statistics.
+The cause is that `4` of `8` is not sparse:
 
-Questions to answer:
-- Why does a bias applied only to selection, and not to the mixture weights, avoid distorting the gradient?
-- What does expert collapse look like before it shows up in the loss?
+| Model | Active of total | Ratio |
+| --- | --- | ---: |
+| DeepSeek-V4-Pro | `6` of `384` | `1.6%` |
+| Kimi K3 | `16` of `896` | `1.8%` |
+| GLM-5.2 | `8` of `256` | `3.1%` |
+| `M-510` | `4` of `8` | `50%` |
 
-### Milestone 512: Multi-Token Prediction
+Every token used half the experts, so each expert received a large share regardless of router preference and the winner-take-all dynamic never started. Implementing a balancer against that would have been a ritual, not an experiment. So **sparsity comes first in this milestone, and balancing second.**
+
+**The problem.** Routing has positive feedback built in. An expert that receives slightly more tokens early gets more gradient, becomes better at what it sees, so the router prefers it more, so it receives more tokens. Rich-get-richer, ending with a handful of experts doing everything and the rest dead — you paid for `N` experts and got `k`. There is a second, independent problem at scale: experts are sharded across devices, and throughput is set by the *most loaded* expert, so imbalance directly burns money even when quality is fine.
+
+**What the field tried.**
+
+1. **Capacity factor with token dropping** (GShard, Switch Transformer). Give each expert a fixed buffer of `(tokens/experts) · capacity_factor`; tokens arriving at a full expert are **dropped** and pass through on the residual alone. This solves the systems problem by construction — fixed buffers, static shapes, no stragglers — but it is brutal: some tokens are never processed, which token gets dropped depends on arbitrary ordering, and inference does not drop, so train and inference disagree.
+
+2. **An auxiliary load-balancing loss** (Switch Transformer, the standard for years). Add a penalty to the objective:
+
+$$
+\mathcal{L}_{\text{aux}} = \alpha \cdot E \sum_{i=1}^{E} f_i P_i
+$$
+
+with `f_i` the fraction of tokens routed to expert `i` and `P_i` its mean router probability; the product is minimized at uniform. The flaw is structural — **it is a second objective fighting the first.** Its gradients flow into the router and pull routing away from what the LM loss wants. Too small an `α` and it still collapses; too large and quality suffers. There is no principled value and it needs retuning per model. DeepSeek names exactly this as the motivation for replacing it.
+
+**The solution that won.** The insight is sharp: **you do not need a gradient to fix load — you need to change which experts get selected.** Those are different things, and the auxiliary loss conflated them.
+
+Add a per-expert bias to the score used for **selection only**:
+
+$$
+\mathcal{T}_i = \operatorname{argtopk}\big(s_i + b\big), \qquad p_{i,j} = \frac{s_{i,j}}{\sum_{r \in \mathcal{T}_i} s_{i,r}}, \quad j \in \mathcal{T}_i
+$$
+
+The bias appears in the `topk` and **nowhere in the weights**. Kimi K3 states the consequence precisely: because `b` is omitted from `p`, "it regulates dispatch without altering the mixture weights or the gradient-based optimization of the router." Update it outside backprop with a fixed step:
+
+$$
+b_j \leftarrow b_j + \gamma \cdot \operatorname{sign}\big(\bar{\ell} - \ell_j\big)
+$$
+
+Overloaded experts get nudged down, starved ones up. No new loss term, no coefficient trading against the LM objective.
+
+**The 2026 refinement — Quantile Balancing (Kimi K3).** The fixed-step rule has a real weakness: `γ` trades slow adaptation against oscillation, and at `896` experts it is too crude. QB **solves** for the bias instead of nudging it. Route with top-`(k+1)` instead of top-`k`; the `(k+1)`-th entry is the cutoff `α_i` that an expert must beat to enter token `i`'s top-`k`. Then set each expert's bias to the quantile of its margins that yields exactly its target load `q = mk/n`:
+
+$$
+\hat{b}_j^{(t+1)} \leftarrow -\operatorname{quantile}_{1-k/n}\big(s_{:,j} - \alpha^{(t)}\big), \qquad b^{(t+1)} \leftarrow \hat{b}^{(t+1)} - \operatorname{mean}\big(\hat{b}^{(t+1)}\big)\mathbf{1}
+$$
+
+One pass, no step size. The mean-subtraction removes a common offset that would not change top-`k` anyway. At scale the exact quantile is unaffordable, so they read it from a histogram of margins with a single all-reduce of bin counts.
+
+**The arc worth remembering: drop tokens → penalize with a loss → bias the selection → solve for the bias exactly.**
+
+**Implementation decisions.**
+- **Change the sparsity ratio first**, as a separate measured step, and report load statistics before adding any balancer. Target roughly `3%` — the GLM ratio, the mildest of the three. Holding active hidden units at `344`, that means on the order of `32` to `64` experts, which multiplies total feed-forward parameters by roughly `7x` and lengthens the Python expert loop proportionally. **State the cost plainly**: sparsity is only economical when the total budget is large, which is exactly why every model using fine-grained routing is enormous.
+- Register `expert_bias` as a **buffer, not a parameter** — it must never receive a gradient.
+- The `topk` no longer returns the weights. Select on `scores + bias`, then `gather` the weights from raw `scores`. Conflating these silently reintroduces the distortion the whole design exists to avoid, and it is the single most likely bug in this milestone.
+- Update the bias under `no_grad` and **only when `self.training`**. The update uses the current batch's load and applies to the *next* batch — a batch must never be routed with a bias derived from itself.
+- `γ = 0.001`, matching DeepSeek-V3.
+- **Implement the fixed-step rule, not Quantile Balancing.** QB's advantage appears at hundreds of experts with distributed histogram estimation; at `32` experts on one GPU it is complexity without a payoff. Explain it in the log, implement the simple form.
+- Keep the **sigmoid** router. DeepSeek-V4 switched to `Sqrt(Softplus)`, but two of three frontier models still use sigmoid, and one lab changing its mind once is not a trend. Sigmoid's bounded `(0,1)` range is also what makes a fixed `γ` mean the same thing for every expert.
+- **Skip DeepSeek's sequence-wise balance loss.** It is a safety net against extreme within-sequence imbalance at trillion scale, and adding it would reintroduce exactly the auxiliary-loss coupling this milestone is about removing.
+- Track per-expert load, min/max share, and dead-expert count at every eval, both before and after the balancer.
+
+### Milestone 512: Bounded Feed-Forward Activations
+Track: Numerical stability
+
+**Goal.** Cap both branches of the gated feed-forward block so activation outliers cannot form.
+
+**Why this milestone is new.** It did not exist in the previous roadmap. It is here because two of the three frontier models independently added it in the same quarter, each having hit the same wall and patched it differently. That is the strongest possible signal that the defect is real and belongs to a mechanism this ladder already built.
+
+**The problem.** Look again at what `M-506` shipped:
+
+$$
+\mathrm{SwiGLU}(x) = W_d\big(\mathrm{Swish}(W_g x) \odot W_u x\big)
+$$
+
+**Both factors of that product are unbounded.** `Swish(z) → z` for large positive `z`, and `W_u x` is a plain linear map. So the block's output grows *quadratically* in the input scale, and a single token where both branches happen to be large in the same coordinate produces an activation orders of magnitude above the typical value. Those outliers are the "massive activations" that break `bf16` and `fp8` arithmetic, blow up quantization ranges, and — per DeepSeek's own account — are what their loss spikes were consistently tied to.
+
+This compounds with `M-510`. Kimi K3 reports that in their MoE the routed path chains `W↓`, a gated expert FFN, and `W↑` into nearly four consecutive matrix multiplications, and that this ill-conditioned chain "produces exploding internal activations."
+
+**What the field tried.** **Loss-spike rollbacks** — restore an earlier checkpoint and skip the offending batch — are the traditional response and DeepSeek says plainly they were "inadequate as a long-term solution because they do not prevent the recurrence." **Gradient clipping** bounds the update, not the activation, so it does not touch this. **Attention logit soft-capping** (Gemma 2) applied the right idea in the wrong place: it bounds attention scores, not FFN outputs. **QK-Norm** (`M-507`) fixed the attention half of the outlier problem structurally; nothing had fixed the FFN half.
+
+**The solution that won.** Bound the branches. Two shipped forms, converging on the same idea:
+
+**DeepSeek-V4 — hard clamping.** Clamp the linear component of SwiGLU to `[-10, 10]` and cap the gate's upper bound at `10`. They report it "effectively eliminates outliers and substantially aids in stabilizing the training process, without compromising performance," and it was one of only two techniques that fixed their instability.
+
+**Kimi K3 — SiTU-GLU, a smooth cap.** Apply `softcap(x, β) = β \tanh(x/β)` to *both* branches independently:
+
+$$
+\mathrm{SiTU\text{-}GLU}(x) = \left[\beta_1 \tanh\!\left(\frac{W_g x}{\beta_1}\right) \odot \sigma(W_g x)\right] \odot \beta_2 \tanh\!\left(\frac{W_u x}{\beta_2}\right)
+$$
+
+with `β₁ = 4` on the gate and `β₂ = 25` on the up branch, so the product is bounded by `β₁β₂ = 100`.
+
+The design is careful. `β·tanh(x/β)` is approximately linear near the origin — it is `x - x³/(3β²) + …` — so SiTU-GLU tracks SwiGLU almost exactly in the normal operating range and only bends where SwiGLU would have produced an outlier. Note also that the gate keeps its **own sigmoid** factor: K3 caps the *linear* part of Swish and leaves `σ(W_g x)` intact, so the sign-flipping behaviour that makes SwiGLU beat plain GLU is preserved.
+
+**Implementation decisions.**
+- **Implement SiTU-GLU, not hard clamping.** `tanh` is smooth and has non-zero gradient everywhere; a hard clamp has exactly zero gradient outside its range, so a coordinate that saturates stops learning entirely. The smooth form is also the newer of the two.
+- `β₁ = 4`, `β₂ = 25`, taken directly from K3 rather than tuned. This ladder does not have the budget to tune them, and inventing values would make the comparison meaningless.
+- Apply to **every** gated block: the dense block `0`, the routed experts, and the shared expert.
+- Run the hard-clamp variant as the A/B if time permits, since it is a two-line change and the smooth-vs-hard question is the interesting one.
+- **Measure whether the failure mode exists here before claiming the fix works.** Instrument the maximum absolute pre-`down_proj` activation across training in `M-506`'s configuration. At `d_model = 128` in `fp32` on a `T4`, outliers may simply not form — in which case the honest result is "no outliers to cap," exactly as `M-510` reported "no collapse to balance." **This is the expected outcome and it is a real finding, not a failed milestone.**
+
+### Milestone 513: Attention Sinks
+Track: Attention stability
+
+**Goal.** Add a learnable per-head sink logit to the softmax denominator so a head can attend to nothing.
+
+**The problem.** Softmax normalizes over the keys, so attention weights are **forced to sum to `1`**. A head that has found nothing relevant in the context has no way to say so — it must return a convex combination of value vectors regardless. What models actually learn to do is dump the mass onto a semantically empty token, usually position `0`, whose value vector then enters the residual stream as a large meaningless activation. This is the attention sink, and it is a direct cause of the massive activations that wreck quantization.
+
+**What the field tried.** **StreamingLLM** diagnosed the sink and worked around it: always retain the first few tokens in the KV cache, because evicting them destroys the model. Correct, and purely a workaround — it preserves the sink rather than removing the need for one. **Registers / prepended learnable tokens** (from the ViT literature) give the model a dedicated dumping ground, which is cleaner but costs real sequence positions and cache. **Gated attention** (`M-507`) attacks it from the output side: if the gate closes, whatever softmax was forced to emit is zeroed. That works, and Kimi K3 relies on it exclusively.
+
+**The solution that won.** Change the denominator. Add a learnable per-head scalar `z'_h` to the normalization *without* a corresponding value:
+
+$$
+s_{h,i,j} = \frac{\exp(z_{h,i,j})}{\sum_k \exp(z_{h,i,k}) + \exp(z'_h)}
+$$
+
+Now the attention weights sum to something **less than `1`**, and the head can drive the total near zero by learning a large `z'_h`. There is no phantom token, no wasted position, and no value vector attached to the sink — the missing mass simply goes nowhere. DeepSeek-V4 ships exactly this in both CSA and HCA, describing it as allowing "each query head to adjust its total attention scores to be not equal to 1, and even to be near 0."
+
+**Implementation decisions.**
+- One learnable scalar per head, shape `[H]`, initialized to `0` (equivalent to one extra key with logit `0`).
+- Implement by concatenating the sink logit as an extra column before `softmax`, then dropping that column from the weights — this is numerically identical to modifying the denominator and reuses the stable `softmax`, rather than hand-rolling an `exp`/normalize that can overflow.
+- Apply to **all** attention layers, local and global.
+- **Expect overlap with `M-507`'s output gate, and say so.** These two mechanisms solve the same problem from opposite ends, and the frontier is split: K3 uses the gate alone, DeepSeek-V4 uses the sink alone. Having both is defensible but redundant, so this milestone's real question is whether the sink adds anything *given* a gate is already present. A null result would be informative and should be reported as such.
+- Instrument the learned sink logits at the end of training. If they stay near `0`, no head wanted the escape hatch at this scale.
+
+### Milestone 514: Multi-Token Prediction
 Track: Objective
 
-Goal:
-- Add an auxiliary head that predicts the token after next, and blend its loss into the objective.
+**Goal.** Add an auxiliary module that predicts the token after next, and blend its loss into the objective.
 
-Exit criteria:
-- Main-task loss is reported separately from the auxiliary loss.
-- The effect of the auxiliary loss weight is checked at more than one value.
+**The problem.** Next-token cross-entropy is a *local* objective. The representation at position `t` only ever needs to be good enough to pick token `t+1`, so there is no pressure to encode anything about `t+2` onward. This rewards a model that latches onto short-range surface statistics, and it means the training signal per token is thin — one forward pass produces exactly one supervised prediction per position.
 
-Questions to answer:
-- Why does predicting further ahead improve the representation used for the next token?
-- What is the relationship between this training-time head and speculative decoding at inference?
+**What the field tried.** **Meta's multi-token prediction** (Gloeckle et al., 2024) put `n` independent output heads on a shared trunk, all reading the representation at position `t`: head `1` predicts `t+1`, head `2` predicts `t+2`, and so on, **in parallel**. It works and improved code generation, but the heads are independent, so nothing enforces that the `t+2` prediction is consistent with the `t+1` prediction — the model is not asked to reason about the sequence, only to make `n` simultaneous guesses.
 
-### Milestone 513: Gated Linear Attention With A Delta Rule
+**The solution that won.** DeepSeek's **sequential** MTP. Instead of parallel heads, chain small modules that each predict one step further, preserving the causal relationship:
+
+1. Take the main model's hidden state `h_t`.
+2. Concatenate it with the **embedding of the actual next token** `t+1`.
+3. RMSNorm, then a linear projection back to `d_model`.
+4. Run one transformer block.
+5. Predict token `t+2` through the **shared** output head.
+
+The key difference from Meta's version is step `2`: the module is conditioned on the true `t+1`, so it is genuinely predicting "given what actually comes next, what comes after," preserving the causal chain rather than guessing two independent things.
+
+Two properties made this the standard. The embedding table and output head are **shared** with the main model, so the added parameters are one projection and one block per depth. And the module is **discardable** — drop it and ordinary inference is unchanged, or keep it and use it as a draft model for speculative decoding. Kimi K3 does exactly that, fine-tuning its pretrained MTP layer into an EAGLE-3-style drafter, noting the structures match.
+
+All three frontier models ship this, and **all three use depth `1`**. Deeper MTP was tried and the returns did not justify it.
+
+**Implementation decisions.**
+- Depth `1` — predict `t+2` only. Unanimous at the frontier.
+- Share the embedding table and the output projection with the main model. Only the concat-projection and one decoder block are new.
+- Loss is `L_main + λ · L_mtp`. Start at `λ = 0.3` (DeepSeek's value) and check at least one other value, since the whole milestone is about whether the auxiliary signal helps or distracts.
+- **Report the main-task loss separately.** The blended number is not comparable to any previous milestone; only `L_main` is. Getting this wrong would silently break the entire ladder's comparability.
+- Targets shift by two, so the batch sampler needs `tokens[positions + 2]`. The last two positions have no `t+2` target and must be masked out of the auxiliary loss.
+- Do not use the MTP head at eval. Evaluation runs the main path only.
+
+### Milestone 515: Gated Linear Attention With A Delta Rule
 Track: Attention
 
-Goal:
-- Replace the sliding-window local layers with a gated linear-attention recurrence using a delta-rule state update, keeping the 3:1 pattern against the global MLA layers.
+**Goal.** Replace the sliding-window local layers with a gated linear-attention recurrence using a delta-rule state update, keeping the `3:1` pattern against the global MLA layers.
 
-Why it comes late:
-- It is the least settled mechanism in the target architecture and the hardest to implement correctly, and it only makes sense once the hybrid layout from `M-508` exists to drop it into.
+**The problem.** Sliding-window attention (`M-508`) bounds cost per token, but it does so by **throwing information away**: a token more than `W` positions back is simply invisible to that layer. Reach is recovered only indirectly, through depth. And the KV cache still grows with the window, so state is `O(W)` per layer rather than genuinely constant.
 
-Requirements:
-- Implement both the recurrent form and the chunked parallel form, and check that they agree numerically.
-- Remove RoPE from these layers; position comes from the recurrence.
+**What the field tried.** **Linear attention** replaces `softmax(qk)v` with a kernel feature map so associativity can be exploited: `(φ(q)φ(k)ᵀ)v` becomes `φ(q)(φ(k)ᵀv)`, turning attention into a recurrent state `S_t = S_{t-1} + k_t v_tᵀ` of fixed size. Constant memory, linear time. But the naive form **only ever adds** to the state — it can never remove or overwrite anything, so `S` saturates and old information is never displaced. Quality was well below softmax attention.
 
-Exit criteria:
-- The two forms match to numerical tolerance.
-- Loss, wall-clock, and state-size behavior are compared against the sliding-window variant.
+**Gated variants** (GLA, Mamba-2, RetNet) added a decay term, `S_t = γ_t S_{t-1} + k_t v_tᵀ`, so old information fades. Better, but decay is indiscriminate forgetting — everything fades at the same rate regardless of relevance.
 
-Questions to answer:
-- What does the delta rule change relative to plain linear attention?
-- What does the gate control, and what happens to the state when it saturates?
-- What does this actually give up relative to softmax attention?
+**The delta rule** (DeltaNet) changed *how* the write happens. Instead of blindly adding, first read what is currently stored at `k_t`, and write the **difference** between what is stored and what should be:
 
-### Milestone 514: Residual-Stream Upgrades
+$$
+S_t = S_{t-1}(I - \beta_t k_t k_t^\top) + \beta_t k_t v_t^\top
+$$
+
+That is one step of online gradient descent on `‖S k_t − v_t‖²`. The `(I − βkkᵀ)` term erases the existing association at `k_t` before writing the new one, so the state *overwrites* rather than accumulates. This is what fixed the associative-recall failures.
+
+**The solution that won: Kimi Delta Attention.** KDA composes both — a **channel-wise** forget gate applied before a delta-rule update:
+
+$$
+S_t = \big(I - \beta_t k_t k_t^\top\big)\,\mathrm{Diag}(\alpha_t)\,S_{t-1} + \beta_t k_t v_t^\top, \qquad \tilde{o}_t = S_t^\top q_t
+$$
+
+`α_t ∈ (0,1)^{d_k}` is a **per-channel** retention factor, so different feature channels can forget at different rates — a strict generalization of the scalar decay in GLA. `β_t ∈ (0,1)` controls write strength.
+
+K3's specific contribution is the **lower-bounded decay**, and it is a systems fix with an architectural shape. The chunked parallel form rescales keys by `1/Γ`, the reciprocal cumulative decay. Since `Γ` is a product of numbers in `(0,1)`, that reciprocal can grow without bound and overflow. Kimi Linear handled it with log-space arithmetic and special-cased diagonal tiles. K3 instead bounds the log-decay by construction:
+
+$$
+g_t = g_{\min}\,\sigma(e^{A} z_t) \in (g_{\min}, 0), \qquad \alpha_t = \exp(g_t), \qquad g_{\min} = -5
+$$
+
+With `g_min = -5` every retention factor exceeds `e⁻⁵ ≈ 6.7×10⁻³`, the cumulative log-decay over a `16`-token tile stays in `(-80, 0)`, and the rescaling factor stays inside `bf16` range. **Because the range is now finite, every tile can use dense tensor-core matmuls** and the special-cased diagonal path disappears entirely. A numerical bound bought a kernel simplification.
+
+**Implementation decisions.**
+- Implement **both the recurrent form and the chunked parallel form, and assert they agree numerically.** This is the milestone's real exit criterion. The recurrent form is the definition; the chunked form is what runs. If they disagree, the chunked derivation is wrong, and that bug is invisible in a loss curve.
+- Use the **bounded** decay parameterization with `g_min = -5`. The unbounded negative-softplus form is the older Kimi Linear/GDN mapping and is strictly harder to make numerically safe.
+- Keep the full KDA input pipeline: `q, k = L2Norm(Swish(ShortConv(Wx)))`, `v = Swish(ShortConv(W_v x))`, `β = σ(W_β x)`, and a **low-rank** projection for the decay logits `z`. The `L2Norm` on `q`/`k` is KDA's analogue of QK-Norm.
+- Output path is `y = W_o[σ(W_g x) ⊙ RMSNorm(õ_t)]` — head-wise RMSNorm on the recurrent output, then the same full-rank output gate from `M-507`. The norm matters: the recurrent state has no softmax to bound its scale.
+- **Remove RoPE from these layers.** Position now comes from the recurrence's decay ordering. This is what lets K3 run NoPE across the entire model.
+- Expect this to be **slow** — a Python-level chunked scan against fused kernels. Report it honestly; this is the single best phase-4 Triton target the ladder will produce.
+
+### Milestone 516: Residual-Stream Upgrade
 Track: Depth
 
-Goal:
-- Test one modern replacement for the plain residual connection.
+**Goal.** Replace the plain residual connection with one that lets each layer read from all preceding layers selectively.
 
-Candidates:
-- Attention residuals, where each layer attends over the outputs of all preceding layers.
-- Hyper-connections, where the residual stream is widened and mixed with learned, constrained maps.
+**Why this milestone was upgraded.** The previous roadmap listed residual-stream changes as speculative and "a plausible loser at `8` layers." Two of the three frontier models then shipped one, independently, in the same quarter. It is now a real mechanism with a real justification.
 
-Rule:
-- Implement one, measure it, and keep it only if it earns its complexity at this scale. Both are real 2026 mechanisms, and both are plausible losers at `8` layers.
+**The problem.** Kimi K3 states it in one sentence: standard residual connections "compress all prior information into a single state `h_l` over depth — a bottleneck reminiscent of RNNs over time." Layer `l` sees exactly one vector, the running sum of everything before it. It cannot ask for layer `3`'s output specifically; that output has already been added into an undifferentiated total, possibly swamped by later contributions.
 
-Exit criteria:
-- The mechanism runs stably and its cost in memory and time is measured.
-- The decision to keep or drop it is recorded with the reason.
+The parallel is precise and worth sitting with. The transformer's founding insight was that compressing a sequence into one recurrent state is lossy, and attention fixed it by letting each position address all previous positions with data-dependent weights. **The residual stream is that same lossy compression, along depth, and it was never fixed.**
 
-Questions to answer:
-- What information does a plain residual stream destroy?
-- Why does depth-wise mixing need explicit stability constraints?
+**What the field tried.** **DenseNet-style concatenation** gives every layer access to all previous outputs, but the width grows with depth and the parameter cost is quadratic. **Highway networks and gated residuals** add a learned scalar or vector gate on the residual branch, which controls *how much* to add but not *what to read*. **LayerScale** shrinks each branch by a learned per-channel factor at initialization, which helps trainability without changing what information is reachable.
 
-### Milestone 515: Optimizer And Initialization Modernization
+**The solution that won — two of them, actually.**
+
+**Kimi K3's Attention Residuals.** Apply attention to depth. Give each layer `l` a learnable pseudo-query `q_l = w_l`, treat every preceding layer's output as a key and value (with the token embedding as index `0`), and attend:
+
+$$
+\phi(q,k) = \exp\!\big(q^\top \mathrm{RMSNorm}(k)\big), \qquad \alpha_{i \to l} = \frac{\phi(q_l, k_i)}{\sum_{j=0}^{l-1}\phi(q_l, k_j)}, \qquad h_l = \sum_{i=0}^{l-1} \alpha_{i\to l}\, v_i
+$$
+
+The `RMSNorm` inside the kernel is load-bearing: it prevents layers with large-magnitude outputs from dominating the weights purely by scale. Note the query is a plain learnable vector, not a function of the token — this is per-layer, not per-token, addressing.
+
+The full form costs `O(L²d)` arithmetic, which K3 calls affordable below `100` layers, and `O(Ld)` memory. To cut that they use **Block AttnRes**: partition `L` layers into `N` blocks, sum within a block, and attend only over the `N` block-level representations. `N ≈ 8` recovers most of the benefit; K3 uses `8` blocks of `12` layers.
+
+**DeepSeek-V4's mHC.** Widen the residual stream from `ℝ^d` to `ℝ^{n_hc × d}` and mix the channels with a learned matrix:
+
+$$
+X_{l+1} = B_l X_l + C_l\,\mathcal{F}_l(A_l X_l)
+$$
+
+Plain hyper-connections do this and are numerically unstable when stacked. mHC's contribution is constraining `B_l` to the **Birkhoff polytope** — doubly stochastic, every row and column summing to `1`, all entries non-negative — via `20` Sinkhorn-Knopp iterations. A doubly stochastic matrix has spectral norm bounded by `1`, so the residual transform is non-expansive and cannot amplify signal across depth. The set is also closed under multiplication, so the guarantee survives arbitrarily deep stacks. `A_l` and `C_l` are sigmoid-bounded to prevent signal cancellation. DeepSeek uses `n_hc = 4`.
+
+**Implementation decisions.**
+- **Implement Attention Residuals, not mHC.** Three reasons. AttnRes is one mechanism with a clean statement — attention over depth — and it teaches something transferable; mHC needs dynamic parameter generation, Sinkhorn projection, and a `4x`-wide residual state, which is a lot of machinery for one measurement. AttnRes's justification is architectural (the depth bottleneck) while mHC's is primarily numerical (stability at `1.6T` parameters), and the numerical problem does not exist at `1.6M`. And AttnRes changes the residual *routing*, which is the interesting question; mHC changes its *width*.
+- Use the **full** form, not Block AttnRes. At `L = 8` the block partition would be near-vacuous, and `O(L²d)` at `L = 8` is `64` inner products per token — free.
+- Include the **token embedding as index `0`**, per K3. Every layer keeps direct access to the raw input.
+- Keep the `RMSNorm` inside the attention kernel. Removing it is the obvious "simplification" and it is the thing that makes the weights scale-invariant.
+- Parameter cost is one `d`-vector per layer — `8 × 128 = 1024` parameters. This is nearly free, which makes it an unusually clean comparison.
+- Memory cost is keeping all `L` layer outputs alive, so activation memory rises. Measure it.
+
+### Milestone 517: Muon Optimizer And Untied Embeddings
 Track: Optimization
 
-Goal:
-- Move from AdamW everywhere to Muon on 2D matrices with AdamW on embeddings, norms, and gains, and untie the input and output embeddings.
+**Goal.** Move from AdamW everywhere to Muon on 2D matrices with AdamW on embeddings, norms, and the head, and untie the input and output embeddings.
 
-Why it comes last among the mechanisms:
-- Optimizer changes shift every earlier comparison. Doing this earlier would invalidate the ladder.
+**Why it comes last among the mechanisms.** An optimizer change shifts every earlier comparison simultaneously. Doing it before the architecture is frozen would invalidate the whole ladder.
 
-Exit criteria:
-- The Newton-Schulz orthogonalization step is implemented explicitly, not imported.
-- A matched-budget comparison against AdamW is recorded.
-- The parameter-group split is justified per group.
+**The problem.** Adam normalizes each parameter *independently* by its own gradient history. For a weight **matrix**, that is a strange thing to do — it ignores the matrix structure entirely. In practice gradient matrices for linear layers are dominated by a few large singular directions, so an Adam update moves the weights mostly along one or two directions while the remaining directions are barely touched. The update is ill-conditioned, and its effect on the function the layer computes is uneven.
 
-Questions to answer:
-- What does orthogonalizing the update actually do to the learning dynamics?
-- Why do embeddings and norms stay on AdamW?
-- Does untying help or hurt at a vocabulary of about one hundred characters, and why is that different from a vocabulary of 160K?
+**What the field tried.** **Second-order and quasi-Newton methods** (K-FAC, Shampoo) explicitly model curvature and condition the update, and they work — but they need to maintain and invert preconditioner matrices, which is expensive in both memory and time. **LAMB and LARS** used layer-wise update-norm rescaling, which fixes the scale across layers but not the conditioning within a matrix.
 
-### Milestone 516: Modern Reference Model
+**The solution that won.** **Orthogonalize the update.** Take the momentum matrix `M`, compute its SVD `M = UΣVᵀ`, and use `UVᵀ` — all singular values set to `1`. Every direction gets an equal-magnitude update, so no single direction dominates. This is Shampoo's conditioning benefit without maintaining a preconditioner.
+
+An actual SVD every step would be far too slow, so Muon approximates `UVᵀ` with **Newton-Schulz iterations**: normalize `M₀ = M/‖M‖_F`, then repeat
+
+$$
+M_k = a M_{k-1} + b\,(M_{k-1}M_{k-1}^\top)M_{k-1} + c\,(M_{k-1}M_{k-1}^\top)^2 M_{k-1}
+$$
+
+This is matrix multiplication only — GPU-friendly, no decomposition. DeepSeek-V4 uses a **hybrid schedule** of `10` iterations: `8` steps at `(a,b,c) = (3.4445, -4.7750, 2.0315)` to drive the singular values rapidly toward `1`, then `2` steps at `(2, -1.5, 0.5)` to settle them precisely there. The aggressive coefficients converge fast but overshoot; the conservative ones stabilize.
+
+Muon applies **only to 2D matrices**. Embeddings, norm gains, and the output head stay on AdamW. Both frontier reports that document their optimizer agree exactly on this split, and DeepSeek additionally keeps mHC's static biases and gating factors on AdamW. The reason is that orthogonalization is a statement about a linear map's singular values; a `1D` gain vector and a lookup table are not linear maps in that sense, and an embedding row's update should stay sparse rather than being spread across directions.
+
+Kimi K3 refines further with **Per-Head Muon**: for attention projections, partition the momentum matrix along the head axis and orthogonalize each head's block separately. Full-matrix orthogonalization treats all heads as one coupled block, so heads with larger gradient scale dominate the shared update direction. Per-head equalizes update scale across heads, and is cheaper besides — Newton-Schulz on tall thin blocks beats one big matrix.
+
+**Untying** belongs in this milestone rather than its own, for a mechanistic reason: a tied embedding matrix must serve as both a lookup table and an output linear map, so it would have to be on AdamW and Muon simultaneously. The optimizer split forces the question.
+
+**Implementation decisions.**
+- **Write Newton-Schulz explicitly**, not imported. It is five lines and it is the entire mechanism.
+- Use the hybrid coefficient schedule: `8 + 2` iterations as above.
+- Rescale the update RMS so AdamW's learning rate stays reusable — DeepSeek rescales to `0.18`; the alternative published form is `√max(n,m) · γ`. Pick one and record which.
+- Parameter groups: **Muon** for all `2D` weights in attention, feed-forward, experts, and the router. **AdamW** for the embedding table, the output head, every RMSNorm gain, the attention sink logits, and the MoE bias buffer's neighbours. Justify each group in the log.
+- Use Nesterov momentum and apply weight decay to Muon parameters, per both reports.
+- **Skip Per-Head Muon initially.** With `4` heads its benefit is small; implement it as the A/B if the main comparison is clean.
+- Untie the embeddings and expect this to **hurt or do nothing**. At a `98`-character vocabulary the output head is `98 × 128 = 12544` parameters and the tying constraint is nearly harmless; untying matters at a `160K` vocabulary where the two roles genuinely conflict. Predict the null result in advance and check it.
+- Do **not** adopt QK-Clip. `M-507` already installed QK-Norm, and DeepSeek-V4 states explicitly that RMSNorm on queries and KV entries is why they dropped QK-Clip from their Muon implementation.
+
+### Milestone 518: Modern Reference Model
 Track: Integration
 
-Goal:
-- Produce one integrated model containing every mechanism that earned its place, plus the ablation table for the whole phase.
+**Goal.** Produce one integrated model containing every mechanism that earned its place, plus the ablation table for the whole phase.
 
-Deliverables:
-- One frozen model definition.
+**The problem.** Seventeen incremental scripts is a ladder, not an architecture. Each milestone was measured against its immediate predecessor, which means the errors compound and no single run demonstrates the whole thing. There is also no artifact for phase 4 to profile.
+
+**What the field does.** Every technical report read for this roadmap ends the same way: one frozen configuration table, one ablation study, and an honest section on what did not work. DeepSeek-V4's "Mitigating Training Instability" section — publishing two fixes while admitting "a comprehensive theoretical understanding of their underlying mechanisms remains an open question" — is the model to imitate.
+
+**The solution.** One file, one config, one table.
+
+**Deliverables.**
+- One frozen model definition, self-contained.
 - One frozen training recipe.
-- One table of every milestone with loss, parameters, active parameters, and wall-clock.
+- One table of every milestone: loss, total parameters, active parameters per token, wall-clock.
 - One explicit list of mechanisms that were implemented and then dropped, with reasons.
+- One list of mechanisms whose failure mode **never appeared at this scale** — routing collapse, activation outliers, attention sinks, logit explosion — separated from those that were measured and rejected. These are different categories and conflating them would be dishonest.
 
-Exit criteria:
-- The final model is the phase-4 profiling target.
-- Every mechanism in it can be explained from first principles.
-- The ablation table is honest about which changes did nothing at this scale.
+**Implementation decisions.**
+- Rerun the final model at **three seeds**. The entire ladder is single-seed and the noise floor is roughly `0.02`; the final number at least should be defensible.
+- Keep every mechanism that is a genuine 2026 standard even where it did not pay for itself here, and say so in the table. The phase-4 profiling target must be representative, not locally optimal.
+- Also settle the two debts outstanding from the start of the phase: the `post-norm @ lr 3e-4` control for `M-501`/`M-502` attribution, and a parameter-matched control for `M-507`.
 
-Questions to answer:
+**Questions to answer.**
 - Which mechanisms were quality changes and which were purely systems changes?
 - Which ones only pay off at scales this repo has not reached?
 - What is the shortest defensible description of a 2026 architecture?
 
 ## Recommended Order
 
-The intended order is exactly `501` through `516`.
+The intended order is exactly `501` through `518`.
 
 The order is not arbitrary:
 
-- normalization first, because it makes everything else trainable,
-- positions next, because they are independent of the attention layout,
-- attention layout before attention internals, because the layout decides what the internals operate on,
-- sparsity after the dense feed-forward is understood,
-- the objective after the model,
-- the optimizer last, because it changes the meaning of every earlier comparison,
-- integration only once each mechanism has a recorded, individual result.
+- **normalization first**, because it makes everything else trainable,
+- **positions next**, because they are independent of the attention layout,
+- **attention layout before attention internals**, because the layout decides what the internals operate on,
+- **sparsity after the dense feed-forward is understood**, because MoE is a modification of a block that must already work,
+- **stability after the mechanisms that create the instability** — `M-512` caps SwiGLU, which only exists from `M-506`, and only becomes urgent once `M-511` chains it inside a routed path; `M-513` fixes a softmax pathology that `M-507`'s gate has already half-addressed,
+- **the objective after the model**, because MTP adds a second loss and the main loss must stay comparable,
+- **the local mixer late**, because gated linear attention is the least settled and hardest mechanism, and it needs the `M-508` hybrid layout to drop into,
+- **depth after width**, because AttnRes changes what every layer reads and would otherwise confound every earlier measurement,
+- **the optimizer last**, because it changes the meaning of every earlier comparison,
+- **integration only once each mechanism has a recorded, individual result.**
+
+The two new milestones, `512` and `513`, are deliberately cheap. Both are small code changes with a strong chance of a null result at this scale, and both are worth running precisely *because* a null result is informative — it distinguishes "this mechanism does nothing" from "this mechanism fixes a problem that does not exist here."
 
 ## Non-Goals
 
@@ -548,6 +941,21 @@ Phase 5 should not become:
 - a race to reimplement every named mechanism from every technical report,
 - a model that is modern but that the author cannot explain.
 
+Specific mechanisms deliberately **not** implemented, with reasons:
+
+| Mechanism | Model | Why it is skipped |
+| --- | --- | --- |
+| LatentMoE | Kimi K3 | Routed experts operate in a `0.5×d` latent so expert traffic does not scale with routing multiplicity. The benefit is *communication* under expert parallelism, which does not exist on one GPU. |
+| Quantile Balancing | Kimi K3 | Solves fixed-step bias adaptation at `896` experts with distributed histogram estimation. At `32` experts on one GPU the simple sign rule is sufficient. |
+| mHC | DeepSeek-V4 | A numerical-stability fix for `1.6T` parameters. `M-516` implements AttnRes instead, which addresses the architectural question rather than the numerical one. |
+| CSA / HCA | DeepSeek-V4 | Compression along the *sequence* axis, which only matters when sequence length dominates memory. At context `256` it cannot. |
+| DeepSeek Sparse Attention | GLM-5.2 | A learned indexer selecting top-`2048` of a `1M`-token prefix. At context `256`, top-`2048` is the whole sequence. |
+| Sequence-wise balance loss | DeepSeek-V4 | Reintroduces the auxiliary-loss coupling that `M-511` exists to remove. |
+| Hash routing in early blocks | DeepSeek-V4 | Contradicted by the other two models; not a converged choice. |
+| Native multimodality | Kimi K3 | Out of scope; this phase is character-level text. |
+
+Each of these should still be **explained** in the learning log where it is relevant. Knowing why a mechanism does not apply at this scale is the same kind of understanding as knowing why one does.
+
 ## Success Condition
 
 Phase 5 succeeds if, by the end, the following are all true:
@@ -555,4 +963,28 @@ Phase 5 succeeds if, by the end, the following are all true:
 - I can build a current-generation language model architecture from scratch, without copying a reference implementation.
 - I can explain every mechanism in it from mechanism, including what it costs.
 - I know which of those mechanisms help at small scale, which are purely about inference economics, and which I only believe because a technical report said so.
+- I can name, for each mechanism, the failure mode it fixes and whether that failure mode actually occurs at `1.6M` parameters.
 - I have one frozen modern workload that the phase-4 profiling, Triton, and CUDA path can attack next.
+
+## Sources
+
+Primary technical reports, read directly:
+
+- [Kimi K3: Open Frontier Intelligence](https://arxiv.org/abs/2607.24653) — architecture §2.1–2.5, config table §3.2
+- [DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence](https://arxiv.org/abs/2606.19348) — architecture §2, model setups §4.2.1, instability §4.2.3
+
+Mechanism papers:
+
+- [Gated Attention for Large Language Models: Non-linearity, Sparsity, and Attention-Sink-Free](https://arxiv.org/abs/2505.06708) — NeurIPS 2025 Oral, the gated-attention ablation behind `M-507`
+- [DeepSeek-V3 Technical Report](https://arxiv.org/abs/2412.19437) — auxiliary-loss-free balancing and sequential MTP
+
+Secondary coverage used for GLM-5.2/5.3, which has no public technical report:
+
+- [The Architecture Of A Frontier Model: GLM-5.2](https://paulsbrookes.github.io/2026/06/30/glm-5-2-attention.html) — layer-by-layer teardown with dimensions
+- [GLM 5.2 Architecture Deep Dive: Index Share, Sparse Attention, and Multi-Token Prediction](https://www.mindstudio.ai/blog/glm-5-2-architecture-index-share-sparse-attention)
+- [GLM-5 repository](https://github.com/zai-org/GLM-5)
+
+Counter-signal:
+
+- [The MiniMax-M2 Series](https://arxiv.org/abs/2605.26494) — the negative result on sliding-window and hybrid attention
+- [MiniMax Sparse Attention](https://huggingface.co/papers/2606.13392) — what they shipped in M3 instead
