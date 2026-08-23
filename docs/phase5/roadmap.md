@@ -43,42 +43,45 @@ For the run history, see [learning_log.md](learning_log.md).
 
 ## Current Status
 
-As of 2026-08-23:
-
-> **The table below predates the `2026-08-23` correctness audit and no longer matches the code.**
-> Three changes invalidated every completed milestone. Two were correctness fixes: all linear
-> weights are now initialized at `normal(0, 0.02)` rather than PyTorch's default, and `M-509`/`M-510`
-> normalize the KV latent instead of the reconstructed key. The third is the `2026-08-23` size
-> revision, which moved the control from `d_model 128` with `4` heads to `d_model 256` with `8`,
-> taking the vanilla model from `1.6M` to `6.4M` parameters. Milestones `501` through `510` all need
-> re-running before any of these deltas can be quoted again.
-
 - Milestones 501 through 510 are complete and recorded as `P5-001` through `P5-010`.
-- All runs live on a Kaggle `Tesla T4` at seed `1337`. The earlier `mps` numbers were discarded: `mps` is not reproducible, two identical runs diverging by up to `0.053` validation loss, and a laptop cannot hold wall-clock steady across a batch of runs.
+- All runs live on a Kaggle `Tesla T4` at seed `1337`, which reproduces bit-exactly. Local `mps` is
+  not reproducible, two identical runs diverging by up to `0.053` validation loss, so a results
+  table must live on one platform.
 
 | Milestone | Val loss | Delta | Parameters | Seconds |
 | --- | ---: | ---: | ---: | ---: |
-| 501 vanilla post-norm | `3.0557` | — | `1631488` | `267.8` |
-| 502 pre-norm | `0.9354` | `-2.1203` | `1631744` | `273.3` |
-| 503 RMSNorm, no biases | `0.9498` | `+0.0144` | `1620352` | `264.7` |
-| 504 RoPE | `0.8644` | `-0.0854` | `1587584` | `300.4` |
-| 505 grouped-query attention | `0.8594` | `-0.0050` | `1456512` | `291.6` |
-| 506 SwiGLU | `0.8663` | `+0.0069` | `1464704` | `285.3` |
-| 507 QK-Norm and gated attention | `0.8056` | `-0.0607` | `1596288` | `329.2` |
-| 508 layerwise hybrid attention | `0.8008` | `-0.0048` | `1596288` | `313.9` |
-| 509 latent attention, global layers | `0.8079` | `+0.0071` | `1633152` | `321.7` |
-| 510 sparse mixture-of-experts | `0.7984` | `-0.0095` | `2328448` | `476.5` |
+| 501 vanilla post-norm | `3.0556` | — | `6408704` | `661.1` |
+| 502 pre-norm | `2.2576` | `-0.7980` | `6409216` | `678.6` |
+| 503 RMSNorm, no biases | `2.1625` | `-0.0951` | `6386432` | `650.1` |
+| 504 RoPE | `0.9334` | `-1.2291` | `6320896` | `714.0` |
+| 505 grouped-query attention | `0.9052` | `-0.0282` | `5796608` | `659.7` |
+| 506 SwiGLU | `0.9763` | `+0.0711` | `5792512` | `672.0` |
+| 507 QK-Norm and gated attention | `0.7904` | `-0.1859` | `6317312` | `770.7` |
+| 508 layerwise hybrid attention | `0.7887` | `-0.0017` | `6317312` | `733.8` |
+| 509 latent attention, global layers | `0.8135` | `+0.0248` | `6358336` | `737.3` |
+| 510 sparse mixture-of-experts | `0.8002` | `-0.0133` | `8899392` | `956.5` |
 
-- Three mechanisms move the loss: pre-norm, RoPE, and QK-Norm with gated attention. The last of those also adds `9%` parameters, so its number confounds mechanism with capacity.
-- Five do not: RMSNorm, GQA, SwiGLU, hybrid attention, and latent attention are all within single-seed noise. That is the expected result. RMSNorm is a simplification, the three attention mechanisms are inference economics with no cache present during training, and SwiGLU at matched parameters is too small an effect for this model size.
-- The baseline does not learn at the control learning rate. It collapses to character-unigram loss by step `250`. A control sweep confirms the code is correct and the failure is a post-norm and learning-rate interaction.
-- Milestone 511 was rescoped after `M-510` measured no routing collapse at `4` of `8` experts. It now changes the sparsity ratio first and balances second.
+- **Two mechanisms account for almost everything.** Pre-norm is worth `-0.7980` and RoPE `-1.2291`,
+  together `-2.03` of the total `-2.26`. Everything after them moves the loss by under `0.19`.
+- **Milestones 502 and 503 end stalled**, around `2.2`, and the reason is not the normalizer. Both
+  were blocked on the learned absolute position table, which `M-504` removed.
+- **The baseline never learns at the control learning rate.** It reaches character-unigram loss by
+  step `250` and stays flat. That is post-norm's missing identity path, not a bug.
+- **SwiGLU made the model worse**, `+0.0711` at matched parameters. A real negative result for a
+  mechanism every frontier model uses.
+- **QK-Norm with gated attention is the second-largest gain**, `-0.1859`, but it adds `9%`
+  parameters, so that number confounds mechanism with capacity.
+- **Sparsity bought nothing measurable**, `-0.0133` for `40%` more total parameters and `30%` more
+  wall-clock. Routing is measurably imbalanced, though, at a `4.6x` spread between the busiest and
+  quietest expert, so `M-511` has something real to correct.
+- Every run except the collapsed baseline was still improving at step `3000`. The ladder compares
+  architectures at a fixed budget, not at convergence.
 
 ### Platform Notes
 
 - Runs execute on a Kaggle `T4`, which reproduces itself bit-exactly at default settings. `P100` is not an option: it fails with `no kernel image is available for execution on the device`, since Kaggle's PyTorch no longer ships `sm_60` kernels.
 - Kaggle permits two concurrent GPU sessions, and reports the limit as ordinary output rather than a failing exit code.
-- Results are not comparable across devices. The same script and seed gives `0.8040` on `mps` and `0.8008` on `T4`.
+- Results are not comparable across devices. The same script at the same seed lands on a different loss on `mps` than on `T4`, so a results table must live entirely on one platform.
 - Single deterministic runs are reproducible but not precise. Differences under roughly `0.02` cannot be claimed without repeated seeds; three seeds per milestone is about two hours of quota for the whole ladder.
 
 ## Why This Phase Is Separate
@@ -350,9 +353,9 @@ Track: Baseline
 Status: complete via [`phase5/001_vanilla_decoder.py`](../../phase5/001_vanilla_decoder.py), recorded as `P5-001`.
 
 Main lesson:
-- At the control learning rate the baseline collapses to character-unigram loss (`3.0557`) by step `250` and never recovers, so "loss decreases smoothly" was not met.
-- The collapse is an optimization failure, not a code bug and not a divergence: gradient norms are the smallest of any tested configuration, clipping fires on `1%` of steps, and the same script reaches `2.15` at lr `3e-4`.
-- Post-norm puts the normalization on the residual stream itself, so there is no identity path through depth and no single learning rate that works. That is the mechanism milestone 502 removes.
+- At the control learning rate the baseline never learns. It reaches character-unigram loss (`3.055`) by step `250` and stays flat for the remaining `2750` steps, moving by `0.003` in either direction.
+- This is the intended result rather than a bug. Post-norm puts the normalization on the residual stream itself, so there is no identity path from the loss back to the embedding, and no single learning rate serves the whole stack.
+- It is worth seeing a real training collapse once, and worth knowing that it looks like a flat line rather than a divergence.
 
 ### Milestone 502: Pre-Norm Residual Stream
 Track: Normalization
@@ -380,9 +383,9 @@ Now the residual stream itself is never normalized. There is a clean additive pa
 Status: complete via [`phase5/002_pre_norm.py`](../../phase5/002_pre_norm.py), recorded as `P5-002`.
 
 Main lesson:
-- Validation loss falls from `3.0557` to `0.9354` for four lines of code and `+256` parameters.
-- The identity path is measurable outside training: activations scaled by `50x` leave a post-norm block at standard deviation `1.000` and a pre-norm block at `50.265`.
-- Pre-norm trains with much larger gradients, clipping on `50%` of steps against `1%` for the collapsed post-norm run, so heavy clipping here is a sign of health.
+- Moving the norm inside the branch is worth `-0.7980` for four lines of code and `512` parameters. That is the single largest structural gain available.
+- But it does not finish the job. The curve reaches `2.34` by step `250` and then crawls, ending at `2.2576` after `2750` more steps. The model is learning, barely.
+- So pre-norm removes the hard blocker and exposes a second one. The next two milestones show that the remaining blocker is the position representation, not the normalization.
 
 ### Milestone 503: RMSNorm And Bias Removal
 Track: Normalization
@@ -416,9 +419,9 @@ RMSNorm fixes the vector's *length* and leaves its direction alone. LayerNorm ad
 Status: complete via [`phase5/003_rms_norm.py`](../../phase5/003_rms_norm.py), recorded as `P5-003`.
 
 Main lesson:
-- Parameters drop by `11392` and the loss does not meaningfully move (`0.9354` to `0.9498`, inside noise).
-- The claim that re-centering contributes little is reproduced directly: dropping the mean subtraction and all biases cost no quality.
-- Implementation trap: normalizing by `x.var(correction=0)` instead of the mean square agrees with RMSNorm only when the per-token mean is zero.
+- Dropping mean-centering and every bias costs nothing and saves `22784` parameters, which is the claim RMSNorm was introduced to make.
+- The `-0.0951` improvement should not be read as a win for RMSNorm. The run is still in the stalled regime that `M-002` left it in, where the loss drifts slowly, and a drift of that size over `3000` steps is not attributable to the normalizer.
+- Implementation trap worth keeping: normalizing by `x.var(correction=0)` instead of the mean square agrees with RMSNorm only when the per-token mean is zero, and pre-norm is exactly where the residual stream drifts off zero.
 
 ### Milestone 504: Rotary Position Embeddings
 Track: Positions
@@ -457,9 +460,10 @@ The frequency spread is what makes it work across scales: high-`θ` pairs spin f
 Status: complete via [`phase5/004_rope.py`](../../phase5/004_rope.py), recorded as `P5-004`.
 
 Main lesson:
-- RoPE is the largest quality win of the ladder after pre-norm, and it is also a simplification: `32768` parameters removed.
-- Relative behavior verified directly: the score for a gap of `2` is identical at positions `(3, 5)`, `(10, 12)`, and `(100, 102)`.
-- `rotate_half` is the expensive half of the operation, `0.410ms` of `1.067ms` per call, because `chunk` plus `cat` allocates instead of reading in place. Good phase-4 Triton candidate.
+- This is the milestone that makes the model work. Validation loss falls from `2.1625` to `0.9334`, a gain of `-1.2291`, while the model *loses* `65536` parameters.
+- Nothing else in the ladder comes close, and the reason is that the previous three milestones were all stalled on the same thing. A learned absolute position table gives every index its own free vector and forces the model to discover that only differences matter. RoPE makes the score between positions `m` and `n` depend on `n - m` by construction, so that discovery is not needed.
+- The rotation is also length-preserving, so position is injected without disturbing activation scale. That is the mechanical reason it can be applied at every layer while an additive table cannot.
+- The honest reading of milestones `002` through `004` together: pre-norm was necessary but not sufficient, and the learned position table was the binding constraint all along.
 
 ### Milestone 505: Grouped-Query Attention
 Track: Attention
@@ -480,8 +484,9 @@ Track: Attention
 Status: complete via [`phase5/005_gqa.py`](../../phase5/005_gqa.py), recorded as `P5-005`.
 
 Main lesson:
-- `0.8594` against `0.8644`, inside noise, with `131072` fewer parameters. Exactly the expected result.
-- The deliverable is the cache arithmetic, not the loss number.
+- Sharing key and value heads improved the loss by `-0.0282` while removing `524288` parameters, roughly `9%` of the model.
+- The loss change is small enough that it should be read as "no cost" rather than as a gain; a single seed cannot resolve `0.03` reliably. The parameter saving is the real result.
+- The mechanism's actual payoff is invisible here by construction. GQA exists to shrink the KV cache during autoregressive decoding, and training never builds one.
 
 ### Milestone 506: SwiGLU Feed-Forward
 Track: Feed-forward
@@ -508,9 +513,10 @@ The gate branch scales the up branch elementwise, per token and per feature — 
 Status: complete via [`phase5/006_swiglu.py`](../../phase5/006_swiglu.py), recorded as `P5-006`.
 
 Main lesson:
-- On the `T4` control, `0.8663` against `0.8594` — inside noise. The earlier `mps` run showed a `0.0128` gain, but the `mps` noise floor was later measured at `0.053`, which retracts that claim.
-- The parameter matching is what makes any claim possible at all: without the `2/3` rule this would have been a `36%` larger model.
-- Cost is `~4.6%` wall-clock. Three narrow matmuls are slower than two wide ones at this size.
+- At matched parameters SwiGLU made the model **worse**, by `+0.0711`. This is the clearest negative result in the ladder and it is large enough to be real rather than noise.
+- The comparison is clean, which is what makes it interesting. A gated block has three matrices where the dense block had two, so `D_FFN` narrowed from `1024` to `682` and the parameter count barely moved, from `5796608` to `5792512`.
+- So the gate bought a multiplicative interaction and paid for it with `33%` less width, and at this scale the width was worth more. The field's preference for SwiGLU is established at far larger widths, where the trade goes the other way.
+- Worth stating plainly: this ladder now contains a mechanism that every frontier model uses and that measurably hurt at `6M` parameters.
 
 ### Milestone 507: QK-Norm And Gated Attention
 Track: Attention stability
@@ -553,7 +559,9 @@ This is the direct fix for the sink. The head is no longer forced to emit someth
 Status: complete via [`phase5/007_qk_norm_gated_attention.py`](../../phase5/007_qk_norm_gated_attention.py), recorded as `P5-007`.
 
 Main lesson:
-- Second-largest win of the ladder: `0.8663` to `0.8056`. But `+131712` parameters came with it, so mechanism and capacity are confounded. An honest attribution needs a parameter-matched control that has not been run.
+- The second-largest gain of the ladder, `-0.1859`, taking validation loss below `0.80` for the first time.
+- It is also the least attributable. The elementwise gate is a full `D x D` matrix, so the model grew by `524800` parameters, about `9%`. Some of the improvement is the mechanism and some is the capacity, and this run does not separate them.
+- The cheap control, if it is ever wanted, is a QK-Norm-only variant: the two norms cost `64` parameters between them.
 
 ### Milestone 508: Layerwise Hybrid Attention
 Track: Attention layout
@@ -582,8 +590,9 @@ The second half of this milestone is **NoPE on the global layers**. If the local
 Status: complete via [`phase5/008_hybrid_attention.py`](../../phase5/008_hybrid_attention.py), recorded as `P5-008`.
 
 Main lesson:
-- `0.8008` against `0.8056` at *identical* parameter count — inside noise. Six of eight layers lost `75%` of their receptive field for free.
-- At context `256` this is expected: the mechanism's value is asymptotic, and `256` is not long.
+- Six of eight layers lost `75%` of their receptive field and the loss did not move: `-0.0017` at **identical** parameter count.
+- This is the cleanest comparison in the ladder, since masks are buffers and NoPE removes rather than adds. Nothing but the receptive field changed.
+- At context `256` with a `64`-token window that is the expected result. The mechanism's value is asymptotic, and `256` tokens is not long. It is evidence that the layout is free here, not evidence that it is free.
 
 ### Milestone 509: Multi-Head Latent Attention
 Track: Attention
@@ -624,9 +633,10 @@ so `W_uk` can be folded into the query projection once, and attention runs direc
 Status: complete via [`phase5/009_mla.py`](../../phase5/009_mla.py), recorded as `P5-009`.
 
 Main lesson:
-- `0.8079` against `0.8008` for `36864` more parameters — inside noise. Fourth mechanism in a row whose payoff is invisible in a training-only benchmark.
-- The cache arithmetic is the real result: a global layer caches `64 + 16 = 80` numbers per token instead of `128`, with per-head keys and values restored.
-- Absorption verified directly: folding once and reusing gives zero error at `n = m` and growing error everywhere else.
+- Latent attention cost `+0.0248` for `41024` more parameters. A small regression, near the resolution of a single seed.
+- The cache arithmetic is the actual deliverable. A global layer now caches `64 + 16 = 80` numbers per token against `512` for full multi-head keys and values, a `6.4x` reduction, and every query head gets its own keys and values back rather than sharing.
+- DeepSeek's own sizing rule does not transfer. They set the latent to `4 * d_head`, which here is `128`, exactly half the model dim and barely a compression. Their `28x` saving comes from having `128` heads of `128` dims to squeeze into `512`; an eight-head model has far less redundancy to exploit.
+- The decoupled rope path was implemented even though these layers are NoPE, because that conflict is the entire reason MLA has its shape. Absorption requires the map from latent to key to be linear and constant, which is why the norm sits on the latent and there is no key norm at all.
 
 ### Milestone 510: Sparse Mixture-Of-Experts Feed-Forward
 Track: Sparsity
@@ -654,28 +664,40 @@ Track: Sparsity
 Status: complete via [`phase5/010_moe.py`](../../phase5/010_moe.py), recorded as `P5-010`.
 
 Main lesson:
-- First milestone where total and active parameters diverge: total up `43%` to `2328448`, active per token at `100.8%` of dense. That decoupling is the entire point.
-- `0.7984` against `0.8079` — inside noise. `1.75x` the feed-forward capacity at matched active cost bought nothing measurable at this scale.
-- Cost is `48%` wall-clock. Eight small matmuls where there was one large one, at shapes too small to use the GPU.
-- **Routing did not collapse**, which was the milestone's most useful negative result and forced `M-511` to be rescoped. See below.
+- Total and active parameters diverge for the first time: total rises `40%` to `8899392` while the active feed-forward width per token is `4 * 128 + 128 = 640` against the dense `682`, so each token costs slightly less than before.
+- Validation loss improved `-0.0133`, which is inside what a single seed can resolve. The honest statement is that `1.5x` the feed-forward capacity at slightly lower active cost bought nothing measurable.
+- Wall-clock is the real cost: `956.5s` against `737.3s`, `30%` slower. Seven blocks now run eight small matrix multiplications where they ran one large one, and the shapes are too small to use the GPU well. Production speed comes from fused grouped-GEMM kernels.
+- - **Routing is measurably imbalanced.** Tracked on training dispatch, the busiest expert takes `0.177` of the tokens and the quietest `0.038`, against an ideal `0.125` — a `4.6x` spread that appears within `250` steps and then holds steady. No expert dies, because `4` of `8` is barely sparse enough for the winner-take-all dynamic to run away. That gap is what `M-511` acts on.
 
 ### Milestone 511: Real Sparsity, Then Auxiliary-Loss-Free Load Balancing
 Track: Sparsity
 
 **Goal.** Make the routing genuinely sparse, then balance it with a per-expert bias applied to selection only.
 
-**Why this milestone was rescoped.** As originally written, 511 was "add loss-free balancing." `M-510` then measured that **routing never collapsed**: expert share stayed between `0.106` and `0.141` against an ideal `0.125`, with zero unused experts, and became *more* balanced during training than at initialization.
+**What `M-510` measured.** Routing is imbalanced, and the gap is large enough to act on. Tracked
+on training dispatch, the busiest expert takes `0.177` of the tokens and the quietest `0.038`,
+against an ideal `0.125`:
 
-The cause is that `4` of `8` is not sparse:
+| Step | min share | max share | unused |
+| ---: | ---: | ---: | ---: |
+| 1 | `0.094` | `0.148` | `0` |
+| 250 | `0.032` | `0.177` | `0` |
+| 3000 | `0.038` | `0.177` | `0` |
+
+The spread appears within `250` steps and then holds rather than widening. Nothing dies, and the
+reason is that `4` of `8` is barely sparse by frontier standards:
 
 | Model | Active of total | Ratio |
 | --- | --- | ---: |
 | DeepSeek-V4-Pro | `6` of `384` | `1.6%` |
 | Kimi K3 | `16` of `896` | `1.8%` |
 | GLM-5.2 | `8` of `256` | `3.1%` |
-| `M-510` | `4` of `8` | `50%` |
+| this ladder | `4` of `8` | `50%` |
 
-Every token used half the experts, so each expert received a large share regardless of router preference and the winner-take-all dynamic never started. Implementing a balancer against that would have been a ritual, not an experiment. So **sparsity comes first in this milestone, and balancing second.**
+Every token uses half the experts, so even an unpopular one keeps receiving gradient and the
+winner-take-all dynamic stabilizes instead of running away. That makes this milestone tractable in
+two stages: balance the load that exists, and separately ask what happens when the routing is made
+genuinely sparse.
 
 **The problem.** Routing has positive feedback built in. An expert that receives slightly more tokens early gets more gradient, becomes better at what it sees, so the router prefers it more, so it receives more tokens. Rich-get-richer, ending with a handful of experts doing everything and the rest dead — you paid for `N` experts and got `k`. There is a second, independent problem at scale: experts are sharded across devices, and throughput is set by the *most loaded* expert, so imbalance directly burns money even when quality is fine.
 
