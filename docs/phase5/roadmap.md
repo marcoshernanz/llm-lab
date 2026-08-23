@@ -14,7 +14,7 @@ For the run history from this path, see `learning_log.md`, which is created when
 
 As of 2026-08-16:
 
-- Milestones 501 through 509 are complete and recorded as `P5-001` through `P5-009`.
+- Milestones 501 through 510 are complete and recorded as `P5-001` through `P5-010`.
 - All runs live on a Kaggle `Tesla T4` at seed `1337`. The earlier `mps` numbers were discarded: `mps` is not reproducible, two identical runs diverging by up to `0.053` validation loss, and a laptop cannot hold wall-clock steady across a batch of runs.
 
 | Milestone | Val loss | Delta | Parameters | Seconds |
@@ -28,11 +28,12 @@ As of 2026-08-16:
 | 507 QK-Norm and gated attention | `0.8056` | `-0.0607` | `1596288` | `329.2` |
 | 508 layerwise hybrid attention | `0.8008` | `-0.0048` | `1596288` | `313.9` |
 | 509 latent attention, global layers | `0.8079` | `+0.0071` | `1633152` | `321.7` |
+| 510 sparse mixture-of-experts | `0.7984` | `-0.0095` | `2328448` | `476.5` |
 
 - Three mechanisms move the loss: pre-norm, RoPE, and QK-Norm with gated attention. The last of those also adds `9%` parameters, so its number confounds mechanism with capacity.
 - Five do not: RMSNorm, GQA, SwiGLU, hybrid attention, and latent attention are all within single-seed noise. That is the expected result. RMSNorm is a simplification, the three attention mechanisms are inference economics with no cache present during training, and SwiGLU at matched parameters is too small an effect for this model size.
 - The baseline does not learn at the control learning rate. It collapses to character-unigram loss by step `250`. A control sweep confirms the code is correct and the failure is a post-norm and learning-rate interaction.
-- Milestone 510, the sparse mixture-of-experts feed-forward, is next.
+- Milestone 511 needs rescoping before it is run. Routing did not collapse at `4` of `8` experts, so auxiliary-loss-free balancing has nothing to fix; a genuinely sparse configuration is a prerequisite, and it costs roughly `7x` the feed-forward parameters.
 
 ### Additions To The Frozen Control
 
