@@ -45,6 +45,14 @@ For the run history, see [learning_log.md](learning_log.md).
 
 As of 2026-08-23:
 
+> **The table below predates the `2026-08-23` correctness audit and no longer matches the code.**
+> Three changes invalidated every completed milestone. Two were correctness fixes: all linear
+> weights are now initialized at `normal(0, 0.02)` rather than PyTorch's default, and `M-509`/`M-510`
+> normalize the KV latent instead of the reconstructed key. The third is the `2026-08-23` size
+> revision, which moved the control from `d_model 128` with `4` heads to `d_model 256` with `8`,
+> taking the vanilla model from `1.6M` to `6.4M` parameters. Milestones `501` through `510` all need
+> re-running before any of these deltas can be quoted again.
+
 - Milestones 501 through 510 are complete and recorded as `P5-001` through `P5-010`.
 - All runs live on a Kaggle `Tesla T4` at seed `1337`. The earlier `mps` numbers were discarded: `mps` is not reproducible, two identical runs diverging by up to `0.053` validation loss, and a laptop cannot hold wall-clock steady across a batch of runs.
 
@@ -231,15 +239,60 @@ Trainer:
 - Eval interval: `250` steps
 - Eval batches: `32`
 
-Model size envelope:
+Initialization, identical in every milestone:
 
-- Embedding dim: `128`
-- Attention heads: `4`, head dim `32`
+- Every `nn.Linear` weight and every embedding table: `normal(0, 0.02)`.
+- Every `nn.Linear` bias, where biases exist at all: zeros.
+- Every norm gain: ones.
+- This is applied with one `self.apply(init_weights)` at the end of `LanguageModel.__init__`, so a
+  new module can never silently miss it.
+
+The check that this is right is that a fresh model's loss equals `ln(vocab)`. At a `98`-character
+vocabulary that is `4.585`, and every milestone starts within `0.07` of it. PyTorch's default for
+`nn.Linear` is `U(-1/sqrt(fan_in), 1/sqrt(fan_in))`, which at `d_model = 128` had standard deviation
+`0.051` — `2.5x` too wide — and inflates the pre-norm residual stream by `115x` over `8` blocks
+against `45x` for the standard init. Nothing about this is exotic; it is what every reference
+implementation does, and the ladder simply did not have it until it was audited.
+
+Model size envelope, revised `2026-08-23`:
+
+- Embedding dim: `256`
+- Attention heads: `8` query, `4` key/value, head dim `32`
 - Decoder blocks: `8`, divisible by four so the 3:1 hybrid pattern is exact
-- Dense feed-forward hidden dim: `512`, or `344` once gated
-- Roughly `1.6M` parameters at the vanilla starting point
+- Dense feed-forward hidden dim: `4 * D_MODEL`, narrowing to `8 * D_MODEL // 3` once gated
+- Rope dims per score head: `D_HEAD // 2`
+- Latent dim on global layers: `64`
+- Experts: `128` wide routed, `128` wide shared
+- Roughly `6.4M` parameters at the vanilla starting point, `8.9M` once sparse
 
-The size was chosen by measurement. On the development machine (Apple M4, `16GB`), a timing sweep gave `230ms` per step at `128`-dim and six blocks, `294ms` at the chosen shape, `549ms` at `192`-dim and eight blocks, and `935ms` at `256`-dim and eight blocks. On the `T4` the chosen shape runs a `3000`-step milestone in roughly five minutes.
+**A constant is written as a formula only when the formula is the real convention.** `4 * D_MODEL`
+is the 2017 transformer's feed-forward ratio. `8 * D_MODEL // 3` is `2/3` of that, which is the
+gated width Llama uses and the reason its configs read `11008`. `D_HEAD // 2` puts a third of each
+score head on the rope path, matching DeepSeek V3's `128` content plus `64` rope split.
+
+Everything else is a plain number. In particular, no constant is contorted to hold a parameter
+count fixed across milestones. That kind of formula buys experimental tidiness at the cost of
+readability, and this ladder is a way to see mechanisms work rather than a controlled study. Where
+a milestone's number is therefore confounded with a size change, the learning log says so and moves
+on.
+
+The size was chosen by measurement on the `T4`, and the reason is not raw speed. A sweep over
+`d_model` in `{128, 192, 256, 384}` and batch in `{32, 64, 128, 256}` showed that batch `32`
+reaches only `75.1%` of the achievable throughput at `d_model 128`, but `90.9%` at `d_model 256`.
+So the small model was wasting a quarter of the GPU, and the fix is a wider model rather than a
+larger batch: widening buys capacity *and* utilization, while a larger batch would change the
+optimization and force the learning rate to be re-probed.
+
+Head count moved from `4` to `8` for a separate reason. Five of the first nine measured deltas were
+invisible, and four of those five — GQA, hybrid attention, latent attention, and arguably MoE — are
+attention- and width-shape mechanisms that a `4`-head, `128`-wide model starves. Sharing `4` heads
+down to `2` is barely a ratio, and compressing `128` dims into a `64`-wide latent leaves almost no
+redundancy to exploit, which is exactly why DeepSeek's `4 * d_head` latent rule did not transfer.
+Head dim stays at `32`, so per-head behavior is unchanged and only the count moves.
+
+Cost at this size: one `3000`-step run is roughly `12` to `17` minutes on a `T4`, and the full
+`18`-milestone ladder at three seeds is about `11` to `15` hours, against a weekly GPU quota near
+`30` hours. Two runs execute concurrently, so wall-clock is about half that.
 
 The learning rate deserves a specific note, because it is the one control setting that is unfair to milestone 501 on purpose.
 A short probe at `400` steps gave:
@@ -266,7 +319,7 @@ Reporting, for every run:
 
 - Optimize for mechanism understanding, not for benchmark wins.
 - One mechanism per milestone. Never change the trainer and the model in the same step.
-- Keep the parameter budget roughly constant across milestones so that loss differences mean something. When a mechanism changes the natural width, match parameters explicitly, as with the `2/3` rule for SwiGLU and active-parameter parity for MoE.
+- Keep the parameter budget in roughly the same neighborhood across milestones, so a loss difference is not obviously just a size difference. Aim for round, readable widths rather than exact parity: when a mechanism changes the natural width, narrow it sensibly and record the resulting parameter delta instead of contorting the constants to cancel it.
 - Prefer explicit tensor math over fused framework calls while the mechanism is the lesson. `scaled_dot_product_attention` and other fused paths belong to phase 4 profiling work, not here.
 - Report wall-clock honestly. At this scale most modern efficiency mechanisms are slower, because their value is asymptotic and their fast implementations are kernels this repo has not written yet.
 - A modernization that does not improve loss at this scale is still kept if it is a genuine 2026 standard, but the learning log must say plainly that it did not pay for itself here and why.
@@ -449,7 +502,7 @@ $$
 The gate branch scales the up branch elementwise, per token and per feature — a genuine multiplicative interaction. Swish specifically matters because it dips **below zero** near the origin, so the gate can *flip a feature's sign* rather than only attenuate it. A sigmoid gate bounded in `[0, 1]` cannot do that, which is a large part of why SwiGLU beat plain GLU.
 
 **Implementation decisions.**
-- **Apply the `2/3` rule.** Three matrices at `4·d` would add `50%` to the feed-forward block, and any improvement would be unattributable to gating. Set `D_FFN = round(2/3 · 4 · d)` to a multiple of `8`, giving `344` here, so the gated block matches the dense block it replaces.
+- **Narrow the block when you add the gate.** A gated block has three matrices where the dense block had two, so `2/3` of the old width keeps it in the same neighborhood: `D_FFN = 8 * D_MODEL // 3`. This is a real convention, not bookkeeping — it is where Llama's odd `11008` comes from (`8 * 4096 // 3` rounded up to a multiple of `256`). We skip the rounding, so `1024` becomes `682`.
 - `F.silu` is Swish; they are the same function.
 - Keep this milestone's activation **unbounded**. The cap is milestone 512's job, and merging them would confound gating with bounding.
 
@@ -556,8 +609,17 @@ so `W_uk` can be folded into the query projection once, and attention runs direc
 
 **Implementation decisions.**
 - Apply MLA to **global layers only**; keep GQA on local layers. This matches every frontier model — nobody pays MLA's cost on a local mixer.
-- `D_LATENT = 64` (half of `d_model`), `D_ROPE = 16`. **DeepSeek's own sizing rule does not transfer**: they use `4 · d_head`, which here is `128 = D_MODEL`, i.e. no compression at all. Their `28x` saving comes from having `128` heads of `128` dims to squeeze into `512`; a four-head model has far less redundancy.
+- `D_LATENT = 64` and `D_ROPE = D_HEAD // 2`. The rope fraction is real: a third of each score head carries position, as in DeepSeek V3. The latent is a plain number, because no published rule transfers — DeepSeek's `4 * d_head` gives `128` here, which is half the model dim and barely compresses. At `64` the cache holds `64 + 16 = 80` numbers against `512` for full multi-head KV, a `6.4x` squeeze. Real MLA models reach far more: GLM-5.2 caches `576` against `32768`, or `57x`. **DeepSeek's own sizing rule does not transfer**: they use `4 · d_head`, which here is `4 * 32 = 128`, exactly half the model dim and only a `2x` compression. Their `28x` saving comes from having `128` heads of `128` dims to squeeze into `512`; an `8`-head model has far less redundancy to exploit, so the latent is set as a fraction of the model dim instead.
 - Implement the **decoupled-RoPE form even though `M-508` made these layers NoPE**, because that conflict is the entire reason MLA has its shape. Then compare against the NoPE form the ladder can actually use.
+- **Normalize the latent, not the reconstructed key.** This is the decision that is easiest to get
+  backwards, and getting it backwards silently destroys the mechanism. A norm applied to
+  `W_uk c` is a per-key rescale sitting between the latent and the query, so `W_uk` can no longer
+  be folded into the query and the absorption trick is gone — measured error `4.54` on random
+  inputs against `7e-7` when the norm sits on the latent. DeepSeek's own implementation calls this
+  `kv_a_layernorm` and applies it to the compressed vector before `kv_b_proj`. So the global layer
+  carries `q_norm` at `D_HEAD` on the query content path and `kv_norm` at `D_LATENT` on the latent,
+  and it has no key norm at all. The local GQA layers keep their ordinary `k_norm`, since they have
+  no latent to normalize.
 - Record the frontier context honestly: **DeepSeek-V4 has moved past MLA**, to shared-KV MQA plus compression along the *sequence* axis, on the grounds that at `1M` tokens sequence length dominates memory, not head count. GLM-5.2 still uses MLA. This milestone builds a mechanism that is simultaneously current and being superseded.
 
 Status: complete via [`phase5/009_mla.py`](../../phase5/009_mla.py), recorded as `P5-009`.
@@ -583,7 +645,7 @@ Track: Sparsity
 **Shared experts.** Reserve one or two experts that **every** token uses, unrouted. Without them every routed expert must independently learn the common transformations that all tokens need — grammar, basic syntax — wasting capacity on redundancy. The shared expert absorbs the common case so routed experts can afford to be genuinely specialized. All three frontier models have them: `1` (V4, GLM), `2` (K3).
 
 **Implementation decisions.**
-- **Match active parameters per token to the dense block**, within `1%`. Without this the comparison measures capacity, not sparsity.
+- **Keep active parameters per token near the dense block.** `4` routed experts at `128` plus one shared at `128` gives an active width of `640` against the dense `768`, so the mixture is in the same neighborhood rather than exactly matched. Exact matching would force ugly widths; near enough keeps the comparison meaningful without that.
 - Use an `Expert` class in an `nn.ModuleList` with a loop, not a batched 3D-tensor formulation. The loop is `O(N)` Python and slow, but it is the readable form and this phase optimizes for mechanism. Production speed comes from fused grouped-GEMM kernels, which is a phase-4 concern.
 - Dispatch via `(chosen == i).nonzero(as_tuple=True)` to get `(token_index, slot)`, then `index_add_` the weighted expert output. This is the standard scatter/gather shape without obscure ops.
 - Sigmoid router, top-`k`, then renormalize the chosen weights to sum to `1`. **The renormalization is for output scale, not competition** — it is not a softmax, there is no exponential. Sigmoid gives each expert an independent, bounded score, which matters at `M-511` because a fixed bias step then means the same thing for every expert.
@@ -705,7 +767,7 @@ The design is careful. `β·tanh(x/β)` is approximately linear near the origin 
 - `β₁ = 4`, `β₂ = 25`, taken directly from K3 rather than tuned. This ladder does not have the budget to tune them, and inventing values would make the comparison meaningless.
 - Apply to **every** gated block: the dense block `0`, the routed experts, and the shared expert.
 - Run the hard-clamp variant as the A/B if time permits, since it is a two-line change and the smooth-vs-hard question is the interesting one.
-- **Measure whether the failure mode exists here before claiming the fix works.** Instrument the maximum absolute pre-`down_proj` activation across training in `M-506`'s configuration. At `d_model = 128` in `fp32` on a `T4`, outliers may simply not form — in which case the honest result is "no outliers to cap," exactly as `M-510` reported "no collapse to balance." **This is the expected outcome and it is a real finding, not a failed milestone.**
+- **Measure whether the failure mode exists here before claiming the fix works.** Instrument the maximum absolute pre-`down_proj` activation across training in `M-506`'s configuration. At `d_model = 256` in `fp32` on a `T4`, outliers may simply not form — in which case the honest result is "no outliers to cap," exactly as `M-510` reported "no collapse to balance." **This is the expected outcome and it is a real finding, not a failed milestone.**
 
 ### Milestone 513: Attention Sinks
 Track: Attention stability
@@ -839,7 +901,7 @@ $$
 Plain hyper-connections do this and are numerically unstable when stacked. mHC's contribution is constraining `B_l` to the **Birkhoff polytope** — doubly stochastic, every row and column summing to `1`, all entries non-negative — via `20` Sinkhorn-Knopp iterations. A doubly stochastic matrix has spectral norm bounded by `1`, so the residual transform is non-expansive and cannot amplify signal across depth. The set is also closed under multiplication, so the guarantee survives arbitrarily deep stacks. `A_l` and `C_l` are sigmoid-bounded to prevent signal cancellation. DeepSeek uses `n_hc = 4`.
 
 **Implementation decisions.**
-- **Implement Attention Residuals, not mHC.** Three reasons. AttnRes is one mechanism with a clean statement — attention over depth — and it teaches something transferable; mHC needs dynamic parameter generation, Sinkhorn projection, and a `4x`-wide residual state, which is a lot of machinery for one measurement. AttnRes's justification is architectural (the depth bottleneck) while mHC's is primarily numerical (stability at `1.6T` parameters), and the numerical problem does not exist at `1.6M`. And AttnRes changes the residual *routing*, which is the interesting question; mHC changes its *width*.
+- **Implement Attention Residuals, not mHC.** Three reasons. AttnRes is one mechanism with a clean statement — attention over depth — and it teaches something transferable; mHC needs dynamic parameter generation, Sinkhorn projection, and a `4x`-wide residual state, which is a lot of machinery for one measurement. AttnRes's justification is architectural (the depth bottleneck) while mHC's is primarily numerical (stability at `1.6T` parameters), and the numerical problem does not exist at `6M`. And AttnRes changes the residual *routing*, which is the interesting question; mHC changes its *width*.
 - Use the **full** form, not Block AttnRes. At `L = 8` the block partition would be near-vacuous, and `O(L²d)` at `L = 8` is `64` inner products per token — free.
 - Include the **token embedding as index `0`**, per K3. Every layer keeps direct access to the raw input.
 - Keep the `RMSNorm` inside the attention kernel. Removing it is the obvious "simplification" and it is the thing that makes the weights scale-invariant.
@@ -963,7 +1025,7 @@ Phase 5 succeeds if, by the end, the following are all true:
 - I can build a current-generation language model architecture from scratch, without copying a reference implementation.
 - I can explain every mechanism in it from mechanism, including what it costs.
 - I know which of those mechanisms help at small scale, which are purely about inference economics, and which I only believe because a technical report said so.
-- I can name, for each mechanism, the failure mode it fixes and whether that failure mode actually occurs at `1.6M` parameters.
+- I can name, for each mechanism, the failure mode it fixes and whether that failure mode actually occurs at `6M` parameters.
 - I have one frozen modern workload that the phase-4 profiling, Triton, and CUDA path can attack next.
 
 ## Sources
