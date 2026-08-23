@@ -574,7 +574,7 @@ Main lesson:
 
 `CausalSelfAttention` was split into two classes here, with `split_heads`, `combine_heads`, `repeat_kv_heads`, `rotate_half`, `apply_rope`, `rope_tables`, and `attend` lifted to module-level functions.
 
-The trigger was that local and global layers stopped sharing weights, not just a mask. Keeping one class would have meant branching in both `__init__` and the key/value path, and the branchy version would have been copied forward into `010`, `011`, and `012` before being torn out at `513` anyway. Module-level helpers keep duplication near zero without inheritance, and they degrade gracefully: when the local mixer becomes a linear-attention recurrence, that class simply stops calling `attend` and `apply_rope` instead of needing them carved out of a shared parent.
+The trigger was that local and global layers stopped sharing weights, not just a mask. Keeping one class would have meant branching in both `__init__` and the key/value path, and the branchy version would have been copied forward into `010`, `011`, and `012` before being torn out at `515` anyway. Module-level helpers keep duplication near zero without inheritance, and they degrade gracefully: when the local mixer becomes a linear-attention recurrence, that class simply stops calling `attend` and `apply_rope` instead of needing them carved out of a shared parent.
 
 ## P5-010 Milestone 510 Sparse Mixture-Of-Experts Feed-Forward
 
