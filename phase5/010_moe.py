@@ -1,4 +1,4 @@
-"""Phase 5 experiment 009: the decoder with latent attention on the global layers."""
+"""Phase 5 experiment 010: the decoder with a sparse mixture-of-experts feed-forward."""
 
 from __future__ import annotations
 
@@ -30,6 +30,9 @@ SEED = 1337
 # Dff: feed-forward dim
 # Dc: latent dim for compressed keys and values
 # Dr: rope dim, the position-only dims added to each head on the global layers
+# E: number of routed experts
+# K: number of experts each token is routed to
+# N: number of tokens routed to one expert, which varies per expert
 
 CONTEXT_LEN = 256
 D_MODEL = 128
@@ -248,28 +251,36 @@ class FeedForward(nn.Module):
 
 
 class MixtureOfExperts(nn.Module):
+    """Route each token to a few narrow experts, and add one expert every token uses."""
+
+    expert_load: torch.Tensor
+
     def __init__(self):
+        """Create the router, the routed experts, and the shared expert."""
         super().__init__()
         self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS, bias=False)
         self.experts = nn.ModuleList([FeedForward(D_EXPERT) for _ in range(NUM_ROUTED_EXPERTS)])
-        self.shared = FeedForward(D_SHARED)
+        self.shared_expert = FeedForward(D_SHARED)
+        self.register_buffer("expert_load", torch.zeros(NUM_ROUTED_EXPERTS), persistent=False)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Return the mixture output for one batch of embeddings."""
         batch_size, seq_len, _ = x.size()
         tokens = x.reshape(-1, D_MODEL)  # [B*T, D]
 
         scores = torch.sigmoid(self.router(tokens))  # [B*T, E]
-        weights, experts = scores.topk(NUM_ACTIVE_EXPERTS, dim=-1)  # [B*T, K] each
+        weights, chosen = scores.topk(NUM_ACTIVE_EXPERTS, dim=-1)  # [B*T, K] each
         weights = weights / weights.sum(dim=-1, keepdim=True)  # [B*T, K]
+        self.expert_load = torch.bincount(chosen.flatten(), minlength=NUM_ROUTED_EXPERTS)  # [E]
 
         routed = torch.zeros_like(tokens)  # [B*T, D]
         for index, expert in enumerate(self.experts):
-            token_index, slot = (experts == index).nonzero(as_tuple=True)  # [n], [n]
-            expert_out = expert(tokens[token_index])  # [n, D]
+            token_index, slot = (chosen == index).nonzero(as_tuple=True)  # [N], [N]
+            expert_out = expert(tokens[token_index])  # [N, D]
             routed.index_add_(0, token_index, weights[token_index, slot, None] * expert_out)
 
-        out = routed + self.shared(tokens)
-        return out.reshape(batch_size, seq_len, D_MODEL)
+        out = routed + self.shared_expert(tokens)  # [B*T, D]
+        return out.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
 
 class DecoderBlock(nn.Module):
@@ -361,6 +372,13 @@ def loss_fn(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:  # [B,
     return F.cross_entropy(logits.flatten(0, 1), targets.flatten())
 
 
+def expert_load_share(model: LanguageModel) -> torch.Tensor:  # [E]
+    """Return the fraction of routed tokens each expert received in the last forward pass."""
+    mixtures = [m for m in model.modules() if isinstance(m, MixtureOfExperts)]
+    load = torch.stack([m.expert_load for m in mixtures]).sum(dim=0).float()  # [E]
+    return load / load.sum()  # [E]
+
+
 @torch.no_grad()
 def estimate_loss(model: LanguageModel, tokens: torch.Tensor) -> float:
     """Estimate the loss of one split over a few random batches."""
@@ -401,9 +419,12 @@ def main() -> None:
             train_loss = estimate_loss(model, train_tokens)
             val_loss = estimate_loss(model, val_tokens)
             seconds = time.perf_counter() - start_seconds
+            share = expert_load_share(model)
             print(
                 f"step={step} train_loss={train_loss:.4f} "
-                f"val_loss={val_loss:.4f} seconds={seconds:.1f}"
+                f"val_loss={val_loss:.4f} seconds={seconds:.1f} "
+                f"expert_min={share.min():.3f} expert_max={share.max():.3f} "
+                f"expert_unused={int((share == 0).sum())}"
             )
 
 
