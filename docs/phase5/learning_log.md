@@ -5,6 +5,16 @@ Runs recorded through 2026-08-16.
 This log contains the completed runs from the phase-5 architecture-modernization path.
 The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 
+> **Stale as of the `2026-08-23` correctness audit.** Every run below was produced before two
+> defects were fixed: linear layers used PyTorch's default init (`2.5x` too wide, inflating the
+> pre-norm residual stream `115x` over eight blocks against `45x` for the standard init), and the
+> `M-509` global layer normalized the reconstructed key rather than the KV latent, which destroyed
+> MLA's absorption property. Both are corrected in the scripts. On top of that, the frozen control
+> was resized on `2026-08-23` from `d_model 128` with `4` heads to `d_model 256` with `8` heads,
+> after a `T4` sweep showed the old shape reached only `75%` of achievable throughput at batch `32`
+> while the new one reaches `91%`. The losses, parameter counts, and deltas recorded here describe
+> a smaller model running pre-fix code, and must be re-measured.
+
 ## Summary
 
 | Run | Script | Steps | Train Loss | Val Loss | Wall Seconds | Parameters |
