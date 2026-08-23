@@ -18,6 +18,7 @@ The roadmap and the frozen control are in [roadmap.md](./roadmap.md).
 | P5-007 | [`phase5/007_qk_norm_gated_attention.py`](../../phase5/007_qk_norm_gated_attention.py) | 3000 | 0.7874 | 0.8056 | 329.20 | 1596288 |
 | P5-008 | [`phase5/008_hybrid_attention.py`](../../phase5/008_hybrid_attention.py) | 3000 | 0.7814 | 0.8008 | 313.90 | 1596288 |
 | P5-009 | [`phase5/009_mla.py`](../../phase5/009_mla.py) | 3000 | 0.7878 | 0.8079 | 321.70 | 1633152 |
+| P5-010 | [`phase5/010_moe.py`](../../phase5/010_moe.py) | 3000 | 0.7796 | 0.7984 | 476.50 | 2328448 |
 
 All runs above were produced on a Kaggle `Tesla T4` at seed `1337`.
 They replace an earlier set measured on local `mps`, which turned out not to be reproducible.
@@ -83,6 +84,7 @@ Results are **not** comparable across devices. The same script and seed gives `0
 | 507 | QK-Norm and gated attention | `0.8056` | `-0.0607` | `1596288` |
 | 508 | layerwise hybrid attention | `0.8008` | `-0.0048` | `1596288` |
 | 509 | latent attention on the global layers | `0.8079` | `+0.0071` | `1633152` |
+| 510 | sparse mixture-of-experts feed-forward | `0.7984` | `-0.0095` | `2328448` |
 
 Three changes move the loss clearly:
 
@@ -573,3 +575,71 @@ Main lesson:
 `CausalSelfAttention` was split into two classes here, with `split_heads`, `combine_heads`, `repeat_kv_heads`, `rotate_half`, `apply_rope`, `rope_tables`, and `attend` lifted to module-level functions.
 
 The trigger was that local and global layers stopped sharing weights, not just a mask. Keeping one class would have meant branching in both `__init__` and the key/value path, and the branchy version would have been copied forward into `010`, `011`, and `012` before being torn out at `513` anyway. Module-level helpers keep duplication near zero without inheritance, and they degrade gracefully: when the local mixer becomes a linear-attention recurrence, that class simply stops calling `attend` and `apply_rope` instead of needing them carved out of a shared parent.
+
+## P5-010 Milestone 510 Sparse Mixture-Of-Experts Feed-Forward
+
+- Script: [`phase5/010_moe.py`](../../phase5/010_moe.py)
+- Date: `2026-08-16`
+- Total parameters: `2328448`
+- Active parameters per token: `133120` in an MoE block, against `132096` for the dense block it replaces
+- Final train loss: `0.7796`
+- Final validation loss: `0.7984`
+- Wall-clock time: `476.50s` on a Kaggle `T4`
+- Experts: `8` routed at hidden `64`, top-`4` per token, plus one shared expert at hidden `88`
+- Block `0` stays dense; blocks `1` through `7` are mixtures
+
+What changed from `M-509`:
+
+- `FeedForward` gained a `d_hidden` argument, so one class now serves the dense block, the routed experts, and the shared expert,
+- a `MixtureOfExperts` module routes each token through a sigmoid router, takes the top `k` experts, renormalizes their weights, and adds a shared expert every token uses,
+- `D_FFN` is unchanged and the active parameter count is matched to the dense block within `1%`, so the comparison isolates sparsity from capacity,
+- per-expert token counts are tracked in a non-persistent buffer and reported at every evaluation.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.4067 val_loss=4.4031 seconds=5.0 expert_min=0.094 expert_max=0.186 expert_unused=0
+step=250 train_loss=1.2072 val_loss=1.2178 seconds=44.9 expert_min=0.108 expert_max=0.144 expert_unused=0
+step=500 train_loss=1.0257 val_loss=1.0251 seconds=84.6 expert_min=0.110 expert_max=0.142 expert_unused=0
+step=750 train_loss=0.9489 val_loss=0.9560 seconds=124.1 expert_min=0.110 expert_max=0.140 expert_unused=0
+step=1000 train_loss=0.8989 val_loss=0.9050 seconds=163.2 expert_min=0.110 expert_max=0.139 expert_unused=0
+step=1250 train_loss=0.8724 val_loss=0.8890 seconds=202.3 expert_min=0.112 expert_max=0.138 expert_unused=0
+step=1500 train_loss=0.8640 val_loss=0.8614 seconds=241.5 expert_min=0.108 expert_max=0.142 expert_unused=0
+step=1750 train_loss=0.8437 val_loss=0.8457 seconds=280.8 expert_min=0.108 expert_max=0.140 expert_unused=0
+step=2000 train_loss=0.8227 val_loss=0.8341 seconds=319.9 expert_min=0.108 expert_max=0.138 expert_unused=0
+step=2250 train_loss=0.8180 val_loss=0.8159 seconds=359.1 expert_min=0.110 expert_max=0.142 expert_unused=0
+step=2500 train_loss=0.8066 val_loss=0.8168 seconds=398.3 expert_min=0.109 expert_max=0.141 expert_unused=0
+step=2750 train_loss=0.7954 val_loss=0.8082 seconds=437.5 expert_min=0.109 expert_max=0.141 expert_unused=0
+step=3000 train_loss=0.7796 val_loss=0.7984 seconds=476.5 expert_min=0.106 expert_max=0.141 expert_unused=0
+```
+
+Main lesson:
+
+- This is the first milestone where total and active parameters diverge. Total rises `43%` to `2328448` while active per token stays at `100.8%` of the dense block. That decoupling of capacity from cost is the entire point of the mechanism.
+- Validation loss improves from `0.8079` to `0.7984`, a gap of `0.0095` that is inside single-seed noise. So the honest statement is that `1.75x` the feed-forward capacity, at matched active cost, bought nothing measurable at this scale.
+- Cost is `48%` wall-clock, `476.50s` against `321.70s`. Seven blocks now run eight small matrix multiplications where they previously ran one large one, and at `5000` or so tokens per expert the shapes are too small to use the GPU well. Production speed comes from fused grouped-GEMM kernels, not from this loop.
+
+### The Router Did Not Collapse, And That Is The Finding
+
+The expectation going in was that plain top-`k` routing would collapse: a few experts win early, receive more gradient, and win more, leaving some experts unused. That is the failure milestone 511 exists to fix.
+
+It did not happen. Expert share stayed near uniform for the entire run and became **more** balanced than at initialization:
+
+| Step | min share | max share | unused |
+| ---: | ---: | ---: | ---: |
+| 1 | `0.094` | `0.186` | `0` |
+| 1500 | `0.108` | `0.142` | `0` |
+| 3000 | `0.106` | `0.141` | `0` |
+
+Ideal share is `0.125`. The reason is that this configuration is barely sparse:
+
+| Model | Active of total experts | Ratio |
+| --- | --- | ---: |
+| DeepSeek V3 | `8` of `256` | `3.1%` |
+| Kimi K3 | `16` of `896` | `1.8%` |
+| GLM-5 | `8` of `256` | `3.1%` |
+| this run | `4` of `8` | `50%` |
+
+Every token uses half the experts, so each expert receives a large share regardless of router preference and the winner-take-all dynamic never starts. The sigmoid affinity contributes too: unlike softmax, experts do not compete for a fixed probability budget, so a strong preference for one expert does not suppress the others.
+
+The consequence for the next milestone is direct: **auxiliary-loss-free load balancing has nothing to fix in this configuration.** Implementing it here would be a ritual, not an experiment. Making `M-511` meaningful requires a genuinely sparse configuration first, and that has a cost worth stating plainly. Holding active parameters fixed at `344` hidden units, reaching the frontier's roughly `3%` ratio needs about `32` to `64` experts, which multiplies total feed-forward parameters by roughly `7x` and lengthens the Python expert loop proportionally. Sparsity is only economical when the total parameter budget is large, which is precisely why every model that uses fine-grained routing is enormous.
