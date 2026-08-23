@@ -56,7 +56,7 @@ The useful reading is **utilization at batch 32**, because that is the frozen co
 
 **A small model at a small batch wastes the GPU; a wider model at the same batch does not.** At `d128` batch `32` leaves a quarter of the `T4` idle, which is the argument for a larger batch. That argument disappears at `d256`, where batch `32` already reaches `91%` of the ceiling. Widening the model is therefore strictly better than widening the batch: it buys capacity *and* utilization without changing the optimization.
 
-Older reference points, for the pre-`2026-08-23` `1.6M` model at `batch 32`:
+For scale, a much smaller `1.6M`-parameter character decoder at `batch 32`:
 
 | Device | Step time | Full run |
 | --- | ---: | ---: |
