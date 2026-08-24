@@ -1,7 +1,5 @@
 """Phase 5 experiment 005: the decoder with grouped-query attention."""
 
-from __future__ import annotations
-
 import math
 import time
 
@@ -69,10 +67,6 @@ class RMSNorm(nn.Module):
 class CausalSelfAttention(nn.Module):
     """Apply masked grouped-query self-attention over one sequence."""
 
-    causal_mask: torch.Tensor
-    rope_cos: torch.Tensor
-    rope_sin: torch.Tensor
-
     def __init__(self):
         """Create the projections, the causal mask, and the rotation tables."""
         super().__init__()
@@ -82,14 +76,14 @@ class CausalSelfAttention(nn.Module):
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
-        self.register_buffer("causal_mask", mask)
+        self.causal_mask = nn.Buffer(mask)
 
         inv_freq = 1.0 / (ROPE_BASE ** (torch.arange(0, D_HEAD, 2) / D_HEAD))  # [Dh/2]
         positions = torch.arange(CONTEXT_LEN)  # [T]
         angles = positions[:, None] * inv_freq[None, :]  # [T, Dh/2]
         angles = torch.cat([angles, angles], dim=-1)  # [T, Dh]
-        self.register_buffer("rope_cos", angles.cos())
-        self.register_buffer("rope_sin", angles.sin())
+        self.rope_cos = nn.Buffer(angles.cos())
+        self.rope_sin = nn.Buffer(angles.sin())
 
     def split_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:  # [B, T, H*Dh]
         """Split the projection into separate attention heads."""
