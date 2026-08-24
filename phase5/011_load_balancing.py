@@ -272,10 +272,15 @@ class MixtureOfExperts(nn.Module):
 
         scores = torch.sigmoid(self.router(tokens))  # [B*T, E]
         _, chosen = (scores + self.router_bias).topk(NUM_ACTIVE_EXPERTS, dim=-1)  # [B*T, K] each
-        weights = scores.gather(-1, chosen)  # [B*T, K] each
+        weights = scores.gather(-1, chosen)  # [B*T, K]
         weights = weights / weights.sum(dim=-1, keepdim=True)  # [B*T, K]
         if self.training:
             self.expert_load.copy_(torch.bincount(chosen.flatten(), minlength=NUM_ROUTED_EXPERTS))
+
+        bar = scores.gather(-1, chosen)[:, -1]  # [B*T]
+        margin = bar[:, None] - scores  # [B*T, K]
+        margin = margin.sort(dim=-1)  # [B*T, K]
+        self.router_bias = margin[batch_size * NUM_ACTIVE_EXPERTS]  # [K]
 
         routed = torch.zeros_like(tokens)  # [B*T, D]
         for index, expert in enumerate(self.experts):
