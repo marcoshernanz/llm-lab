@@ -1,7 +1,5 @@
 """Phase 5 experiment 009: the decoder with latent attention on the global layers."""
 
-from __future__ import annotations
-
 import math
 import time
 
@@ -128,10 +126,6 @@ def attend(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor
 class LocalSelfAttention(nn.Module):
     """Attend over the last WINDOW_SIZE tokens with rotary positions and shared key heads."""
 
-    causal_mask: torch.Tensor
-    rope_cos: torch.Tensor
-    rope_sin: torch.Tensor
-
     def __init__(self):
         """Create the projections, the norms, the window mask, and the rotation tables."""
         super().__init__()
@@ -146,11 +140,11 @@ class LocalSelfAttention(nn.Module):
 
         ones = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool)  # [T, T]
         mask = ones.triu(diagonal=1) | ones.tril(diagonal=-WINDOW_SIZE)  # [T, T]
-        self.register_buffer("causal_mask", mask)
+        self.causal_mask = nn.Buffer(mask)
 
         cos, sin = rope_tables(D_HEAD)
-        self.register_buffer("rope_cos", cos)
-        self.register_buffer("rope_sin", sin)
+        self.rope_cos = nn.Buffer(cos)
+        self.rope_sin = nn.Buffer(sin)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return windowed attention outputs for one batch of embeddings."""
@@ -168,10 +162,6 @@ class LocalSelfAttention(nn.Module):
 
 class GlobalSelfAttention(nn.Module):
     """Attend over the whole sequence, with latent keys and values and a separate rope path."""
-
-    causal_mask: torch.Tensor
-    rope_cos: torch.Tensor
-    rope_sin: torch.Tensor
 
     def __init__(self):
         """Create the projections, the norms, the causal mask, and the rotation tables."""
@@ -191,11 +181,11 @@ class GlobalSelfAttention(nn.Module):
         self.kv_norm = RMSNorm(D_LATENT)
 
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
-        self.register_buffer("causal_mask", mask)
+        self.causal_mask = nn.Buffer(mask)
 
         cos, sin = rope_tables(D_ROPE)
-        self.register_buffer("rope_cos", cos)
-        self.register_buffer("rope_sin", sin)
+        self.rope_cos = nn.Buffer(cos)
+        self.rope_sin = nn.Buffer(sin)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return global attention outputs for one batch of embeddings.
