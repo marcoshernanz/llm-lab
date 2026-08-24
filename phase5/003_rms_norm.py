@@ -1,7 +1,5 @@
 """Phase 5 experiment 003: the pre-norm decoder with RMSNorm and no biases."""
 
-from __future__ import annotations
-
 import math
 import time
 
@@ -64,8 +62,6 @@ class RMSNorm(nn.Module):
 class CausalSelfAttention(nn.Module):
     """Apply masked self-attention over one sequence."""
 
-    causal_mask: torch.Tensor
-
     def __init__(self):
         """Create the projections and the causal mask."""
         super().__init__()
@@ -74,7 +70,7 @@ class CausalSelfAttention(nn.Module):
         self.v_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
-        self.register_buffer("causal_mask", mask)
+        self.causal_mask = nn.Buffer(mask)
 
     def split_heads(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Split the embedding axis into separate attention heads."""
