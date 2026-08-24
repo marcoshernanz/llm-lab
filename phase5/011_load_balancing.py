@@ -280,9 +280,9 @@ class MixtureOfExperts(nn.Module):
         if self.training:
             with torch.no_grad():
                 bar = (scores + self.router_bias).gather(-1, chosen)[:, -1]  # [B*T]
-                margin = bar[:, None] - scores  # [B*T, K]
+                margin = bar[:, None] - scores  # [B*T, E]
                 margin = margin.sort(dim=0).values  # [B*T, K]
-                new_bias = margin[tokens.size(0) * NUM_ACTIVE_EXPERTS // NUM_ROUTED_EXPERTS]  # [K]
+                new_bias = margin[tokens.size(0) * NUM_ACTIVE_EXPERTS // NUM_ROUTED_EXPERTS]  # [E]
                 self.router_bias = new_bias - new_bias.mean(-1)
 
         routed = torch.zeros_like(tokens)  # [B*T, D]
