@@ -235,7 +235,10 @@ class FeedForward(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the feed-forward block output."""
         gate = F.silu(self.gate_proj(x))  # [B, T, Dff]
+        gate = 4 * torch.tanh(gate / 4)
+
         up = self.up_proj(x)  # [B, T, Dff]
+
         x = gate * up  # [B, T, Dff]
         x = self.down_proj(x)  # [B, T, D]
         return x
