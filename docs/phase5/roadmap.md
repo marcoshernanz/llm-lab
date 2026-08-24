@@ -32,8 +32,8 @@ For the run history, see [learning_log.md](learning_log.md).
 | 508 | Layerwise hybrid attention | Three sliding-window layers per one global NoPE layer | done |
 | 509 | Multi-head latent attention | Compress KV to a latent on the global layers, with decoupled RoPE | done |
 | 510 | Sparse mixture-of-experts | Fine-grained routed experts plus a shared expert, matched active cost | done |
-| 511 | Real sparsity and loss-free balancing | Make routing actually sparse, then balance it with a selection-only bias | next |
-| 512 | Bounded feed-forward activations | Cap both GLU branches so outliers cannot form | planned |
+| 511 | Real sparsity and loss-free balancing | Make routing actually sparse, then balance it with a selection-only bias | done |
+| 512 | Bounded feed-forward activations | Cap both GLU branches so outliers cannot form | next |
 | 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | planned |
 | 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | planned |
 | 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | planned |
@@ -60,6 +60,7 @@ For the run history, see [learning_log.md](learning_log.md).
 | 508 layerwise hybrid attention | `0.7887` | `-0.0017` | `6317312` | `733.8` |
 | 509 latent attention, global layers | `0.8135` | `+0.0248` | `6358336` | `737.3` |
 | 510 sparse mixture-of-experts | `0.8002` | `-0.0133` | `8899392` | `956.5` |
+| 511 real sparsity, quantile balancing | `0.7988` | `-0.0014` | `14504768` | `2008.9` |
 
 - **Two mechanisms account for almost everything.** Pre-norm is worth `-0.7980` and RoPE `-1.2291`,
   together `-2.03` of the total `-2.26`. Everything after them moves the loss by under `0.19`.
@@ -72,8 +73,11 @@ For the run history, see [learning_log.md](learning_log.md).
 - **QK-Norm with gated attention is the second-largest gain**, `-0.1859`, but it adds `9%`
   parameters, so that number confounds mechanism with capacity.
 - **Sparsity bought nothing measurable**, `-0.0133` for `40%` more total parameters and `30%` more
-  wall-clock. Routing is measurably imbalanced, though, at a `4.6x` spread between the busiest and
-  quietest expert, so `M-511` has something real to correct.
+  wall-clock, and `M-511` did not change that: `-0.0014` for another `63%` parameters at `2.1x`
+  wall-clock.
+- **Load balancing does work, decisively.** At `4` of `64` the unbalanced load is `24.5x` skewed;
+  Quantile Balancing holds it at `1.13x` with no expert ever unused. The mechanism is real even
+  though the loss is indifferent to it at this scale.
 - Every run except the collapsed baseline was still improving at step `3000`. The ladder compares
   architectures at a fixed budget, not at convergence.
 
@@ -745,10 +749,21 @@ One pass, no step size. The mean-subtraction removes a common offset that would 
 - The `topk` no longer returns the weights. Select on `scores + bias`, then `gather` the weights from raw `scores`. Conflating these silently reintroduces the distortion the whole design exists to avoid, and it is the single most likely bug in this milestone.
 - Update the bias under `no_grad` and **only when `self.training`**. The update uses the current batch's load and applies to the *next* batch — a batch must never be routed with a bias derived from itself.
 - `γ = 0.001`, matching DeepSeek-V3.
-- **Implement the fixed-step rule, not Quantile Balancing.** QB's advantage appears at hundreds of experts with distributed histogram estimation; at `32` experts on one GPU it is complexity without a payoff. Explain it in the log, implement the simple form.
+- **Quantile Balancing is worth implementing over the fixed-step rule.** The expectation was that QB only pays off at hundreds of experts with distributed histogram estimation, and that the sign rule would do at this size. That was wrong in a useful way: QB needs no step size, converges in one pass rather than adapting over many, and its per-expert bias is directly readable as how much the router wants to be imbalanced. At `64` experts on one GPU the exact quantile is a single `sort` per layer, so the histogram estimator is unnecessary and the simple form is not simpler.
 - Keep the **sigmoid** router. DeepSeek-V4 switched to `Sqrt(Softplus)`, but two of three frontier models still use sigmoid, and one lab changing its mind once is not a trend. Sigmoid's bounded `(0,1)` range is also what makes a fixed `γ` mean the same thing for every expert.
 - **Skip DeepSeek's sequence-wise balance loss.** It is a safety net against extreme within-sequence imbalance at trillion scale, and adding it would reintroduce exactly the auxiliary-loss coupling this milestone is about removing.
 - Track per-expert load, min/max share, and dead-expert count at every eval, both before and after the balancer.
+
+Status: complete via [`phase5/011_load_balancing.py`](../../phase5/011_load_balancing.py), recorded as `P5-011`.
+
+Main lesson:
+- **The balancer works and the margin is large.** Ideal share at `64` experts is `0.0156`. With a zero bias the load spans `0.002` to `0.049`, a `24.5x` skew. By step `250` it is `1.38x` and it ends at `1.13x`, with no expert ever unused.
+- Against `M-010`, which had no balancer, the comparison is direct: `4.66x` final spread there against `1.13x` here, while being eight times sparser — the regime where imbalance should be worse.
+- **Quality is indifferent.** `0.7988` against `0.8002` is `-0.0014`, far inside single-seed resolution. Perfect balance, `63%` more parameters, and eight times the expert pool bought nothing measurable.
+- **`bias_span` is the interesting signal, not the loss.** The widest bias gap rises from `0.284` at initialization to `0.972` near step `500`, then falls steadily to `0.484`. It measures how hard the balancer must fight, so it reads directly as how much the router *wants* to be imbalanced — a want that peaks early and then decays as experts specialize and demand spreads out on its own.
+- **Cost is `2.1x` wall-clock**, `2008.9s` against `956.5s`, because the Python expert loop now runs `64` narrow iterations per layer. This is the ladder's strongest argument for fused grouped-GEMM dispatch.
+- The missing control is `4` of `64` *without* the balancer over a full run. Step `1` shows the unbalanced starting point but not what it would decay to, so the defensible claim is that the balancer holds a badly-skewed regime flat, not a number for the damage avoided.
+
 
 ### Milestone 512: Bounded Feed-Forward Activations
 Track: Numerical stability
