@@ -1,4 +1,4 @@
-"""Phase 5 experiment 010: the decoder with a sparse mixture-of-experts feed-forward."""
+"""Phase 5 experiment 011: the decoder with auxiliary-loss-free load balancing."""
 
 import math
 import time
