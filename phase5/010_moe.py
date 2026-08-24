@@ -1,7 +1,5 @@
 """Phase 5 experiment 010: the decoder with a sparse mixture-of-experts feed-forward."""
 
-from __future__ import annotations
-
 import math
 import time
 
@@ -137,10 +135,6 @@ def attend(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor
 class LocalSelfAttention(nn.Module):
     """Attend over the last WINDOW_SIZE tokens with rotary positions and shared key heads."""
 
-    causal_mask: torch.Tensor
-    rope_cos: torch.Tensor
-    rope_sin: torch.Tensor
-
     def __init__(self):
         """Create the projections, the norms, the window mask, and the rotation tables."""
         super().__init__()
@@ -155,11 +149,11 @@ class LocalSelfAttention(nn.Module):
 
         ones = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool)  # [T, T]
         mask = ones.triu(diagonal=1) | ones.tril(diagonal=-WINDOW_SIZE)  # [T, T]
-        self.register_buffer("causal_mask", mask)
+        self.causal_mask = nn.Buffer(mask)
 
         cos, sin = rope_tables(D_HEAD)
-        self.register_buffer("rope_cos", cos)
-        self.register_buffer("rope_sin", sin)
+        self.rope_cos = nn.Buffer(cos)
+        self.rope_sin = nn.Buffer(sin)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return windowed attention outputs for one batch of embeddings."""
@@ -177,10 +171,6 @@ class LocalSelfAttention(nn.Module):
 
 class GlobalSelfAttention(nn.Module):
     """Attend over the whole sequence, with latent keys and values and a separate rope path."""
-
-    causal_mask: torch.Tensor
-    rope_cos: torch.Tensor
-    rope_sin: torch.Tensor
 
     def __init__(self):
         """Create the projections, the norms, the causal mask, and the rotation tables."""
@@ -200,11 +190,11 @@ class GlobalSelfAttention(nn.Module):
         self.kv_norm = RMSNorm(D_LATENT)
 
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
-        self.register_buffer("causal_mask", mask)
+        self.causal_mask = nn.Buffer(mask)
 
         cos, sin = rope_tables(D_ROPE)
-        self.register_buffer("rope_cos", cos)
-        self.register_buffer("rope_sin", sin)
+        self.rope_cos = nn.Buffer(cos)
+        self.rope_sin = nn.Buffer(sin)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return global attention outputs for one batch of embeddings.
@@ -254,15 +244,13 @@ class FeedForward(nn.Module):
 class MixtureOfExperts(nn.Module):
     """Route each token to a few narrow experts, and add one expert every token uses."""
 
-    expert_load: torch.Tensor
-
     def __init__(self):
         """Create the router, the routed experts, and the shared expert."""
         super().__init__()
         self.router = nn.Linear(D_MODEL, NUM_ROUTED_EXPERTS, bias=False)
         self.experts = nn.ModuleList([FeedForward(D_EXPERT) for _ in range(NUM_ROUTED_EXPERTS)])
         self.shared_expert = FeedForward(D_SHARED)
-        self.register_buffer("expert_load", torch.zeros(NUM_ROUTED_EXPERTS), persistent=False)
+        self.expert_load = nn.Buffer(torch.zeros(NUM_ROUTED_EXPERTS), persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the mixture output for one batch of embeddings."""
