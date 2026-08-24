@@ -20,6 +20,7 @@ Every run below is one seed (`1337`) on a Kaggle `Tesla T4`, `3000` steps, batch
 | P5-009 | [`phase5/009_mla.py`](../../phase5/009_mla.py) | `0.8135` | `+0.0248` | `6358336` | `737.3` |
 | P5-010 | [`phase5/010_moe.py`](../../phase5/010_moe.py) | `0.8002` | `-0.0133` | `8899392` | `956.5` |
 | P5-011 | [`phase5/011_load_balancing.py`](../../phase5/011_load_balancing.py) | `0.7988` | `-0.0014` | `14504768` | `2008.9` |
+| P5-012 | [`phase5/012_bounded_activations.py`](../../phase5/012_bounded_activations.py) | `0.7973` | `-0.0015` | `14504768` | `2493.3` |
 
 ## Reading The Ladder
 
@@ -530,3 +531,129 @@ not what it would decay or collapse to over a full run.
 So the defensible claim is that the balancer holds load near uniform from the first few hundred
 steps onward in a regime that starts badly skewed. The claim it does *not* support is a specific
 number for how much damage the absence of a balancer would have done.
+
+## P5-012 Milestone 512 Bounded Feed-Forward Activations
+
+- Script: [`phase5/012_bounded_activations.py`](../../phase5/012_bounded_activations.py)
+- Parameters: `14504768`, identical to `M-011`
+- Final train loss: `0.7756`
+- Final validation loss: `0.7973`
+- Wall-clock time: `2493.3s` on a Kaggle `T4`
+- Caps: `GATE_CAP = 4.0`, `UP_CAP = 25.0`
+
+What changed from `M-011`:
+
+- both branches of every gated block are soft-capped with `softcap(x, b) = b * tanh(x / b)`,
+- the cap replaces the *linear* factor of Swish only, so the gate keeps its own sigmoid and the
+  sign-flipping behaviour that distinguishes SwiGLU from plain GLU,
+- no parameters are added, since a `tanh` has no weights.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=3.7449 val_loss=3.7424 seconds=14.8 expert_min=0.002 expert_max=0.049 expert_unused=0 bias_span=0.284
+step=250 train_loss=1.3243 val_loss=1.3347 seconds=217.1 expert_min=0.013 expert_max=0.022 expert_unused=0 bias_span=0.975
+step=500 train_loss=1.0955 val_loss=1.0924 seconds=420.7 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.911
+step=750 train_loss=0.9893 val_loss=0.9942 seconds=624.0 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.893
+step=1000 train_loss=0.9236 val_loss=0.9321 seconds=827.2 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.884
+step=1250 train_loss=0.8893 val_loss=0.9047 seconds=1034.1 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.894
+step=1500 train_loss=0.8749 val_loss=0.8744 seconds=1235.7 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.862
+step=1750 train_loss=0.8535 val_loss=0.8535 seconds=1442.7 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.766
+step=2000 train_loss=0.8281 val_loss=0.8420 seconds=1646.1 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.789
+step=2250 train_loss=0.8194 val_loss=0.8190 seconds=1857.9 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.724
+step=2500 train_loss=0.8062 val_loss=0.8175 seconds=2072.1 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.712
+step=2750 train_loss=0.7937 val_loss=0.8066 seconds=2282.8 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.689
+step=3000 train_loss=0.7756 val_loss=0.7973 seconds=2493.3 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.687
+```
+
+Main lesson:
+
+- **Quality is unchanged**: `0.7973` against `0.7988`, a delta of `-0.0015` at *identical* parameter
+  count. Well inside single-seed resolution. This is the expected result for a stability mechanism
+  in a run that was never unstable.
+- **Cost is `1.24x` wall-clock**, `2493.3s` against `2008.9s`. Two `tanh` calls per gated block, over
+  `64` experts in seven layers, is not free at this scale.
+- The implementation is faithful to Kimi K3: `softcap` applied to the linear factor of the Swish
+  gate and independently to the up branch, with K3's own `b1 = 4` and `b2 = 25`. Verified offline
+  that the product is bounded at exactly `b1 * b2 = 100` while plain SwiGLU reaches `250000` over
+  the same input range, and that SiTU-GLU tracks SwiGLU to within `2.1%` at `x = 1`.
+- **Why the smooth cap rather than DeepSeek's hard clamp**, measured rather than asserted: at
+  `x = 30` a `clamp(-10, 10)` has a derivative of exactly `0.000`, while SiTU-GLU still passes
+  `1.220`. A coordinate that saturates a hard clamp stops learning; one that saturates a `tanh` does
+  not. That is the whole argument for the smooth form.
+
+### An Unexpected Interaction With The Router
+
+Capping the activations made the load balancer work noticeably harder. `bias_span` is higher at
+almost every checkpoint, and the gap widens as training goes on:
+
+| Step | 500 | 1000 | 1500 | 2000 | 2500 | 3000 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `M-011` span | `0.972` | `0.702` | `0.678` | `0.557` | `0.481` | `0.484` |
+| `M-012` span | `0.911` | `0.884` | `0.862` | `0.789` | `0.712` | `0.687` |
+
+In `M-011` the span decays steadily as the router's preferences spread out. In `M-012` it decays far
+more slowly and ends `42%` higher. Load stays balanced either way, since that is the balancer's job,
+but it needs a persistently larger correction to get there.
+
+The plausible reading is that bounding each expert's output makes experts harder to tell apart, so
+the router's raw preferences stay concentrated for longer and the bias has to keep pushing against
+them. This is a guess from one seed and one pair of runs, not a result. It is recorded because it is
+the kind of second-order interaction that only shows up once two mechanisms are instrumented at the
+same time.
+
+### The Failure Mode Is Real Here
+
+The milestone's own exit criterion is whether outliers form at all at this scale, since a cap that
+never engages makes the loss delta meaningless. An instrumented rerun recorded the largest pre-cap
+magnitude either branch reached:
+
+| Step | 1 | 250 | 1000 | 2000 | 3000 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `gate_max` (cap `4`) | `1.69` | `19.29` | `24.27` | `27.33` | `28.29` |
+| `up_max` (cap `25`) | `1.67` | `36.93` | `44.29` | `45.72` | `47.22` |
+
+**Both caps engage, hard.** By step `250` the gate branch is already `4.8x` past its cap and the up
+branch `1.5x` past its own, and both keep climbing for the rest of training. At the end the gate
+reaches `7.1x` its cap.
+
+What that does to the worst coordinate in the tensor:
+
+- unbounded SwiGLU would emit `28.29 * 47.22 = 1336`,
+- SiTU-GLU emits `4.00 * 23.88 = 95.5`,
+- so the cap removes a **`14x` outlier**.
+
+For scale, a coordinate sitting at `x = 1` produces `0.731`. The largest coordinate in the same
+tensor would reach `1336` uncapped, a spread of roughly `1800x`. That is exactly the outlier
+structure the two frontier reports describe, and it is present at `6M` parameters in `fp32`.
+
+So the honest verdict is split, and both halves matter:
+
+- **The mechanism is doing real work.** It is not decorative at this scale, which is what the null
+  result was expected to show.
+- **It still bought no measurable quality**, because `fp32` absorbs a `1336` activation without
+  complaint. The value of removing that outlier is realized in `bf16` and `fp8`, in quantization
+  ranges, and in loss spikes over far longer runs. None of those are visible in a `3000`-step `fp32`
+  run, and this ladder cannot see them.
+
+### Two Methodology Notes
+
+**The instrumentation is provably non-invasive.** The diagnostic rerun reproduced the verbatim run's
+losses exactly at every checkpoint, to four decimals, from `3.7424` at step `1` to `0.7973` at step
+`3000`. Only wall-clock differs, `2614.2s` against `2493.3s`, so the extra `4.8%` is the tracking
+itself. That is the check that makes the diagnostic quotable alongside the primary run.
+
+**The summed dead-expert statistic hides per-layer deaths.** `expert_load_share` sums load across
+all seven mixture layers before checking for zeros, so a layer can have dead experts while the total
+reports none. Adding a per-layer counter shows exactly that at step `1`:
+
+```text
+step=1     expert_unused=0   layer_unused=2
+step=250   expert_unused=0   layer_unused=0
+```
+
+Two experts in the worst layer received no tokens at all on the first step, and the summed statistic
+reported zero unused. By step `250` the balancer had revived both, so this was a transient rather
+than a persistent blind spot — but the metric would not have shown it either way. `expert_unused`
+should be read as a lower bound on how many experts are idle.
+
