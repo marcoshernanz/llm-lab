@@ -285,6 +285,7 @@ class MixtureOfExperts(nn.Module):
                 self.router_bias = margin[
                     tokens.size(0) * NUM_ACTIVE_EXPERTS // NUM_ROUTED_EXPERTS
                 ]  # [K]
+                self.router_bias -= self.router_bias.mean()
 
         routed = torch.zeros_like(tokens)  # [B*T, D]
         for index, expert in enumerate(self.experts):
