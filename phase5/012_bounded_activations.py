@@ -42,6 +42,8 @@ D_HEAD = D_MODEL // NUM_Q_HEADS
 D_ROPE = D_HEAD // 2
 D_LATENT = 64
 D_FFN = 8 * D_MODEL // 3
+GATE_CAP = 4.0
+UP_CAP = 25.0
 NUM_BLOCKS = 8
 INIT_STD = 0.02
 ROPE_BASE = 10000.0
@@ -222,8 +224,13 @@ class GlobalSelfAttention(nn.Module):
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
 
+def softcap(x: torch.Tensor, cap: float) -> torch.Tensor:  # [...]
+    """Bound a tensor to (-cap, cap), leaving values well inside it almost unchanged."""
+    return cap * torch.tanh(x / cap)  # [...]
+
+
 class FeedForward(nn.Module):
-    """Gate one projection of the input by another and project back down."""
+    """Bound both branches of the gated MLP so their product cannot produce outliers."""
 
     def __init__(self, d_hidden: int):
         """Create the three linear layers of the gated MLP."""
@@ -235,11 +242,9 @@ class FeedForward(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the feed-forward block output."""
         gate = self.gate_proj(x)  # [B, T, Dff]
-        gate = 4 * torch.tanh(gate / 4) * torch.sigmoid(gate)
-
         up = self.up_proj(x)  # [B, T, Dff]
-        up = 25 * torch.tanh(up / 25)
-
+        gate = softcap(gate, GATE_CAP) * torch.sigmoid(gate)  # [B, T, Dff]
+        up = softcap(up, UP_CAP)  # [B, T, Dff]
         x = gate * up  # [B, T, Dff]
         x = self.down_proj(x)  # [B, T, D]
         return x
