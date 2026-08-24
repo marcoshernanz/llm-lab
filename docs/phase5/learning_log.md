@@ -19,6 +19,7 @@ Every run below is one seed (`1337`) on a Kaggle `Tesla T4`, `3000` steps, batch
 | P5-008 | [`phase5/008_hybrid_attention.py`](../../phase5/008_hybrid_attention.py) | `0.7887` | `-0.0017` | `6317312` | `733.8` |
 | P5-009 | [`phase5/009_mla.py`](../../phase5/009_mla.py) | `0.8135` | `+0.0248` | `6358336` | `737.3` |
 | P5-010 | [`phase5/010_moe.py`](../../phase5/010_moe.py) | `0.8002` | `-0.0133` | `8899392` | `956.5` |
+| P5-011 | [`phase5/011_load_balancing.py`](../../phase5/011_load_balancing.py) | `0.7988` | `-0.0014` | `14504768` | `2008.9` |
 
 ## Reading The Ladder
 
@@ -447,3 +448,85 @@ half the experts, so even an unpopular one keeps receiving gradient.
 
 This is what milestone `511` acts on. There is a genuine imbalance for a selection-only bias to
 correct, and a quietest expert at `30%` of its fair share is the number to beat.
+
+## P5-011 Milestone 511 Real Sparsity And Quantile Balancing
+
+- Script: [`phase5/011_load_balancing.py`](../../phase5/011_load_balancing.py)
+- Parameters: `14504768`
+- Final train loss: `0.7778`
+- Final validation loss: `0.7988`
+- Wall-clock time: `2008.9s` on a Kaggle `T4`
+- Experts: `64` routed at hidden `32`, top-`4` per token, plus one shared expert at hidden `128`
+- Sparsity: `4` of `64`, `6.2%`
+
+What changed from `M-010`:
+
+- the routed pool grew from `8` experts to `64` and each expert narrowed from `128` to `32`, taking
+  sparsity from `50%` to `6.2%`,
+- a per-expert `router_bias` buffer is added to the score used for top-`k` **selection only**, while
+  the mixture weights are gathered from the raw sigmoid scores,
+- routing takes top-`(k+1)` instead of top-`k`, so the `(k+1)`-th entry gives the cutoff each token
+  imposes,
+- after every training step the bias is recomputed by Quantile Balancing, and the widest bias gap in
+  any layer is reported as `bias_span`.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=3.7451 val_loss=3.7426 seconds=12.7 expert_min=0.002 expert_max=0.049 expert_unused=0 bias_span=0.284
+step=250 train_loss=1.3758 val_loss=1.3804 seconds=178.7 expert_min=0.013 expert_max=0.018 expert_unused=0 bias_span=0.943
+step=500 train_loss=1.1127 val_loss=1.1115 seconds=345.4 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.972
+step=750 train_loss=1.0095 val_loss=1.0123 seconds=511.7 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.936
+step=1000 train_loss=0.9388 val_loss=0.9460 seconds=677.7 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.702
+step=1250 train_loss=0.9035 val_loss=0.9173 seconds=845.1 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.668
+step=1500 train_loss=0.8837 val_loss=0.8803 seconds=1011.4 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.678
+step=1750 train_loss=0.8587 val_loss=0.8601 seconds=1178.7 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.590
+step=2000 train_loss=0.8354 val_loss=0.8504 seconds=1344.9 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.557
+step=2250 train_loss=0.8263 val_loss=0.8251 seconds=1510.5 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.466
+step=2500 train_loss=0.8071 val_loss=0.8187 seconds=1676.8 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.481
+step=2750 train_loss=0.7968 val_loss=0.8123 seconds=1843.3 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.509
+step=3000 train_loss=0.7778 val_loss=0.7988 seconds=2008.9 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.484
+```
+
+Main lesson:
+
+- **The balancer works, and the margin is not subtle.** Ideal share at `64` experts is `0.0156`. Step
+  `1` reports the load produced with a zero bias, and it is already `24.5x` imbalanced, from `0.002`
+  to `0.049`. By step `250` the spread is `1.38x`, and it ends at `1.13x` with no expert ever unused.
+- Against `M-010`, which had no balancer, the contrast is direct: `4.66x` final spread there against
+  `1.13x` here, and that is while being eight times sparser, which is the regime where imbalance is
+  supposed to get *worse*.
+- **Quality did not move at all**: `0.7988` against `0.8002`, a delta of `-0.0014` that is far inside
+  what one seed can resolve. Perfectly balanced routing, `63%` more parameters, and eight times the
+  expert pool bought nothing measurable at this scale.
+- **The cost is wall-clock: `2.1x`**, `2008.9s` against `956.5s`. The Python expert loop now runs
+  `64` iterations per mixture layer instead of `8`, and each expert is too narrow to use the GPU.
+  This is the single strongest argument in the ladder for fused grouped-GEMM dispatch.
+
+### What The Bias Span Reveals
+
+`bias_span` is the widest gap between any two expert biases in a layer, so it measures how hard the
+balancer had to work to keep the load flat. It is not monotone:
+
+| Step | 1 | 500 | 1000 | 2000 | 3000 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `bias_span` | `0.284` | `0.972` | `0.702` | `0.557` | `0.484` |
+
+At initialization the router is random, so its preferences are weak and almost no correction is
+needed. As the router starts learning it develops strong preferences, and the bias has to fight
+hardest around step `500`. From there the span falls steadily for the rest of training.
+
+The most useful reading is that the span is a direct measure of **how much the router wants to be
+imbalanced**, and that this want peaks early and then decays. The experts specialize, demand
+spreads out on its own, and the balancer's job gets easier. That is a mechanism you cannot see from
+the loss curve at all.
+
+### The Control This Run Does Not Have
+
+The clean ablation would be `4` of `64` **without** the balancer, run to `3000` steps. This run does
+not provide it. Step `1` shows what unbalanced routing looks like at initialization, `24.5x`, but
+not what it would decay or collapse to over a full run.
+
+So the defensible claim is that the balancer holds load near uniform from the first few hundred
+steps onward in a regime that starts badly skewed. The claim it does *not* support is a specific
+number for how much damage the absence of a balancer would have done.
