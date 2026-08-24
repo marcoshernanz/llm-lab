@@ -238,6 +238,7 @@ class FeedForward(nn.Module):
         gate = 4 * torch.tanh(gate / 4)
 
         up = self.up_proj(x)  # [B, T, Dff]
+        up = 25 * torch.tanh(up / 25)
 
         x = gate * up  # [B, T, Dff]
         x = self.down_proj(x)  # [B, T, D]
