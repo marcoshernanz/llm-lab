@@ -33,8 +33,8 @@ For the run history, see [learning_log.md](learning_log.md).
 | 509 | Multi-head latent attention | Compress KV to a latent on the global layers, with decoupled RoPE | done |
 | 510 | Sparse mixture-of-experts | Fine-grained routed experts plus a shared expert, matched active cost | done |
 | 511 | Real sparsity and loss-free balancing | Make routing actually sparse, then balance it with a selection-only bias | done |
-| 512 | Bounded feed-forward activations | Cap both GLU branches so outliers cannot form | next |
-| 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | planned |
+| 512 | Bounded feed-forward activations | Cap both GLU branches so outliers cannot form | done |
+| 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | next |
 | 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | planned |
 | 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | planned |
 | 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | planned |
@@ -61,6 +61,7 @@ For the run history, see [learning_log.md](learning_log.md).
 | 509 latent attention, global layers | `0.8135` | `+0.0248` | `6358336` | `737.3` |
 | 510 sparse mixture-of-experts | `0.8002` | `-0.0133` | `8899392` | `956.5` |
 | 511 real sparsity, quantile balancing | `0.7988` | `-0.0014` | `14504768` | `2008.9` |
+| 512 bounded activations | `0.7973` | `-0.0015` | `14504768` | `2493.3` |
 
 - **Two mechanisms account for almost everything.** Pre-norm is worth `-0.7980` and RoPE `-1.2291`,
   together `-2.03` of the total `-2.26`. Everything after them moves the loss by under `0.19`.
@@ -804,6 +805,16 @@ The design is careful. `β·tanh(x/β)` is approximately linear near the origin 
 - Apply to **every** gated block: the dense block `0`, the routed experts, and the shared expert.
 - Run the hard-clamp variant as the A/B if time permits, since it is a two-line change and the smooth-vs-hard question is the interesting one.
 - **Measure whether the failure mode exists here before claiming the fix works.** Instrument the maximum absolute pre-`down_proj` activation across training in `M-506`'s configuration. At `d_model = 256` in `fp32` on a `T4`, outliers may simply not form — in which case the honest result is "no outliers to cap," exactly as `M-510` reported "no collapse to balance." **This is the expected outcome and it is a real finding, not a failed milestone.**
+
+Status: complete via [`phase5/012_bounded_activations.py`](../../phase5/012_bounded_activations.py), recorded as `P5-012`.
+
+Main lesson:
+- **Quality is unchanged**, `0.7973` against `0.7988` at identical parameter count. The expected result for a stability mechanism in a run that was never unstable.
+- **Cost is `1.24x` wall-clock.** Two `tanh` calls per gated block across `64` experts in seven layers is not free.
+- **The smooth cap earns its choice over DeepSeek's hard clamp, measurably.** At `x = 30` a `clamp(-10, 10)` has derivative exactly `0.000` while SiTU-GLU passes `1.220`. A coordinate that saturates a clamp stops learning; one that saturates a `tanh` does not.
+- **The failure mode is real here.** An instrumented rerun shows both caps engaging hard: the gate branch peaks at `28.29` against a cap of `4` and the up branch at `47.22` against `25`. Uncapped, the worst coordinate would emit `1336` where a typical one emits `0.731` — the cap removes a `14x` outlier. So the mechanism is not decorative at this scale, even though `fp32` absorbs the outlier without any quality cost. Its value is realized in `bf16`, in quantization, and in loss spikes over long runs, none of which a `3000`-step `fp32` ladder can see.
+- **`expert_unused` is a lower bound, not a count.** `expert_load_share` sums across all seven mixture layers before checking for zeros, so per-layer deaths are invisible. A per-layer counter shows `2` dead experts in the worst layer at step `1` while the summed statistic reported `0`. The balancer revived both by step `250`.
+- **Unexpected second-order effect:** capping made the load balancer work harder. `bias_span` ends `42%` higher than in `M-011` (`0.687` against `0.484`) and decays far more slowly. Load stays balanced, but the correction needed to hold it there is persistently larger. One seed, so a hypothesis rather than a result.
 
 ### Milestone 513: Attention Sinks
 Track: Attention stability
