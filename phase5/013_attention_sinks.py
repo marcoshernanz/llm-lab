@@ -122,7 +122,9 @@ def rope_tables(head_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
     return angles.cos(), angles.sin()
 
 
-def attend(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def attend(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor, z: torch.Tensor
+) -> torch.Tensor:
     """Score queries against keys, mask, and return the attended values.
 
     The scale follows the query width, which is Dh on local layers and Dh+Dr on global ones.
@@ -130,7 +132,9 @@ def attend(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor
     seq_len = q.size(2)
     attn_scores = (q @ k.mT) / math.sqrt(q.size(-1))  # [B, Hq, T, T]
     attn_scores = attn_scores.masked_fill(mask[:seq_len, :seq_len], -torch.inf)  # [B, Hq, T, T]
+    attn_scores.append(z[:, None, None], dim=-1)
     attn_weights = attn_scores.softmax(dim=-1)  # [B, Hq, T, T]
+    attn_scores.pop(dim=1)
     return attn_weights @ v  # [B, Hq, T, Dh]
 
 
