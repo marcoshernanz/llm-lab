@@ -123,17 +123,19 @@ def rope_tables(head_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def attend(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor, z: torch.Tensor
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor, sink_logit: torch.Tensor
 ) -> torch.Tensor:
     """Score queries against keys, mask, and return the attended values.
 
     The scale follows the query width, which is Dh on local layers and Dh+Dr on global ones.
+    The sink logit joins the softmax as an extra column with no value behind it, so the weights
+    sum to less than one and a head that finds nothing relevant can retrieve almost nothing.
     """
     seq_len = q.size(2)
     attn_scores = (q @ k.mT) / math.sqrt(q.size(-1))  # [B, Hq, T, T]
     attn_scores = attn_scores.masked_fill(mask[:seq_len, :seq_len], -torch.inf)  # [B, Hq, T, T]
-    sink = z.view(1, -1, 1, 1).expand(attn_scores.size(0), -1, seq_len, 1)  # [B, Hq, T, 1]
-    attn_scores = torch.cat([attn_scores, sink], dim=-1)
+    sink = sink_logit.view(1, -1, 1, 1).expand(attn_scores.size(0), -1, seq_len, 1)  # [B, Hq, T, 1]
+    attn_scores = torch.cat([attn_scores, sink], dim=-1)  # [B, Hq, T, T+1]
     attn_weights = attn_scores.softmax(dim=-1)[..., :-1]  # [B, Hq, T, T]
     return attn_weights @ v  # [B, Hq, T, Dh]
 
@@ -150,10 +152,9 @@ class LocalSelfAttention(nn.Module):
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
-        self.z = nn.Parameter(torch.zeros(NUM_Q_HEADS))
-
         self.q_norm = RMSNorm(D_HEAD)
         self.k_norm = RMSNorm(D_HEAD)
+        self.sink_logit = nn.Parameter(torch.zeros(NUM_Q_HEADS))
 
         ones = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool)  # [T, T]
         mask = ones.triu(diagonal=1) | ones.tril(diagonal=-WINDOW_SIZE)  # [T, T]
@@ -172,7 +173,7 @@ class LocalSelfAttention(nn.Module):
         k = repeat_kv_heads(apply_rope(k, self.rope_cos, self.rope_sin))  # [B, Hq, T, Dh]
         v = repeat_kv_heads(split_heads(self.v_proj(x), NUM_KV_HEADS, D_HEAD))  # [B, Hq, T, Dh]
 
-        attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.z))  # [B, T, D]
+        attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.sink_logit))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
@@ -188,8 +189,6 @@ class GlobalSelfAttention(nn.Module):
         self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
         self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
 
-        self.z = nn.Parameter(torch.zeros(NUM_Q_HEADS))
-
         self.q_rope_proj = nn.Linear(D_MODEL, D_ROPE * NUM_Q_HEADS, bias=False)
         self.k_rope_proj = nn.Linear(D_MODEL, D_ROPE, bias=False)
 
@@ -198,6 +197,7 @@ class GlobalSelfAttention(nn.Module):
 
         self.q_norm = RMSNorm(D_HEAD)
         self.kv_norm = RMSNorm(D_LATENT)
+        self.sink_logit = nn.Parameter(torch.zeros(NUM_Q_HEADS))
 
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.causal_mask = nn.Buffer(mask)
@@ -227,7 +227,7 @@ class GlobalSelfAttention(nn.Module):
         k = torch.cat([k_c, k_r], dim=-1)  # [B, Hq, T, Dh+Dr]
         v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
 
-        attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.z))  # [B, T, D]
+        attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.sink_logit))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
