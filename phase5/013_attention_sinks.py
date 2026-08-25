@@ -146,6 +146,8 @@ class LocalSelfAttention(nn.Module):
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
+        self.z = nn.Parameter(torch.zeros(NUM_Q_HEADS))
+
         self.q_norm = RMSNorm(D_HEAD)
         self.k_norm = RMSNorm(D_HEAD)
 
