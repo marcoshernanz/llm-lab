@@ -21,6 +21,7 @@ Every run below is one seed (`1337`) on a Kaggle `Tesla T4`, `3000` steps, batch
 | P5-010 | [`phase5/010_moe.py`](../../phase5/010_moe.py) | `0.8002` | `-0.0133` | `8899392` | `956.5` |
 | P5-011 | [`phase5/011_load_balancing.py`](../../phase5/011_load_balancing.py) | `0.7988` | `-0.0014` | `14504768` | `2008.9` |
 | P5-012 | [`phase5/012_bounded_activations.py`](../../phase5/012_bounded_activations.py) | `0.7973` | `-0.0015` | `14504768` | `2493.3` |
+| P5-013 | [`phase5/013_attention_sinks.py`](../../phase5/013_attention_sinks.py) | `0.7984` | `+0.0011` | `14504832` | `2758.2` |
 
 ## Reading The Ladder
 
@@ -656,4 +657,98 @@ Two experts in the worst layer received no tokens at all on the first step, and 
 reported zero unused. By step `250` the balancer had revived both, so this was a transient rather
 than a persistent blind spot — but the metric would not have shown it either way. `expert_unused`
 should be read as a lower bound on how many experts are idle.
+
+## P5-013 Milestone 513 Attention Sinks
+
+- Script: [`phase5/013_attention_sinks.py`](../../phase5/013_attention_sinks.py)
+- Parameters: `14504832`, which is `M-012` plus `64`
+- Final train loss: `0.7787`
+- Final validation loss: `0.7984`
+- Wall-clock time: `2758.2s` on a Kaggle `T4`
+
+What changed from `M-012`:
+
+- every attention layer, local and global, gains one learnable sink logit per query head,
+- the sink joins the softmax as an extra column with no value behind it, so the returned weights
+  sum to less than one,
+- the sink column is dropped after the softmax, which is why no extra value vector is needed,
+- `8` heads across `8` layers is `64` new parameters, the cheapest mechanism in the ladder.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=3.7344 val_loss=3.7319 seconds=16.2 expert_min=0.002 expert_max=0.048 expert_unused=0 bias_span=0.279
+step=250 train_loss=1.3517 val_loss=1.3550 seconds=238.2 expert_min=0.013 expert_max=0.019 expert_unused=0 bias_span=0.984
+step=500 train_loss=1.1083 val_loss=1.1021 seconds=470.0 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.983
+step=750 train_loss=1.0071 val_loss=1.0073 seconds=699.0 expert_min=0.013 expert_max=0.019 expert_unused=0 bias_span=0.912
+step=1000 train_loss=0.9361 val_loss=0.9422 seconds=924.9 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.892
+step=1250 train_loss=0.8961 val_loss=0.9098 seconds=1152.0 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.886
+step=1500 train_loss=0.8812 val_loss=0.8816 seconds=1378.9 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.877
+step=1750 train_loss=0.8577 val_loss=0.8587 seconds=1606.7 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.937
+step=2000 train_loss=0.8351 val_loss=0.8484 seconds=1835.9 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.904
+step=2250 train_loss=0.8251 val_loss=0.8234 seconds=2065.8 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.768
+step=2500 train_loss=0.8089 val_loss=0.8217 seconds=2296.1 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.764
+step=2750 train_loss=0.7950 val_loss=0.8083 seconds=2526.5 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.805
+step=3000 train_loss=0.7787 val_loss=0.7984 seconds=2758.2 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.701
+```
+
+Main lesson:
+
+- **No measurable effect**: `0.7984` against `0.7973`, a delta of `+0.0011` for `64` parameters.
+  Inside single-seed resolution in the unhelpful direction.
+- **Cost is `1.11x` wall-clock.** The concatenation builds a fresh `[B, Hq, T, T+1]` tensor on every
+  attention call, and at eight layers that memory traffic is not free for a mechanism whose entire
+  parameter budget is `64` floats.
+- The implementation is exactly DeepSeek-V4's formula. Computing
+  `exp(z) / (sum_k exp(z_k) + exp(z'))` directly and comparing against the concat-softmax-slice form
+  agrees to `5.96e-08`, which is `fp32` rounding.
+
+### The Heads Did Want The Escape Hatch, A Little
+
+The sink logits do not stay at their zero initialization. They spread steadily and mostly upward:
+
+| Step | 1 | 500 | 1000 | 2000 | 3000 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| min | `-0.00` | `-0.45` | `-0.64` | `-0.62` | `-0.58` |
+| mean | `-0.00` | `0.06` | `0.14` | `0.24` | `0.34` |
+| max | `0.00` | `0.66` | `0.97` | `1.17` | `1.38` |
+
+So heads differentiate, and the average head moves *toward* the sink rather than away from it. But
+the magnitudes are small. What a logit `z` buys depends on how peaked the row is:
+
+| `z` | share of a flat `256`-key row | share if the row is effectively `8` keys |
+| ---: | ---: | ---: |
+| `-0.58` | `0.22%` | `6.5%` |
+| `0.34` | `0.55%` | `14.9%` |
+| `1.38` | `1.53%` | `33.2%` |
+| `5.00` | `36.7%` | `94.9%` |
+
+A head that genuinely wanted to attend to nothing would drive `z` toward `5`. The most extreme head
+here reached `1.38`. The reading is that the escape hatch gets used, moderately, by heads whose
+attention is already concentrated, and that no head needed to shut off entirely.
+
+### The Real Question Was Whether It Adds Anything To The Gate
+
+Milestone `507` already installed a data-dependent sigmoid gate on the attention output, which
+attacks the same problem from the opposite end: the sink lets a head *retrieve* less, the gate lets
+it *emit* less. The frontier is split and neither side ships both. Kimi K3 uses the full-rank output
+gate alone. DeepSeek-V4 uses the learnable sink alone.
+
+This run is the direct test of stacking them, and the answer is that the second mechanism adds
+nothing measurable once the first is present. That is the expected outcome if both are routes to the
+same fix, and it is the most useful thing this milestone produced.
+
+It is one seed and `3000` steps of `fp32`, so this is not evidence that sinks are worthless. It is
+evidence that **given a gate, a sink is redundant at this scale**, which is a narrower and more
+defensible claim, and it is consistent with nobody at the frontier shipping both.
+
+### Methodology Note
+
+The instrumented rerun reproduced the verbatim run's validation loss exactly at every checkpoint, so
+the sink-logit tracking is provably non-invasive and the two runs can be quoted together.
+
+One caveat on the diagnostic's own output: the field printed as `sink_mass` is `sigmoid(-z)`, which
+is the weight a single competing key at logit `0` would retain. It is a monotone index of the logit,
+not the true attention mass, which depends on the whole row. The raw `min`, `mean`, and `max` logits
+above are the numbers to read.
 
