@@ -133,8 +133,7 @@ def attend(
     attn_scores = (q @ k.mT) / math.sqrt(q.size(-1))  # [B, Hq, T, T]
     attn_scores = attn_scores.masked_fill(mask[:seq_len, :seq_len], -torch.inf)  # [B, Hq, T, T]
     attn_scores = torch.cat([attn_scores, z[:, None, None]], dim=-1)
-    attn_weights = attn_scores.softmax(dim=-1)  # [B, Hq, T, T]
-    attn_weights.pop(dim=-1)
+    attn_weights = attn_scores.softmax(dim=-1)[..., -1]  # [B, Hq, T, T]
     return attn_weights @ v  # [B, Hq, T, Dh]
 
 
