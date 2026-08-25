@@ -34,8 +34,8 @@ For the run history, see [learning_log.md](learning_log.md).
 | 510 | Sparse mixture-of-experts | Fine-grained routed experts plus a shared expert, matched active cost | done |
 | 511 | Real sparsity and loss-free balancing | Make routing actually sparse, then balance it with a selection-only bias | done |
 | 512 | Bounded feed-forward activations | Cap both GLU branches so outliers cannot form | done |
-| 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | next |
-| 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | planned |
+| 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | done |
+| 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | next |
 | 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | planned |
 | 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | planned |
 | 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | planned |
@@ -62,6 +62,7 @@ For the run history, see [learning_log.md](learning_log.md).
 | 510 sparse mixture-of-experts | `0.8002` | `-0.0133` | `8899392` | `956.5` |
 | 511 real sparsity, quantile balancing | `0.7988` | `-0.0014` | `14504768` | `2008.9` |
 | 512 bounded activations | `0.7973` | `-0.0015` | `14504768` | `2493.3` |
+| 513 attention sinks | `0.7984` | `+0.0011` | `14504832` | `2758.2` |
 
 - **Two mechanisms account for almost everything.** Pre-norm is worth `-0.7980` and RoPE `-1.2291`,
   together `-2.03` of the total `-2.26`. Everything after them moves the loss by under `0.19`.
@@ -839,6 +840,14 @@ Now the attention weights sum to something **less than `1`**, and the head can d
 - Apply to **all** attention layers, local and global.
 - **Expect overlap with `M-507`'s output gate, and say so.** These two mechanisms solve the same problem from opposite ends, and the frontier is split: K3 uses the gate alone, DeepSeek-V4 uses the sink alone. Having both is defensible but redundant, so this milestone's real question is whether the sink adds anything *given* a gate is already present. A null result would be informative and should be reported as such.
 - Instrument the learned sink logits at the end of training. If they stay near `0`, no head wanted the escape hatch at this scale.
+
+Status: complete via [`phase5/013_attention_sinks.py`](../../phase5/013_attention_sinks.py), recorded as `P5-013`.
+
+Main lesson:
+- **No measurable effect**, `+0.0011` for `64` parameters, at `1.11x` wall-clock from the `[B, Hq, T, T+1]` concatenation.
+- **The heads did use the escape hatch, moderately.** Sink logits spread from zero to a range of `-0.58` to `1.38` with a mean of `+0.34`, so the average head moves *toward* the sink. But a head that wanted to attend to nothing would need `z` near `5`, and none came close.
+- **The milestone's real question was whether a sink adds anything given `M-507`'s output gate, and the answer is no.** The sink lets a head retrieve less; the gate lets it emit less. The frontier is split and neither side ships both — K3 uses the gate alone, DeepSeek-V4 the sink alone. Stacking them buys nothing measurable, which is what should happen if they are two routes to one fix.
+- The defensible claim is not that sinks are worthless, but that **given a gate, a sink is redundant at this scale**.
 
 ### Milestone 514: Multi-Token Prediction
 Track: Objective
