@@ -188,6 +188,8 @@ class GlobalSelfAttention(nn.Module):
         self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
         self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
 
+        self.z = nn.Parameter(torch.zeros(NUM_Q_HEADS))
+
         self.q_rope_proj = nn.Linear(D_MODEL, D_ROPE * NUM_Q_HEADS, bias=False)
         self.k_rope_proj = nn.Linear(D_MODEL, D_ROPE, bias=False)
 
@@ -225,7 +227,7 @@ class GlobalSelfAttention(nn.Module):
         k = torch.cat([k_c, k_r], dim=-1)  # [B, Hq, T, Dh+Dr]
         v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
 
-        attn_output = combine_heads(attend(q, k, v, self.causal_mask))  # [B, T, D]
+        attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.z))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
