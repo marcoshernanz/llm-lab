@@ -172,7 +172,7 @@ class LocalSelfAttention(nn.Module):
         k = repeat_kv_heads(apply_rope(k, self.rope_cos, self.rope_sin))  # [B, Hq, T, Dh]
         v = repeat_kv_heads(split_heads(self.v_proj(x), NUM_KV_HEADS, D_HEAD))  # [B, Hq, T, Dh]
 
-        attn_output = combine_heads(attend(q, k, v, self.causal_mask))  # [B, T, D]
+        attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.z))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
