@@ -374,7 +374,9 @@ class MultiTokenPredictor(nn.Module):
         self.merge_proj = nn.Linear(2 * D_MODEL, D_MODEL, bias=False)
         self.block = DecoderBlock(is_global=True, is_dense=False)
 
-    def forward(self, hidden: torch.Tensor, embeddings: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, hidden: torch.Tensor, embeddings: torch.Tensor
+    ) -> torch.Tensor:  # [B, T, D] each
         """Merge the previous depth's state with the next token and return the new state.
 
         Both inputs are normalized before the merge because a hidden state and an embedding
@@ -387,15 +389,19 @@ class MultiTokenPredictor(nn.Module):
 
 
 class LanguageModel(nn.Module):
-    """Embed tokens, run the decoder, and predict next-token logits."""
+    """Embed tokens, run the decoder, and predict the next token and a few beyond it."""
 
     def __init__(self, vocab_size: int):
-        """Create the embedding table and the decoder stack, then initialize the weights."""
+        """Create the embedding table, the decoder stack, and the prediction heads."""
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.decoder = Decoder()
-        self.mtp = nn.ModuleList([MultiTokenPredictor() for _ in range(MTP_DEPTH)])
+        self.predictors = nn.ModuleList([MultiTokenPredictor() for _ in range(MTP_DEPTH)])
         self.apply(init_weights)
+
+    def decode(self, hidden: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Read logits out of a hidden state through the shared embedding table."""
+        return hidden @ self.embed_tokens.weight.T  # [B, T, V]
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:  # [B, T+MTP_DEPTH]
         """Return next-token logits, then one further-ahead prediction per depth.
@@ -405,14 +411,14 @@ class LanguageModel(nn.Module):
         """
         embeddings = self.embed_tokens(x)  # [B, T+MTP_DEPTH, D]
         hidden = self.decoder(embeddings[:, :CONTEXT_LEN])  # [B, T, D]
-        logits = [hidden @ self.embed_tokens.weight.T]  # [B, T, V]
+        logits = [self.decode(hidden)]  # [B, T, V]
 
         if not self.training:
             return logits
 
-        for depth, predictor in enumerate(self.mtp, start=1):
+        for depth, predictor in enumerate(self.predictors, start=1):
             hidden = predictor(hidden, embeddings[:, depth : depth + CONTEXT_LEN])  # [B, T, D]
-            logits.append(hidden @ self.embed_tokens.weight.T)  # [B, T, V]
+            logits.append(self.decode(hidden))  # [B, T, V]
         return logits
 
 
@@ -458,10 +464,10 @@ def loss_fn(
         for depth, depth_logits in enumerate(logits)
     ]
     main_loss = losses[0]
-    if len(losses) == 1:
-        return main_loss, main_loss
-    ahead_loss = torch.stack(losses[1:]).mean()
-    return main_loss + MTP_WEIGHT * ahead_loss, main_loss
+    total_loss = main_loss
+    if len(losses) > 1:
+        total_loss = main_loss + MTP_WEIGHT * torch.stack(losses[1:]).mean()
+    return total_loss, main_loss
 
 
 def mixtures(model: LanguageModel) -> list[MixtureOfExperts]:
@@ -487,7 +493,8 @@ def estimate_loss(model: LanguageModel, tokens: torch.Tensor) -> float:
     total_loss = 0.0
     for _ in range(EVAL_BATCHES):
         inputs, targets = sample_batch(tokens)
-        total_loss += loss_fn(model(inputs), targets)[1].item()
+        _, main_loss = loss_fn(model(inputs), targets)
+        total_loss += main_loss.item()
     model.train()
     return total_loss / EVAL_BATCHES
 
@@ -504,7 +511,12 @@ def main() -> None:
 
     model = LanguageModel(len(chars)).to(DEVICE)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-    print(f"vocab_size={len(chars)} parameters={sum(p.numel() for p in model.parameters())}")
+    parameters = sum(p.numel() for p in model.parameters())
+    predictor_parameters = sum(p.numel() for p in model.predictors.parameters())
+    print(
+        f"vocab_size={len(chars)} parameters={parameters} "
+        f"inference_parameters={parameters - predictor_parameters}"
+    )
 
     start_seconds = time.perf_counter()
     for step in range(1, TRAIN_STEPS + 1):
