@@ -31,8 +31,7 @@ SEED = 1337
 # E: number of routed experts
 # K: number of experts each token is routed to
 # N: number of tokens routed to one expert, which varies per expert
-
-MTP_DEPTH = 2
+# P: number of prediction depths, MTP_DEPTH + 1 counting the main next-token head
 
 CONTEXT_LEN = 256
 D_MODEL = 256
@@ -53,6 +52,9 @@ NORM_EPS = 1e-5
 WINDOW_SIZE = 64
 GLOBAL_EVERY = 4
 assert NUM_BLOCKS % GLOBAL_EVERY == 0
+
+MTP_DEPTH = 2
+MTP_WEIGHT = 0.3
 
 NUM_ROUTED_EXPERTS = 64
 NUM_ACTIVE_EXPERTS = 4
@@ -362,18 +364,26 @@ def init_weights(module: nn.Module) -> None:
 
 
 class MultiTokenPredictor(nn.Module):
+    """Predict one token further ahead, conditioned on the true intervening token."""
+
     def __init__(self):
+        """Create the two norms, the merge projection, and the decoder block."""
         super().__init__()
         self.hidden_norm = RMSNorm(D_MODEL)
         self.embed_norm = RMSNorm(D_MODEL)
-        self.proj = nn.Linear(2 * D_MODEL, D_MODEL, bias=False)
-        self.block = DecoderBlock(True, True)
+        self.merge_proj = nn.Linear(2 * D_MODEL, D_MODEL, bias=False)
+        self.block = DecoderBlock(is_global=True, is_dense=True)
 
-    def forward(self, hidden: torch.Tensor, embeddings: torch.Tensor):
-        hidden = self.hidden_norm(hidden)
-        embeddings = self.embed_norm(embeddings)
-        merged = torch.cat([hidden, embeddings], dim=-1)
-        return self.block(self.proj(merged))
+    def forward(self, hidden: torch.Tensor, embeddings: torch.Tensor) -> torch.Tensor:
+        """Merge the previous depth's state with the next token and return the new state.
+
+        Both inputs are normalized before the merge because a hidden state and an embedding
+        arrive on different scales.
+        """
+        hidden = self.hidden_norm(hidden)  # [B, T, D]
+        embeddings = self.embed_norm(embeddings)  # [B, T, D]
+        merged = self.merge_proj(torch.cat([hidden, embeddings], dim=-1))  # [B, T, D]
+        return self.block(merged)  # [B, T, D]
 
 
 class LanguageModel(nn.Module):
@@ -387,16 +397,22 @@ class LanguageModel(nn.Module):
         self.mtp = nn.ModuleList([MultiTokenPredictor() for _ in range(MTP_DEPTH)])
         self.apply(init_weights)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
-        """Return next-token logits for one batch of token ids."""
-        embeddings = self.embed_tokens(x)  # [B, T, D]
-        hidden = self.decoder(embeddings)  # [B, T, D]
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:  # [B, T+MTP_DEPTH]
+        """Return next-token logits, then one further-ahead prediction per depth.
 
-        logits = [hidden @ self.embed_tokens.weight.T]
-        for depth, module in enumerate(self.mtp, start=1):
-            hidden = module(hidden, embeddings[:, depth : depth + CONTEXT_LEN])
-            logits.append(hidden @ self.embed_tokens.weight.T)
+        The window carries MTP_DEPTH tokens past the context so each depth can read the token
+        it is asked to predict past. Only the first CONTEXT_LEN of them are decoded.
+        """
+        embeddings = self.embed_tokens(x)  # [B, T+MTP_DEPTH, D]
+        hidden = self.decoder(embeddings[:, :CONTEXT_LEN])  # [B, T, D]
+        logits = [hidden @ self.embed_tokens.weight.T]  # [B, T, V]
 
+        if not self.training:
+            return logits
+
+        for depth, predictor in enumerate(self.mtp, start=1):
+            hidden = predictor(hidden, embeddings[:, depth : depth + CONTEXT_LEN])  # [B, T, D]
+            logits.append(hidden @ self.embed_tokens.weight.T)  # [B, T, V]
         return logits
 
 
@@ -419,17 +435,33 @@ def encode(text: str, stoi: dict[str, int]) -> torch.Tensor:
 
 
 def sample_batch(tokens: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Sample random input windows and their next-token targets."""
-    max_start = tokens.size(0) - CONTEXT_LEN
-    starts = torch.randint(max_start, (BATCH_SIZE,), device=DEVICE)  # [B]
-    offsets = torch.arange(CONTEXT_LEN, device=DEVICE)  # [T]
-    positions = starts[:, None] + offsets[None, :]  # [B, T]
-    return tokens[positions], tokens[positions + 1]  # [B, T], [B, T]
+    """Sample random input windows and the target each prediction depth has to hit."""
+    span = CONTEXT_LEN + MTP_DEPTH
+    starts = torch.randint(tokens.size(0) - span, (BATCH_SIZE,), device=DEVICE)  # [B]
+    offsets = torch.arange(span + 1, device=DEVICE)  # [T+MTP_DEPTH+1]
+    window = tokens[starts[:, None] + offsets[None, :]]  # [B, T+MTP_DEPTH+1]
+    targets = torch.stack(
+        [window[:, depth + 1 : depth + 1 + CONTEXT_LEN] for depth in range(MTP_DEPTH + 1)], dim=1
+    )  # [B, P, T]
+    return window[:, :span], targets  # [B, T+MTP_DEPTH], [B, P, T]
 
 
-def loss_fn(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:  # [B, T, V], [B, T]
-    """Compute next-token cross-entropy for one batch."""
-    return F.cross_entropy(logits.flatten(0, 1), targets.flatten())
+def loss_fn(
+    logits: list[torch.Tensor], targets: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:  # [P of [B, T, V]], [B, P, T]
+    """Return the loss to train on and the main next-token loss on its own.
+
+    Only the main loss is comparable to earlier milestones, so the two are kept apart.
+    """
+    losses = [
+        F.cross_entropy(depth_logits.flatten(0, 1), targets[:, depth].flatten())
+        for depth, depth_logits in enumerate(logits)
+    ]
+    main_loss = losses[0]
+    if len(losses) == 1:
+        return main_loss, main_loss
+    ahead_loss = torch.stack(losses[1:]).mean()
+    return main_loss + MTP_WEIGHT * ahead_loss, main_loss
 
 
 def mixtures(model: LanguageModel) -> list[MixtureOfExperts]:
@@ -455,7 +487,7 @@ def estimate_loss(model: LanguageModel, tokens: torch.Tensor) -> float:
     total_loss = 0.0
     for _ in range(EVAL_BATCHES):
         inputs, targets = sample_batch(tokens)
-        total_loss += loss_fn(model(inputs), targets).item()
+        total_loss += loss_fn(model(inputs), targets)[1].item()
     model.train()
     return total_loss / EVAL_BATCHES
 
@@ -477,8 +509,7 @@ def main() -> None:
     start_seconds = time.perf_counter()
     for step in range(1, TRAIN_STEPS + 1):
         inputs, targets = sample_batch(train_tokens)
-        # targets = TODO
-        loss = loss_fn(model(inputs), targets)
+        loss, _ = loss_fn(model(inputs), targets)
 
         optimizer.zero_grad()
         loss.backward()
