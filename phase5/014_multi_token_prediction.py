@@ -392,13 +392,13 @@ class LanguageModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
         """Return next-token logits for one batch of token ids."""
-        hidden_states = self.embed_tokens(x)  # [B, T, D]
-        hidden_states = self.decoder(hidden_states)  # [B, T, D]
+        embeddings = self.embed_tokens(x)  # [B, T, D]
+        hidden_states = self.decoder(embeddings)  # [B, T, D]
 
         output = [hidden_states]
 
         for m in self.mtp:
-            output.append(m(output[-1]))
+            output.append(m(output[-1], embeddings))
 
         output = torch.cat(output)
         output.reshape(BATCH_SIZE, -1, CONTEXT_LEN, D_MODEL)
