@@ -373,6 +373,8 @@ class MultiTokenPredictor(nn.Module):
         x = self.proj(x)
         x = self.block(x)
 
+        return x
+
 
 class LanguageModel(nn.Module):
     """Embed tokens, run the decoder, and predict next-token logits."""
