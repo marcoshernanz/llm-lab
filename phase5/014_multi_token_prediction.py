@@ -399,6 +399,9 @@ class LanguageModel(nn.Module):
         for m in self.mtp:
             output.append(m(output[-1]))
 
+        output = torch.cat(output)
+        output.reshape(BATCH_SIZE, -1, CONTEXT_LEN, D_MODEL)
+
         logits = hidden_states @ self.embed_tokens.weight.T  # [B, T, V]
         return logits
 
