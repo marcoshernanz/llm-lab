@@ -366,6 +366,9 @@ class MultiTokenPredictor(nn.Module):
         self.proj = nn.Linear(2 * D_MODEL, D_MODEL)
         self.block = DecoderBlock(True, True)
 
+    def forward(self, x: torch.Tensor):
+        pass
+
 
 class LanguageModel(nn.Module):
     """Embed tokens, run the decoder, and predict next-token logits."""
