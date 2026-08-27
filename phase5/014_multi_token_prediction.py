@@ -363,7 +363,7 @@ def init_weights(module: nn.Module) -> None:
 
 class MultiTokenPredictor(nn.Module):
     def __init__(self):
-        super().__init__
+        super().__init__()
         self.hidden_norm = RMSNorm(D_MODEL)
         self.embed_norm = RMSNorm(D_MODEL)
         self.proj = nn.Linear(2 * D_MODEL, D_MODEL)
