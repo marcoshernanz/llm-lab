@@ -393,6 +393,12 @@ class LanguageModel(nn.Module):
         """Return next-token logits for one batch of token ids."""
         hidden_states = self.embed_tokens(x)  # [B, T, D]
         hidden_states = self.decoder(hidden_states)  # [B, T, D]
+
+        output = [hidden_states]
+
+        for m in self.mtp:
+            output.append(m(output[-1]))
+
         logits = hidden_states @ self.embed_tokens.weight.T  # [B, T, V]
         return logits
 
