@@ -366,10 +366,12 @@ class MultiTokenPredictor(nn.Module):
         self.proj = nn.Linear(2 * D_MODEL, D_MODEL)
         self.block = DecoderBlock(True, True)
 
-    def forward(self, x: torch.Tensor, hidden: torch.Tensor, embeddings: torch.Tensor):
+    def forward(self, hidden: torch.Tensor, embeddings: torch.Tensor):
         hidden = self.hidden_norm(hidden[..., :-1])
         embeddings = self.embed_norm(embeddings[..., 1:])
-        pass
+        x = torch.cat([hidden, embeddings], dim=-1)
+        x = self.proj(x)
+        x = self.block(x)
 
 
 class LanguageModel(nn.Module):
