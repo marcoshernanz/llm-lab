@@ -32,7 +32,7 @@ SEED = 1337
 # K: number of experts each token is routed to
 # N: number of tokens routed to one expert, which varies per expert
 
-MTP_DEPTH = 3
+MTP_DEPTH = 2
 
 CONTEXT_LEN = 256
 D_MODEL = 256
