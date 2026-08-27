@@ -370,8 +370,8 @@ class MultiTokenPredictor(nn.Module):
         self.block = DecoderBlock(True, True)
 
     def forward(self, hidden: torch.Tensor, embeddings: torch.Tensor):
-        hidden = self.hidden_norm(hidden[..., :-1])
-        embeddings = self.embed_norm(embeddings[..., 1:])
+        hidden = self.hidden_norm(hidden[:, :-1, :])
+        embeddings = self.embed_norm(embeddings[:, 1:, :])
         x = torch.cat([hidden, embeddings], dim=-1)
         x = self.proj(x)
         x = self.block(x)
