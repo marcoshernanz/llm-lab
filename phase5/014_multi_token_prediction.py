@@ -366,7 +366,7 @@ class MultiTokenPredictor(nn.Module):
         super().__init__()
         self.hidden_norm = RMSNorm(D_MODEL)
         self.embed_norm = RMSNorm(D_MODEL)
-        self.proj = nn.Linear(2 * D_MODEL, D_MODEL)
+        self.proj = nn.Linear(2 * D_MODEL, D_MODEL, bias=False)
         self.block = DecoderBlock(True, True)
 
     def forward(self, hidden: torch.Tensor, embeddings: torch.Tensor):
@@ -392,7 +392,7 @@ class LanguageModel(nn.Module):
         embeddings = self.embed_tokens(x)  # [B, T, D]
         hidden = self.decoder(embeddings)  # [B, T, D]
 
-        logits = [hidden]
+        logits = [hidden @ self.embed_tokens.weight.T]
 
         for m in self.mtp:
             output.append(m(output[-1], embeddings))
