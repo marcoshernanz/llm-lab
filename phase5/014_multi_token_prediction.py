@@ -366,7 +366,9 @@ class MultiTokenPredictor(nn.Module):
         self.proj = nn.Linear(2 * D_MODEL, D_MODEL)
         self.block = DecoderBlock(True, True)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, outputs: torch.Tensor, embeddings: torch.Tensor):
+        outputs = outputs[..., :-1]
+        embeddings = embeddings[..., 1:]
         pass
 
 
