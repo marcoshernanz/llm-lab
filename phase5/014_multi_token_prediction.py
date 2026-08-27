@@ -393,14 +393,10 @@ class LanguageModel(nn.Module):
         hidden = self.decoder(embeddings)  # [B, T, D]
 
         logits = [hidden @ self.embed_tokens.weight.T]
+        for depth, module in enumerate(self.mtp, start=1):
+            hidden = module(hidden, embeddings[:, depth : depth + CONTEXT_LEN])
+            logits.append(hidden @ self.embed_tokens.weight.T)
 
-        for m in self.mtp:
-            output.append(m(output[-1], embeddings))
-
-        output = torch.cat(output, dim=0)
-        output.reshape(BATCH_SIZE, -1, CONTEXT_LEN, D_MODEL)
-
-        logits = hidden @ self.embed_tokens.weight.T  # [B, T, V]
         return logits
 
 
