@@ -359,6 +359,11 @@ def init_weights(module: nn.Module) -> None:
         nn.init.zeros_(bias)
 
 
+class MultiTokenPredictor(nn.Module):
+    def __init__(self):
+        pass
+
+
 class LanguageModel(nn.Module):
     """Embed tokens, run the decoder, and predict next-token logits."""
 
