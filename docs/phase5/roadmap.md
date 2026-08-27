@@ -873,11 +873,11 @@ Two properties made this the standard. The embedding table and output head are *
 All three frontier models ship this, and **all three use depth `1`**. Deeper MTP was tried and the returns did not justify it.
 
 **Implementation decisions.**
-- Depth `1` — predict `t+2` only. Unanimous at the frontier.
+- **Implement the general `D`-module chain, and run it at `MTP_DEPTH = 2`.** All three frontier models configure depth `1`, so `2` is a deliberate departure — but the departure is in the *config*, not the design. DeepSeek specifies a chain of `D` sequential modules and simply sets `D = 1`; writing the general form is what exercises the mechanism, since a depth-`1` special case never has to chain one predictor's state into the next, stack targets across depths, or average an auxiliary loss over more than one term. Running at `2` proves the loop is real. The cost is honest and should be recorded: each depth is a full decoder block, so `2` depths add roughly `22%` parameters that are discarded at inference.
 - Share the embedding table and the output projection with the main model. Only the concat-projection and one decoder block are new.
 - Loss is `L_main + λ · L_mtp`. Start at `λ = 0.3` (DeepSeek's value) and check at least one other value, since the whole milestone is about whether the auxiliary signal helps or distracts.
 - **Report the main-task loss separately.** The blended number is not comparable to any previous milestone; only `L_main` is. Getting this wrong would silently break the entire ladder's comparability.
-- Targets shift by two, so the batch sampler needs `tokens[positions + 2]`. The last two positions have no `t+2` target and must be masked out of the auxiliary loss.
+- **Sample `MTP_DEPTH` extra tokens rather than masking the tail.** The obvious approach is to shift targets and mask the final positions, which have no target left. Widening the sampled window instead gives every position a real target at every depth and removes the mask entirely. Depth `d` then predicts `t+d+1` while reading the embedding of `t+d`, which is DeepSeek's conditioning exactly.
 - Do not use the MTP head at eval. Evaluation runs the main path only.
 
 ### Milestone 515: Gated Linear Attention With A Delta Rule
