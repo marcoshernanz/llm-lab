@@ -372,7 +372,7 @@ class MultiTokenPredictor(nn.Module):
         self.hidden_norm = RMSNorm(D_MODEL)
         self.embed_norm = RMSNorm(D_MODEL)
         self.merge_proj = nn.Linear(2 * D_MODEL, D_MODEL, bias=False)
-        self.block = DecoderBlock(is_global=True, is_dense=True)
+        self.block = DecoderBlock(is_global=True, is_dense=False)
 
     def forward(self, hidden: torch.Tensor, embeddings: torch.Tensor) -> torch.Tensor:
         """Merge the previous depth's state with the next token and return the new state.
@@ -465,8 +465,8 @@ def loss_fn(
 
 
 def mixtures(model: LanguageModel) -> list[MixtureOfExperts]:
-    """Return every mixture layer in the model."""
-    return [m for m in model.modules() if isinstance(m, MixtureOfExperts)]
+    """Return the backbone mixture layers, leaving the prediction heads out of the statistics."""
+    return [m for m in model.decoder.modules() if isinstance(m, MixtureOfExperts)]
 
 
 def expert_load_share(model: LanguageModel) -> torch.Tensor:  # [E]
