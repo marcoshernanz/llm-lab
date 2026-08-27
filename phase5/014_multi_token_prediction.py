@@ -363,6 +363,8 @@ class MultiTokenPredictor(nn.Module):
     def __init__(self):
         self.hidden_norm = RMSNorm(D_MODEL)
         self.embed_norm = RMSNorm(D_MODEL)
+        self.proj = nn.Linear(2 * D_MODEL, D_MODEL)
+        self.block = DecoderBlock(True, True)
 
 
 class LanguageModel(nn.Module):
