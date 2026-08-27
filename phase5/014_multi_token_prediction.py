@@ -384,6 +384,7 @@ class LanguageModel(nn.Module):
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.decoder = Decoder()
+        self.mtp = nn.ModuleList([MultiTokenPredictor() for _ in range(MTP_DEPTH)])
         self.apply(init_weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T]
