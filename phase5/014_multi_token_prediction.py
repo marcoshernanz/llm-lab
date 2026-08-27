@@ -361,8 +361,8 @@ def init_weights(module: nn.Module) -> None:
 
 class MultiTokenPredictor(nn.Module):
     def __init__(self):
-        hidden_norm = RMSNorm(D_MODEL)
-        embed_norm = RMSNorm(D_MODEL)
+        self.hidden_norm = RMSNorm(D_MODEL)
+        self.embed_norm = RMSNorm(D_MODEL)
 
 
 class LanguageModel(nn.Module):
