@@ -35,8 +35,8 @@ For the run history, see [learning_log.md](learning_log.md).
 | 511 | Real sparsity and loss-free balancing | Make routing actually sparse, then balance it with a selection-only bias | done |
 | 512 | Bounded feed-forward activations | Cap both GLU branches so outliers cannot form | done |
 | 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | done |
-| 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | next |
-| 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | planned |
+| 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | done |
+| 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | next |
 | 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | planned |
 | 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | planned |
 | 518 | Modern reference model | One integrated model plus the full ablation table | planned |
@@ -63,6 +63,7 @@ For the run history, see [learning_log.md](learning_log.md).
 | 511 real sparsity, quantile balancing | `0.7988` | `-0.0014` | `14504768` | `2008.9` |
 | 512 bounded activations | `0.7973` | `-0.0015` | `14504768` | `2493.3` |
 | 513 attention sinks | `0.7984` | `+0.0011` | `14504832` | `2758.2` |
+| 514 multi-token prediction | `0.7885` | `-0.0099` | `18709584` | `3488.4` |
 
 - **Two mechanisms account for almost everything.** Pre-norm is worth `-0.7980` and RoPE `-1.2291`,
   together `-2.03` of the total `-2.26`. Everything after them moves the loss by under `0.19`.
@@ -879,6 +880,16 @@ All three frontier models ship this, and **all three use depth `1`**. Deeper MTP
 - **Report the main-task loss separately.** The blended number is not comparable to any previous milestone; only `L_main` is. Getting this wrong would silently break the entire ladder's comparability.
 - **Sample `MTP_DEPTH` extra tokens rather than masking the tail.** The obvious approach is to shift targets and mask the final positions, which have no target left. Widening the sampled window instead gives every position a real target at every depth and removes the mask entirely. Depth `d` then predicts `t+d+1` while reading the embedding of `t+d`, which is DeepSeek's conditioning exactly.
 - Do not use the MTP head at eval. Evaluation runs the main path only.
+
+Status: complete via [`phase5/014_multi_token_prediction.py`](../../phase5/014_multi_token_prediction.py), recorded as `P5-014`.
+
+Main lesson:
+- **Best result of the ladder, `0.7885`, and the largest gain since `M-507`.** The `-0.0099` endpoint sits inside single-seed resolution on its own, but the run is lower at `12` of `13` checkpoints and the gap is widest early, `-0.0544` at step `250`.
+- **Inference parameters are unchanged at `14504832`**, byte-identical to `M-013`, because the predictors are discardable and the embedding and head are shared. Training parameters rose `29%`. That is precisely the trade the mechanism promises.
+- **The confound is training capacity**, not inference capacity. The clean control — two extra backbone blocks with no MTP objective — has not been run.
+- **Every depth learns**, all falling from about `4.6` to about `0.78`, so the auxiliary task is real rather than dead weight. That question had to be settled before any weight sweep would mean anything.
+- **Depth `2` beats depth `1` at every checkpoint**, which looks wrong until you account for teacher forcing: depth `k` is conditioned on the true intervening tokens, so it predicts the next token from `k` *extra* tokens of context through `k` extra blocks. Deeper is not harder. That reframes MTP as "predict the same thing from a richer conditioning set" rather than "predict further ahead", and it explains why the frontier stops at depth `1` — the returns come from the lookahead signal existing, not from its length.
+- Cost is `1.26x` wall-clock.
 
 ### Milestone 515: Gated Linear Attention With A Delta Rule
 Track: Attention
