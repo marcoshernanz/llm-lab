@@ -22,6 +22,7 @@ Every run below is one seed (`1337`) on a Kaggle `Tesla T4`, `3000` steps, batch
 | P5-011 | [`phase5/011_load_balancing.py`](../../phase5/011_load_balancing.py) | `0.7988` | `-0.0014` | `14504768` | `2008.9` |
 | P5-012 | [`phase5/012_bounded_activations.py`](../../phase5/012_bounded_activations.py) | `0.7973` | `-0.0015` | `14504768` | `2493.3` |
 | P5-013 | [`phase5/013_attention_sinks.py`](../../phase5/013_attention_sinks.py) | `0.7984` | `+0.0011` | `14504832` | `2758.2` |
+| P5-014 | [`phase5/014_multi_token_prediction.py`](../../phase5/014_multi_token_prediction.py) | `0.7885` | `-0.0099` | `18709584` | `3488.4` |
 
 ## Reading The Ladder
 
@@ -751,4 +752,100 @@ One caveat on the diagnostic's own output: the field printed as `sink_mass` is `
 is the weight a single competing key at logit `0` would retain. It is a monotone index of the logit,
 not the true attention mass, which depends on the whole row. The raw `min`, `mean`, and `max` logits
 above are the numbers to read.
+
+## P5-014 Milestone 514 Multi-Token Prediction
+
+- Script: [`phase5/014_multi_token_prediction.py`](../../phase5/014_multi_token_prediction.py)
+- Total parameters: `18709584`
+- Inference parameters: `14504832`, identical to `M-013`
+- Final train loss: `0.7609`
+- Final validation loss: `0.7885`
+- Wall-clock time: `3488.4s` on a Kaggle `T4`
+- Depth: `2`, weight `0.3`
+
+What changed from `M-013`:
+
+- two `MultiTokenPredictor` modules are chained after the decoder, each merging the previous depth's
+  hidden state with the embedding of the token it is asked to predict past,
+- each predictor normalizes both inputs separately, concatenates them, projects `2D` back to `D`,
+  and runs one decoder block that mirrors a backbone block,
+- the embedding table and the output projection are shared with the main model, so the only new
+  weights are one projection and one block per depth,
+- sampling reads a window of `CONTEXT_LEN + MTP_DEPTH` tokens and produces one target row per depth,
+- the loss is `main + 0.3 * mean(depth losses)`, with the main loss returned separately,
+- the extra heads are skipped at eval, so every reported number is the main next-token loss.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=3.7402 val_loss=3.7346 seconds=17.9 expert_min=0.002 expert_max=0.044 expert_unused=0 bias_span=0.307
+step=250 train_loss=1.2986 val_loss=1.3006 seconds=314.5 expert_min=0.013 expert_max=0.018 expert_unused=0 bias_span=0.962
+step=500 train_loss=1.0742 val_loss=1.0630 seconds=602.9 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.916
+step=750 train_loss=0.9728 val_loss=0.9747 seconds=887.1 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.925
+step=1000 train_loss=0.9160 val_loss=0.9259 seconds=1182.9 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.863
+step=1250 train_loss=0.8715 val_loss=0.8915 seconds=1478.7 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.868
+step=1500 train_loss=0.8566 val_loss=0.8638 seconds=1764.4 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.823
+step=1750 train_loss=0.8318 val_loss=0.8466 seconds=2056.2 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.906
+step=2000 train_loss=0.8145 val_loss=0.8261 seconds=2346.9 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.802
+step=2250 train_loss=0.8032 val_loss=0.8043 seconds=2643.6 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.806
+step=2500 train_loss=0.7925 val_loss=0.8098 seconds=2926.4 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.686
+step=2750 train_loss=0.7719 val_loss=0.7904 seconds=3206.4 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.817
+step=3000 train_loss=0.7609 val_loss=0.7885 seconds=3488.4 expert_min=0.015 expert_max=0.018 expert_unused=0 bias_span=0.740
+```
+
+Main lesson:
+
+- **The best result of the ladder so far, `0.7885`, and the largest gain since `M-507`.** The final
+  delta is `-0.0099`, which taken alone sits inside single-seed resolution. What makes it more than
+  a coin flip is that `M-014` is lower at **`12` of `13` checkpoints**, and the gap is widest early:
+  `-0.0544` at step `250`, `-0.0326` at `750`, narrowing to `-0.0099` at the end.
+- **The trade is exactly the one the mechanism promises.** Training parameters rose `29%` to
+  `18709584`, but **inference parameters are `14504832`, byte-identical to `M-013`.** The predictors
+  are discardable and the embedding and output head are shared, so nothing about the deployed model
+  changed. A `29%` training cost bought a better model at zero inference cost.
+- **The confound is training capacity, not inference capacity.** Two extra mixture blocks is real
+  extra compute during training, and this run does not separate "the auxiliary objective helped"
+  from "four million more parameters helped." The clean control is two extra *backbone* blocks with
+  no MTP objective, and it has not been run.
+- Cost is `1.26x` wall-clock, `3488.4s` against `2758.2s`.
+
+### Every Depth Learns, And Deeper Is Not Harder
+
+The instrumented rerun reports each depth's own cross-entropy:
+
+| Step | depth 0 (`t+1`) | depth 1 (`t+2`) | depth 2 (`t+3`) |
+| ---: | ---: | ---: | ---: |
+| 1 | `4.5494` | `4.6122` | `4.6011` |
+| 250 | `1.3202` | `1.3582` | `1.2479` |
+| 1000 | `0.9486` | `0.9884` | `0.9601` |
+| 2000 | `0.8317` | `0.8692` | `0.8519` |
+| 3000 | `0.7608` | `0.7981` | `0.7806` |
+
+All three fall from about `4.6` to about `0.78`, so **the auxiliary task is genuinely learned** and
+not dead weight carried for the gradient's sake. That was the question worth answering before any
+weight sweep: if the extra heads never learned, the value of `MTP_WEIGHT` would be irrelevant.
+
+The surprise is that **depth `2` beats depth `1` at every checkpoint** despite predicting one token
+further ahead. That looks wrong until you look at what teacher forcing actually gives each head.
+Depth `k` is conditioned on the *true* tokens `t_(i+1)` through `t_(i+k)`, so it is not being asked
+to guess `k` tokens blind. It is being asked to predict the next token given `k` **extra** tokens of
+context, through `k` extra transformer blocks. Depth `2` therefore has both more context and more
+compute than depth `1`, and the two effects outweigh the longer horizon.
+
+That reframes the mechanism. Multi-token prediction under teacher forcing is not "predict further
+ahead"; it is "predict the same kind of thing from a richer conditioning set, and push the gradient
+for that back into the shared trunk." The trunk has to produce a representation that supports all
+of it, which is where the benefit to the main path comes from.
+
+It also explains why the frontier stops at depth `1`. If each depth is roughly as learnable as the
+last, the extra blocks are close to pure cost, and the returns come from the *existence* of a
+lookahead signal rather than from its length.
+
+### Why Depth 2 Rather Than The Frontier's Depth 1
+
+All three frontier models ship depth `1`, and this run uses `2`. That is deliberate: at depth `1`
+the loop body executes once and never chains, so the recurrence that distinguishes DeepSeek's
+sequential MTP from Meta's parallel heads is never exercised, and a bug in threading the hidden
+state from one depth to the next would be invisible. Depth `2` is the smallest configuration that
+actually runs the mechanism. Dropping to `1` is a one-constant change.
 
