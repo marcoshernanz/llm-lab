@@ -36,8 +36,6 @@ SEED = 1337
 CONTEXT_LEN = 256
 D_MODEL = 256
 NUM_HEADS = 8
-NUM_KV_HEADS = 4
-assert NUM_HEADS % NUM_KV_HEADS == 0
 assert D_MODEL % NUM_HEADS == 0
 D_HEAD = D_MODEL // NUM_HEADS
 D_ROPE = D_HEAD // 2
@@ -98,11 +96,6 @@ def combine_heads(x: torch.Tensor) -> torch.Tensor:  # [B, Hq, T, Dh]
     batch_size, _, seq_len, _ = x.size()
     x = x.transpose(1, 2)  # [B, T, Hq, Dh]
     return x.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
-
-
-def repeat_kv_heads(x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
-    """Share each key or value head across its group of query heads."""
-    return x.repeat_interleave(NUM_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
 
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
@@ -178,8 +171,8 @@ class KimiDeltaAttention(nn.Module):
         q = apply_rope(q, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
 
         k = self.k_norm(split_heads(self.k_proj(x), NUM_KV_HEADS, D_HEAD))  # [B, Hkv, T, Dh]
-        k = repeat_kv_heads(apply_rope(k, self.rope_cos, self.rope_sin))  # [B, Hq, T, Dh]
-        v = repeat_kv_heads(split_heads(self.v_proj(x), NUM_KV_HEADS, D_HEAD))  # [B, Hq, T, Dh]
+        k = apply_rope(k, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
+        v = split_heads(self.v_proj(x), NUM_KV_HEADS, D_HEAD)  # [B, Hq, T, Dh]
 
         attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.sink_logit))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
