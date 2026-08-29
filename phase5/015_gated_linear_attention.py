@@ -167,9 +167,9 @@ class KimiDeltaAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return windowed attention outputs for one batch of embeddings."""
-        q = self.q_norm(split_heads(self.q_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
-        k = self.k_norm(split_heads(self.k_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
-        v = split_heads(self.v_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
+        q = self.q_proj(x)  # [B, H, T, Dh]
+        k = self.k_proj(x)  # [B, H, T, Dh]
+        v = self.v_proj(x)  # [B, H, T, Dh]
 
         b = torch.sigmoid(self.b_proj(x))  # [B, T]
         a = torch.sigmoid(self.a_proj(x))  # [B, T, D]
