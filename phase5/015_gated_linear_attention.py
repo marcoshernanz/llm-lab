@@ -35,11 +35,11 @@ SEED = 1337
 
 CONTEXT_LEN = 256
 D_MODEL = 256
-NUM_Q_HEADS = 8
+NUM_HEADS = 8
 NUM_KV_HEADS = 4
-assert NUM_Q_HEADS % NUM_KV_HEADS == 0
-assert D_MODEL % NUM_Q_HEADS == 0
-D_HEAD = D_MODEL // NUM_Q_HEADS
+assert NUM_HEADS % NUM_KV_HEADS == 0
+assert D_MODEL % NUM_HEADS == 0
+D_HEAD = D_MODEL // NUM_HEADS
 D_ROPE = D_HEAD // 2
 D_LATENT = 64
 D_FFN = 8 * D_MODEL // 3
@@ -102,7 +102,7 @@ def combine_heads(x: torch.Tensor) -> torch.Tensor:  # [B, Hq, T, Dh]
 
 def repeat_kv_heads(x: torch.Tensor) -> torch.Tensor:  # [B, Hkv, T, Dh]
     """Share each key or value head across its group of query heads."""
-    return x.repeat_interleave(NUM_Q_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
+    return x.repeat_interleave(NUM_HEADS // NUM_KV_HEADS, dim=1)  # [B, Hq, T, Dh]
 
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:  # [B, H, T, Dh]
@@ -162,7 +162,7 @@ class KimiDeltaAttention(nn.Module):
 
         self.q_norm = RMSNorm(D_HEAD)
         self.k_norm = RMSNorm(D_HEAD)
-        self.sink_logit = nn.Parameter(torch.zeros(NUM_Q_HEADS))
+        self.sink_logit = nn.Parameter(torch.zeros(NUM_HEADS))
 
         ones = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool)  # [T, T]
         mask = ones.triu(diagonal=1) | ones.tril(diagonal=-WINDOW_SIZE)  # [T, T]
@@ -174,7 +174,7 @@ class KimiDeltaAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return windowed attention outputs for one batch of embeddings."""
-        q = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS, D_HEAD))  # [B, Hq, T, Dh]
+        q = self.q_norm(split_heads(self.q_proj(x), NUM_HEADS, D_HEAD))  # [B, Hq, T, Dh]
         q = apply_rope(q, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dh]
 
         k = self.k_norm(split_heads(self.k_proj(x), NUM_KV_HEADS, D_HEAD))  # [B, Hkv, T, Dh]
@@ -197,7 +197,7 @@ class GlobalSelfAttention(nn.Module):
         self.k_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
         self.v_up_proj = nn.Linear(D_LATENT, D_MODEL, bias=False)
 
-        self.q_rope_proj = nn.Linear(D_MODEL, D_ROPE * NUM_Q_HEADS, bias=False)
+        self.q_rope_proj = nn.Linear(D_MODEL, D_ROPE * NUM_HEADS, bias=False)
         self.k_rope_proj = nn.Linear(D_MODEL, D_ROPE, bias=False)
 
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
@@ -205,7 +205,7 @@ class GlobalSelfAttention(nn.Module):
 
         self.q_norm = RMSNorm(D_HEAD)
         self.kv_norm = RMSNorm(D_LATENT)
-        self.sink_logit = nn.Parameter(torch.zeros(NUM_Q_HEADS))
+        self.sink_logit = nn.Parameter(torch.zeros(NUM_HEADS))
 
         mask = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool).triu(diagonal=1)  # [T, T]
         self.causal_mask = nn.Buffer(mask)
@@ -222,18 +222,18 @@ class GlobalSelfAttention(nn.Module):
         The norm sits on the latent for the same reason, since normalizing the
         reconstructed key would put a per-key rescale in front of that projection.
         """
-        q_c = self.q_norm(split_heads(self.q_proj(x), NUM_Q_HEADS, D_HEAD))  # [B, Hq, T, Dh]
-        q_r = split_heads(self.q_rope_proj(x), NUM_Q_HEADS, D_ROPE)  # [B, Hq, T, Dr]
+        q_c = self.q_norm(split_heads(self.q_proj(x), NUM_HEADS, D_HEAD))  # [B, Hq, T, Dh]
+        q_r = split_heads(self.q_rope_proj(x), NUM_HEADS, D_ROPE)  # [B, Hq, T, Dr]
         q_r = apply_rope(q_r, self.rope_cos, self.rope_sin)  # [B, Hq, T, Dr]
         q = torch.cat([q_c, q_r], dim=-1)  # [B, Hq, T, Dh+Dr]
 
         kv_latent = self.kv_norm(self.kv_down_proj(x))  # [B, T, Dc]
-        k_c = split_heads(self.k_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
+        k_c = split_heads(self.k_up_proj(kv_latent), NUM_HEADS, D_HEAD)  # [B, Hq, T, Dh]
         k_r = split_heads(self.k_rope_proj(x), 1, D_ROPE)  # [B, 1, T, Dr] one shared head
         k_r = apply_rope(k_r, self.rope_cos, self.rope_sin)  # [B, 1, T, Dr]
-        k_r = k_r.expand(-1, NUM_Q_HEADS, -1, -1)  # [B, Hq, T, Dr]
+        k_r = k_r.expand(-1, NUM_HEADS, -1, -1)  # [B, Hq, T, Dr]
         k = torch.cat([k_c, k_r], dim=-1)  # [B, Hq, T, Dh+Dr]
-        v = split_heads(self.v_up_proj(kv_latent), NUM_Q_HEADS, D_HEAD)  # [B, Hq, T, Dh]
+        v = split_heads(self.v_up_proj(kv_latent), NUM_HEADS, D_HEAD)  # [B, Hq, T, Dh]
 
         attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.sink_logit))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
