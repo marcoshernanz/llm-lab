@@ -144,7 +144,7 @@ def attend(
     return attn_weights @ v  # [B, Hq, T, Dh]
 
 
-class LocalSelfAttention(nn.Module):
+class KimiDeltaAttention(nn.Module):
     """Attend over the last WINDOW_SIZE tokens with rotary positions and shared key heads."""
 
     def __init__(self):
@@ -321,7 +321,7 @@ class DecoderBlock(nn.Module):
     def __init__(self, is_global: bool, is_dense: bool):
         """Create the attention, feed-forward, and normalization sublayers."""
         super().__init__()
-        self.attn = GlobalSelfAttention() if is_global else LocalSelfAttention()
+        self.attn = GlobalSelfAttention() if is_global else KimiDeltaAttention()
         self.attn_norm = RMSNorm(D_MODEL)
         self.ffn = FeedForward(D_FFN) if is_dense else MixtureOfExperts()
         self.ffn_norm = RMSNorm(D_MODEL)
