@@ -47,7 +47,6 @@ NUM_BLOCKS = 8
 INIT_STD = 0.02
 ROPE_BASE = 10000.0
 NORM_EPS = 1e-5
-WINDOW_SIZE = 64
 GLOBAL_EVERY = 4
 assert NUM_BLOCKS % GLOBAL_EVERY == 0
 
@@ -138,52 +137,59 @@ def attend(
 
 
 class KimiDeltaAttention(nn.Module):
-    """Attend over the last WINDOW_SIZE tokens with rotary positions and shared key heads."""
+    """Mix the sequence with a gated delta-rule recurrence instead of softmax attention."""
 
     def __init__(self):
-        """Create the projections, the norms, the window mask, and the rotation tables."""
+        """Create the projections that feed the recurrence, and the output gate."""
         super().__init__()
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.k_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.v_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
-
-        self.b_proj = nn.Linear(D_MODEL, NUM_HEADS, bias=False)
-        self.a_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.beta_proj = nn.Linear(D_MODEL, NUM_HEADS, bias=False)
+        self.decay_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
         self.q_norm = RMSNorm(D_HEAD)
         self.k_norm = RMSNorm(D_HEAD)
-        self.sink_logit = nn.Parameter(torch.zeros(NUM_HEADS))
-
-        ones = torch.ones(CONTEXT_LEN, CONTEXT_LEN, dtype=torch.bool)  # [T, T]
-        mask = ones.triu(diagonal=1) | ones.tril(diagonal=-WINDOW_SIZE)  # [T, T]
-        self.causal_mask = nn.Buffer(mask)
-
-        cos, sin = rope_tables(D_HEAD)
-        self.rope_cos = nn.Buffer(cos)
-        self.rope_sin = nn.Buffer(sin)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Return windowed attention outputs for one batch of embeddings."""
+        """Return the recurrent mixer output for one batch of embeddings.
+
+        The state is an associative memory from keys to values. Each token decays it per
+        channel, reads whatever is already stored at its key, writes the difference towards
+        its own value, and then reads the updated state back with its query.
+        """
+        batch_size, seq_len, _ = x.size()
+
         q = split_heads(self.q_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
         k = split_heads(self.k_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
         v = split_heads(self.v_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
-        b = torch.sigmoid(self.b_proj(x))  # [B, T, H]
-        a = split_heads(torch.sigmoid(self.a_proj(x)), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
+        beta = torch.sigmoid(self.beta_proj(x)).mT  # [B, H, T]
+        decay = split_heads(torch.sigmoid(self.decay_proj(x)), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
-        S = torch.zeros(BATCH_SIZE, NUM_HEADS, D_HEAD, D_HEAD)  # [B, H, Dh, Dh]
-        out = torch.zeros(BATCH_SIZE, NUM_HEADS, CONTEXT_LEN, D_HEAD)
+        state = torch.zeros(
+            batch_size, NUM_HEADS, D_HEAD, D_HEAD, device=x.device
+        )  # [B, H, Dh, Dh]
+        outputs = []
+        for step in range(seq_len):
+            q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
+            k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
+            v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
+            beta_t = beta[:, :, step, None, None]  # [B, H, 1, 1]
+            decay_t = decay[:, :, step, :, None]  # [B, H, Dh, 1]
 
-        for i in range(CONTEXT_LEN):
-            S = (torch.eye(D_HEAD) - b[:, i] * (k[:, :, i, :, None] @ k[:, :, i, None, :])) @ a[
-                :, :, i, :, None
-            ] * S + b[:, i] * (k[:, :, i] @ v[:, :, i].mT)
-            out[:, i] = S.mT @ q[:, :, i]
+            state = decay_t * state  # [B, H, Dh, Dh]
+            stored = state.mT @ k_t  # [B, H, Dh, 1]
+            written = beta_t * (v_t - stored)  # [B, H, Dh, 1]
+            state = state + k_t @ written.mT  # [B, H, Dh, Dh]
+            outputs.append(state.mT @ q_t)  # [B, H, Dh, 1]
 
-        attn_output = combine_heads(out)  # [B, T, D]
+        recurrent_output = torch.cat(outputs, dim=-1).mT  # [B, H, T, Dh]
+        attn_output = combine_heads(recurrent_output)  # [B, T, D]
+
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
