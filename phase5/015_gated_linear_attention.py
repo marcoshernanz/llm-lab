@@ -67,6 +67,11 @@ EVAL_INTERVAL = 250
 EVAL_BATCHES = 32
 
 
+class L2Norm(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+
 class RMSNorm(nn.Module):
     """Scale each embedding vector by its root mean square and a learned gain."""
 
