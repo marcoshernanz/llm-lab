@@ -12,6 +12,7 @@
     "bincount",
     "dlogits",
     "gelu",
+    "Kimi",
     "logit",
     "logits",
     "maxval",
