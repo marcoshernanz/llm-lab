@@ -151,9 +151,6 @@ class KimiDeltaAttention(nn.Module):
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
-        self.q_norm = L2Norm()
-        self.k_norm = L2Norm()
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Return the recurrent mixer output for one batch of embeddings.
 
