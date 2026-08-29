@@ -171,6 +171,9 @@ class KimiDeltaAttention(nn.Module):
         k = self.k_norm(split_heads(self.k_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
         v = split_heads(self.v_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
+        b = torch.sigmoid(self.b_proj(x))  # [B, T]
+        a = torch.sigmoid(self.a_proj(x))  # [B, T, D]
+
         attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.sink_logit))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * attn_output)  # [B, T, D]
