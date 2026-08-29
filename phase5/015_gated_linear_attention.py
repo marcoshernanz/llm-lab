@@ -174,7 +174,9 @@ class KimiDeltaAttention(nn.Module):
         b = torch.sigmoid(self.b_proj(x))  # [B, T]
         a = torch.sigmoid(self.a_proj(x))  # [B, T, D]
 
-        S = torch.zeros(BATCH_SIZE, NUM_HEADS, D_HEAD, D_HEAD)
+        S = torch.zeros(BATCH_SIZE, NUM_HEADS, D_HEAD, D_HEAD)  # [B, H, Dh, Dh]
+        for i in range(CONTEXT_LEN):
+            pass
 
         attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.sink_logit))  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
