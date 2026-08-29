@@ -175,6 +175,7 @@ class KimiDeltaAttention(nn.Module):
         a = torch.sigmoid(self.a_proj(x))  # [B, T, D]
 
         S = torch.zeros(BATCH_SIZE, NUM_HEADS, D_HEAD, D_HEAD)  # [B, H, Dh, Dh]
+        out = torch.zeros(BATCH_SIZE, CONTEXT_LEN, NUM_HEADS, D_HEAD)
         for i in range(CONTEXT_LEN):
             S = (torch.eye(D_HEAD) - b[:, i] * (k[:, :, i, :, None] @ k[:, :, i, None, :])) @ a[
                 :, i, :, None
