@@ -83,6 +83,11 @@ class RMSNorm(nn.Module):
         return normalized * self.weight  # [..., dim]
 
 
+def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
+    """Scale each vector to unit length, so k k^T erases exactly what it should."""
+    return x / torch.linalg.norm(x)  # [..., dim]
+
+
 def split_heads(x: torch.Tensor, num_heads: int, head_dim: int) -> torch.Tensor:  # [B, T, H*Dh]
     """Split the projection into separate attention heads."""
     batch_size, seq_len, _ = x.size()
@@ -160,8 +165,8 @@ class KimiDeltaAttention(nn.Module):
         """
         batch_size, seq_len, _ = x.size()
 
-        q = torch.linalg.norm(split_heads(self.q_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
-        k = torch.linalg.norm((split_heads(self.k_proj(x), NUM_HEADS, D_HEAD)))  # [B, H, T, Dh]
+        q = l2_norm(split_heads(self.q_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
+        k = l2_norm(split_heads(self.k_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
         v = split_heads(self.v_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
         beta = torch.sigmoid(self.beta_proj(x)).mT  # [B, H, T]
