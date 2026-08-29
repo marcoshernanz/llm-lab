@@ -67,11 +67,6 @@ EVAL_INTERVAL = 250
 EVAL_BATCHES = 32
 
 
-def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
-    """Scale each vector to unit length, so k k^T erases exactly what it should."""
-    return x * torch.rsqrt(x.pow(2).sum(dim=-1, keepdim=True) + NORM_EPS)  # [..., dim]
-
-
 class RMSNorm(nn.Module):
     """Scale each embedding vector by its root mean square and a learned gain."""
 
