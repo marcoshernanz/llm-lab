@@ -176,8 +176,8 @@ class KimiDeltaAttention(nn.Module):
 
         S = torch.zeros(BATCH_SIZE, NUM_HEADS, CONTEXT_LEN, D_HEAD, D_HEAD)  # [B, H, T, Dh, Dh]
         for i in range(CONTEXT_LEN):
-            S[:, i + 1] = (torch.eye(D_HEAD) - b[:, i] * (k[:, :, i] @ k[:, :, i].mT)) @ a[
-                :, i
+            S[:, i + 1] = (torch.eye(D_HEAD) - b[:, i] * (k[:, :, i].mT @ k[:, :, i])) @ a[
+                :, i, :, None
             ].diag() @ S[:, i] + b[:, i] * (k[:, :, i] @ v[:, :, i].mT)
 
         attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.sink_logit))  # [B, T, D]
