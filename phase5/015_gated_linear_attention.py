@@ -174,7 +174,7 @@ class KimiDeltaAttention(nn.Module):
         b = torch.sigmoid(self.b_proj(x))  # [B, T]
         a = torch.sigmoid(self.a_proj(x))  # [B, T, D]
 
-        S = torch.zeros(BATCH_SIZE, NUM_HEADS, D_HEAD, D_HEAD)  # [B, H, Dh, Dh]
+        S = torch.zeros(BATCH_SIZE, CONTEXT_LEN, NUM_HEADS, D_HEAD, D_HEAD)  # [B, T, H, Dh, Dh]
         for i in range(CONTEXT_LEN):
             pass
 
