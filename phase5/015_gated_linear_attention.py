@@ -70,6 +70,12 @@ EVAL_BATCHES = 32
 class L2Norm(nn.Module):
     def __init__(self):
         super().__init__()
+        self.eps = NORM_EPS
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [..., dim]
+        """Return the normalized and scaled input."""
+        sum_square = x.pow(2).sum(dim=-1, keepdim=True)  # [..., 1]
+        return x * torch.rsqrt(sum_square + self.eps)  # [..., dim]
 
 
 class RMSNorm(nn.Module):
