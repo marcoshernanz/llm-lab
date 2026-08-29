@@ -163,8 +163,8 @@ class KimiDeltaAttention(nn.Module):
         """
         batch_size, seq_len, _ = x.size()
 
-        q = split_heads(self.q_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
-        k = split_heads(self.k_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
+        q = self.q_norm(split_heads(self.q_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
+        k = self.k_norm(split_heads(self.k_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
         v = split_heads(self.v_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
         beta = torch.sigmoid(self.beta_proj(x)).mT  # [B, H, T]
