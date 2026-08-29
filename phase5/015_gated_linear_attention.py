@@ -183,7 +183,7 @@ class KimiDeltaAttention(nn.Module):
             ] * S + b[:, i] * (k[:, :, i] @ v[:, :, i].mT)
             out[:, i] = S.mT @ q[:, :, i]
 
-        attn_output = combine_heads(attend(q, k, v, self.causal_mask, self.sink_logit))  # [B, T, D]
+        attn_output = combine_heads(out)  # [B, T, D]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * attn_output)  # [B, T, D]
 
