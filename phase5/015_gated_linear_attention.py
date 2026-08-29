@@ -179,7 +179,7 @@ class KimiDeltaAttention(nn.Module):
 
         for i in range(CONTEXT_LEN):
             S = (torch.eye(D_HEAD) - b[:, i] * (k[:, :, i, :, None] @ k[:, :, i, None, :])) @ a[
-                :, i, :, None
+                :, :, i, :, None
             ] * S + b[:, i] * (k[:, :, i] @ v[:, :, i].mT)
             out[:, i] = S.mT @ q[:, :, i]
 
