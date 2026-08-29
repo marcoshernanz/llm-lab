@@ -85,7 +85,7 @@ class RMSNorm(nn.Module):
 
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
     """Scale each vector to unit length, so k k^T erases exactly what it should."""
-    return x / torch.linalg.norm(x)  # [..., dim]
+    return x / torch.linalg.norm(x, dim=-1, keepdim=True)  # [..., dim]
 
 
 def split_heads(x: torch.Tensor, num_heads: int, head_dim: int) -> torch.Tensor:  # [B, T, H*Dh]
