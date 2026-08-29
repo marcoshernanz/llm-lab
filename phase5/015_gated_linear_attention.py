@@ -153,6 +153,7 @@ class KimiDeltaAttention(nn.Module):
         self.q_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.k_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
         self.v_proj = nn.Linear(D_MODEL, NUM_KV_HEADS * D_HEAD, bias=False)
+        self.b_proj = nn.Linear(D_MODEL, 1, bias=False)
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
