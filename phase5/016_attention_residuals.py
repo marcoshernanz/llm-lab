@@ -419,6 +419,10 @@ class MixtureOfExperts(nn.Module):
         return out.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
 
+def block_attn_res():
+    pass
+
+
 class DecoderBlock(nn.Module):
     """Apply one pre-norm attention sublayer and one pre-norm MLP sublayer."""
 
