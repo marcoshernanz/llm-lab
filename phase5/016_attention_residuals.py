@@ -427,11 +427,14 @@ def block_attn_res(
     weight: torch.Tensor,  # [D]
     norm: RMSNorm,
 ):
-    q = weight
-    k = torch.stack(blocks + ([partial_block] if partial_block is not None else []))
-    v = k
+    q = weight  # [D]
+    k = torch.stack(
+        blocks + ([partial_block] if partial_block is not None else []), dim=-2
+    )  # [B, T, B, D]
+    v = k  # [B, T, B, D]
 
-    h = ((q.mT @ norm(k)).softmax(dim=-1) * v).sum(dim=-1)
+    h = (q.mT @ norm(k)).softmax(dim=-1)[..., None] * v  # [B, T, B, D]
+    h = h.sum(dim=-1)
 
     return h
 
