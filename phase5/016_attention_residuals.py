@@ -433,8 +433,8 @@ def block_attn_res(
     )  # [B, T, B, D]
     v = k  # [B, T, B, D]
 
-    h = (q.mT @ norm(k)).softmax(dim=-1)[..., None] * v  # [B, T, B, D]
-    h = h.sum(dim=-1)
+    h = (q.mT @ norm(k)).softmax(dim=-1)[..., None]  # [B, T, B]
+    h = h @ v  # [B, T, D]
 
     return h
 
