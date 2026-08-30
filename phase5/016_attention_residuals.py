@@ -451,7 +451,11 @@ class DecoderBlock(nn.Module):
         self.ffm_res_proj = nn.Linear(D_MODEL, NUM_RES_BLOCKS)
         self.ffm_res_norm = RMSNorm(D_MODEL)
 
-    def forward(self, blocks: list[torch.Tensor], hidden_state: torch.Tensor | None):
+    def forward(
+        self,
+        blocks: list[torch.Tensor],  # list[B, T, D]
+        hidden_state: torch.Tensor | None,  # [B, T, D]
+    ):
         """Return the residual output of one decoder block."""
         partial_block = hidden_state  # [B, T, Dh]
 
