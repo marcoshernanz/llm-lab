@@ -218,6 +218,7 @@ def delta_rule_chunked(
         Q = q[:, :, chunk]
         K = k[:, :, chunk]
         V = v[:, :, chunk]
+        Beta = beta[:, :, chunk]
 
         cumulative_decay = decay[:, :, chunk].cumprod(dim=2)
 
@@ -226,6 +227,8 @@ def delta_rule_chunked(
         Q1 = cumulative_decay * Q
 
         M = torch.tril(K2 @ K2.mT, -1)
+
+        T = torch.inverse((torch.eye() + torch.diag(Beta) @ M)) @ torch.diag(Beta)
 
         q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
         k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
