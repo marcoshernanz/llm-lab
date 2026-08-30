@@ -90,10 +90,11 @@ class ShortConv(nn.Module):
     def __init__(self, dim: int, window: int):
         super().__init__()
         self.window = window
-        self.weight = nn.Parameter(torch.ones(4, dim))
+        self.weight = nn.Parameter(torch.ones(dim, window))
 
     def forward(self, x: torch.Tensor):
-        dim = x.size(-1)
+        seq_len = x.size(1)
+        padded = F.pad(x, (0, 0, self.window - 1, 0))
         positions = torch.arange(dim)
         conv = torch.arange(4)
         x.insert(3, 0)
