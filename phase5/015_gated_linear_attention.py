@@ -281,7 +281,7 @@ class KimiDeltaAttention(nn.Module):
         decay = torch.exp(G_MIN * torch.sigmoid(decay_logit))  # [B, T, D]
         decay = split_heads(decay, NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
-        attn_output = self.head_norm(delta_rule(q, k, v, beta, decay))  # [B, H, T, Dh]
+        attn_output = self.head_norm(delta_rule_chunked(q, k, v, beta, decay))  # [B, H, T, Dh]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * combine_heads(attn_output))  # [B, T, D]
 
