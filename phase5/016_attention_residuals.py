@@ -432,8 +432,14 @@ class DecoderBlock(nn.Module):
         self.ffn = FeedForward(D_FFN) if is_dense else MixtureOfExperts()
         self.ffn_norm = RMSNorm(D_MODEL)
 
+        self.attn_res_proj = nn.Linear(D_MODEL, BLOCKS)
+
     def forward(self, blocks: list[torch.Tensor], hidden_state: torch.Tensor) -> torch.Tensor:
         """Return the residual output of one decoder block."""
+        partial_block = hidden_state  # [B, T, Dh]
+
+        h = block_attn_res(blocks, partial_block)
+
         x = x + self.attn(self.attn_norm(x))  # [B, T, D]
         x = x + self.ffn(self.ffn_norm(x))  # [B, T, D]
         return x
