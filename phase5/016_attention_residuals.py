@@ -465,7 +465,7 @@ class DecoderBlock(nn.Module):
         h = block_attn_res(blocks, partial_block, self.attn_res_proj, self.attn_res_norm)
         partial_block += self.ffn(self.ffn_norm(h))  # [B, T, D]
 
-        if self.layer_number % NUM_RES_BLOCKS == 0:
+        if self.layer_number % (NUM_BLOCKS // NUM_RES_BLOCKS) == 0:
             blocks.append(partial_block)
             partial_block = None
 
