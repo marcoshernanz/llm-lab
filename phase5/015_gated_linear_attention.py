@@ -197,8 +197,12 @@ def delta_rule(
 
 
 def delta_rule_chunked(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, beta: torch.Tensor, decay: torch.Tensor
-) -> torch.Tensor:  # [B, H, T, Dh], [B, H, T, Dh], [B, H, T, Dh], [B, H, T], [B, H, T, Dh]
+    q: torch.Tensor,  # [B, H, T, Dh]
+    k: torch.Tensor,  # [B, H, T, Dh]
+    v: torch.Tensor,  # [B, H, T, Dh]
+    beta: torch.Tensor,  # [B, H, T]
+    decay: torch.Tensor,  # [B, H, T, Dh]
+) -> torch.Tensor:
     batch_size, num_heads, seq_len, head_dim = q.size()
     state = torch.zeros(
         batch_size, num_heads, head_dim, head_dim, device=q.device
@@ -206,6 +210,8 @@ def delta_rule_chunked(
     outputs = []
     for start in range(0, seq_len, CHUNK_SIZE):
         chunk = slice(start, start + CHUNK_SIZE)
+
+        cummulative_decay = decay[:]
 
         q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
         k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
