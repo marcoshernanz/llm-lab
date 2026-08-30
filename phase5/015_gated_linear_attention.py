@@ -33,6 +33,7 @@ SEED = 1337
 # N: number of tokens routed to one expert, which varies per expert
 # P: number of prediction depths, MTP_DEPTH + 1 counting the main next-token head
 
+CONV_WINDOW = 4
 G_MIN = -5.0
 DECAY_BIAS_INIT = -6.0
 
@@ -87,13 +88,22 @@ class RMSNorm(nn.Module):
 
 
 class ShortConv(nn.Module):
-    def __init__(self, dim: int, window: int):
-        super().__init__()
-        self.window = window
-        self.weight = nn.Parameter(torch.ones(dim, window))
+    """Blend each channel with its own few most recent positions.
 
-    def forward(self, x: torch.Tensor):
-        padded = F.pad(x.mT, (0, self.window - 1, 0))  # [B, D, T+W-1]
+    A projection sees one position at a time, and the recurrence only carries information
+    forward through its state, so without this a token cannot look at its predecessor at all.
+    """
+
+    def __init__(self, dim: int):
+        """Create one causal filter per channel, starting as a pass-through."""
+        super().__init__()
+        weight = torch.zeros(dim, CONV_WINDOW)  # [D, W]
+        weight[:, -1] = 1.0
+        self.weight = nn.Parameter(weight)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
+        """Return each position blended with the CONV_WINDOW - 1 positions before it."""
+        padded = F.pad(x.mT, (CONV_WINDOW - 1, 0))  # [B, D, T+W-1]
         return F.conv1d(padded, self.weight[:, None], groups=x.size(-1)).mT  # [B, T, D]
 
 
@@ -168,6 +178,10 @@ class KimiDeltaAttention(nn.Module):
         self.decay_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.decay_bias = nn.Parameter(torch.full((D_MODEL,), DECAY_BIAS_INIT))
 
+        self.q_conv = ShortConv(D_MODEL)
+        self.k_conv = ShortConv(D_MODEL)
+        self.v_conv = ShortConv(D_MODEL)
+
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
@@ -180,9 +194,12 @@ class KimiDeltaAttention(nn.Module):
         """
         batch_size, seq_len, _ = x.size()
 
-        q = l2_norm(split_heads(self.q_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
-        k = l2_norm(split_heads(self.k_proj(x), NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
-        v = split_heads(self.v_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
+        q = F.silu(self.q_conv(self.q_proj(x)))  # [B, T, D]
+        k = F.silu(self.k_conv(self.k_proj(x)))  # [B, T, D]
+        v = F.silu(self.v_conv(self.v_proj(x)))  # [B, T, D]
+        q = l2_norm(split_heads(q, NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
+        k = l2_norm(split_heads(k, NUM_HEADS, D_HEAD))  # [B, H, T, Dh]
+        v = split_heads(v, NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
         beta = torch.sigmoid(self.beta_proj(x)).mT  # [B, H, T]
         decay_logit = self.decay_proj(x) + self.decay_bias  # [B, T, D]
