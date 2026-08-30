@@ -464,6 +464,8 @@ class Decoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
         """Run the full decoder stack."""
+        attn_res_blocks = [x]
+
         for block in self.blocks:
             x = block(x)  # [B, T, D]
         return self.out_norm(x)  # [B, T, D]
