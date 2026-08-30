@@ -448,8 +448,8 @@ class DecoderBlock(nn.Module):
 
         self.attn_res_proj = nn.Linear(D_MODEL, NUM_RES_BLOCKS)
         self.attn_res_norm = RMSNorm(D_MODEL)
-        self.ffm_res_proj = nn.Linear(D_MODEL, NUM_RES_BLOCKS)
-        self.ffm_res_norm = RMSNorm(D_MODEL)
+        self.ffn_res_proj = nn.Linear(D_MODEL, NUM_RES_BLOCKS)
+        self.ffn_res_norm = RMSNorm(D_MODEL)
 
     def forward(
         self,
@@ -462,7 +462,7 @@ class DecoderBlock(nn.Module):
         h = block_attn_res(blocks, partial_block, self.attn_res_proj, self.attn_res_norm)
         partial_block += self.attn(self.attn_norm(h))  # [B, T, D]
 
-        h = block_attn_res(blocks, partial_block, self.attn_res_proj, self.attn_res_norm)
+        h = block_attn_res(blocks, partial_block, self.ffn_res_proj, self.ffn_res_norm)
         partial_block += self.ffn(self.ffn_norm(h))  # [B, T, D]
 
         if self.layer_number % (NUM_BLOCKS // NUM_RES_BLOCKS) == 0:
