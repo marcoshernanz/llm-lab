@@ -436,7 +436,7 @@ def block_attn_res(
     h = (q @ norm(k).mT).softmax(dim=-1)  # [B, T, B]
     h = (h[..., None] * v).sum(dim=-2)  # [B, T, D]
 
-    return h.reshape(BATCH_SIZE, CONTEXT_LEN, D_MODEL)
+    return h
 
 
 class DecoderBlock(nn.Module):
