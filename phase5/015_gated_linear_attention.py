@@ -155,6 +155,7 @@ class KimiDeltaAttention(nn.Module):
         self.v_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.beta_proj = nn.Linear(D_MODEL, NUM_HEADS, bias=False)
         self.decay_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
+        self.decay_bias = nn.Parameter(torch.full((D_MODEL,), DECAY_BIAS_INIT))
 
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
