@@ -89,13 +89,15 @@ class RMSNorm(nn.Module):
 class ShortConv(nn.Module):
     def __init__(self, dim: int):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(dim, 4))
+        self.weight = nn.Parameter(torch.ones(4, dim))
 
     def forward(self, x: torch.Tensor):
         dim = x.size(-1)
         positions = torch.arange(dim)
         conv = torch.arange(4)
-        positions[:, None] + conv[None, :]
+        x.insert(3, 0)
+        x = x[positions[:, None] + conv[None, :]] @ self.weight
+        return x
 
 
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
