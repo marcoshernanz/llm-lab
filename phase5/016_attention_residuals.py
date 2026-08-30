@@ -463,14 +463,14 @@ class DecoderBlock(nn.Module):
         """Return the depth history and the running sum, closing the block on a boundary."""
         h = attend_over_depth(summaries, partial, self.attn_res_query, self.attn_res_norm)
         attn_out = self.attn(self.attn_norm(h))  # [B, T, D]
-        partial = attn_out if partial is None else partial + attn_out  # [B, T, D]
+        block_sum: torch.Tensor = attn_out if partial is None else partial + attn_out  # [B, T, D]
 
-        h = attend_over_depth(summaries, partial, self.ffn_res_query, self.ffn_res_norm)
-        partial = partial + self.ffn(self.ffn_norm(h))  # [B, T, D]
+        h = attend_over_depth(summaries, block_sum, self.ffn_res_query, self.ffn_res_norm)
+        block_sum = block_sum + self.ffn(self.ffn_norm(h))  # [B, T, D]
 
         if self.closes_block:
-            return summaries + [partial], None
-        return summaries, partial
+            return summaries + [block_sum], None
+        return summaries, block_sum
 
 
 class Decoder(nn.Module):
