@@ -86,6 +86,11 @@ class RMSNorm(nn.Module):
         return normalized * self.weight  # [..., dim]
 
 
+class ShortConv(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
     """Scale each vector to unit length, so k k^T erases exactly what it should."""
     return x / torch.linalg.norm(x, dim=-1, keepdim=True)  # [..., dim]
