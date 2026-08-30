@@ -419,7 +419,9 @@ class MixtureOfExperts(nn.Module):
         return out.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
 
-def block_attn_res():
+def block_attn_res(
+    blocks: list[torch.Tensor], partial_block: torch.Tensor, proj: nn.Linear, norm: RMSNorm
+):
     pass
 
 
