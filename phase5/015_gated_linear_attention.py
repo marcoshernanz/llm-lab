@@ -38,8 +38,6 @@ CONV_WINDOW = 4
 G_MIN = -5.0
 DECAY_BIAS_INIT = -6.0
 CHUNK_SIZE = 16
-# The chunked form divides by the cumulative decay, so a chunk of fully decayed channels asks for
-# exp(-G_MIN * CHUNK_SIZE). Bounding the decay is what keeps that reciprocal representable at all.
 assert CHUNK_SIZE * -G_MIN < math.log(torch.finfo(torch.float32).max)
 
 CONTEXT_LEN = 256
