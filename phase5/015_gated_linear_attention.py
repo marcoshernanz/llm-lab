@@ -33,6 +33,9 @@ SEED = 1337
 # N: number of tokens routed to one expert, which varies per expert
 # P: number of prediction depths, MTP_DEPTH + 1 counting the main next-token head
 
+G_MIN = -5.0
+DECAY_BIAS_INIT = -6.0
+
 CONTEXT_LEN = 256
 D_MODEL = 256
 NUM_HEADS = 8
