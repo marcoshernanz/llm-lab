@@ -96,8 +96,7 @@ class ShortConv(nn.Module):
         seq_len = x.size(1)
         padded = F.pad(x, (0, 0, self.window - 1, 0))
         positions = torch.arange(seq_len)[:, None] + torch.arange(4)[None, :]  # [T, W]
-        x = x[positions] @ self.weight
-        return x
+        return padded[positions] @ self.weight
 
 
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
