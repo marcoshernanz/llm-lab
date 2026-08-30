@@ -182,7 +182,7 @@ class KimiDeltaAttention(nn.Module):
         self.k_conv = ShortConv(D_MODEL)
         self.v_conv = ShortConv(D_MODEL)
 
-        self.attn_norm = RMSNorm(D_MODEL)
+        self.attn_norm = RMSNorm(D_HEAD)
 
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
