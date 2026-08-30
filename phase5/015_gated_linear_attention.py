@@ -16,6 +16,8 @@ TEXT_COLUMN = "text"
 DEVICE = "cuda" if torch.cuda.is_available() else "mps"
 SEED = 1337
 
+CHUNK_SIZE = 16
+
 # Tensor shapes:
 # B: batch size
 # T: sequence length
@@ -202,7 +204,7 @@ def delta_rule_chunked(
         batch_size, num_heads, head_dim, head_dim, device=q.device
     )  # [B, H, Dh, Dh]
     outputs = []
-    for step in range(seq_len):
+    for start in range(0, seq_len, CHUNK_SIZE):
         q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
         k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
         v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
