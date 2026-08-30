@@ -236,18 +236,9 @@ def delta_rule_chunked(
         A = torch.tril(Q1 @ K1.mT)
 
         O = Q1 @ S + A @ V1
+        S = cumulative_decay * S + (cumulative_decay / cumulative_decay * K).mT @ V1
 
-        q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
-        k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
-        v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
-        beta_t = beta[:, :, step, None, None]  # [B, H, 1, 1]
-        decay_t = decay[:, :, step, :, None]  # [B, H, Dh, 1]
-
-        state = decay_t * state  # [B, H, Dh, Dh]
-        stored = state.mT @ k_t  # [B, H, Dh, 1]
-        written = beta_t * (v_t - stored)  # [B, H, Dh, 1]
-        state = state + k_t @ written.mT  # [B, H, Dh, Dh]
-        outputs.append(state.mT @ q_t)  # [B, H, Dh, 1]
+        outputs.append(O)  # [B, H, Dh, 1]
     return torch.cat(outputs, dim=-1).mT  # [B, H, T, Dh]
 
 
