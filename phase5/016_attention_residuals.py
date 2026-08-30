@@ -462,9 +462,10 @@ class DecoderBlock(nn.Module):
         partial_block += self.ffn(self.ffn_norm(x))  # [B, T, D]
 
         if self.layer_number % BLOCKS == 0:
-            pass
+            blocks.append(partial_block)
+            partial_block = None
 
-        return x
+        return blocks, partial_block
 
 
 class Decoder(nn.Module):
