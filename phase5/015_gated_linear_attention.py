@@ -205,6 +205,8 @@ def delta_rule_chunked(
     )  # [B, H, Dh, Dh]
     outputs = []
     for start in range(0, seq_len, CHUNK_SIZE):
+        chunk = slice(start, start + CHUNK_SIZE)
+
         q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
         k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
         v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
