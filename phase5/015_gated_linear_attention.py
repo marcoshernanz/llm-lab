@@ -235,6 +235,8 @@ def delta_rule_chunked(
 
         A = torch.tril(Q1 @ K1.mT)
 
+        O = Q1 @ S + A @ V1
+
         q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
         k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
         v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
