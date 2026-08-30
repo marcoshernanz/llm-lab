@@ -95,10 +95,8 @@ class ShortConv(nn.Module):
     def forward(self, x: torch.Tensor):
         seq_len = x.size(1)
         padded = F.pad(x, (0, 0, self.window - 1, 0))
-        positions = torch.arange(dim)
-        conv = torch.arange(4)
-        x.insert(3, 0)
-        x = x[positions[:, None] + conv[None, :]] @ self.weight
+        positions = torch.arange(seq_len)[:, None] + torch.arange(4)[None, :]  # [T, W]
+        x = x[positions] @ self.weight
         return x
 
 
