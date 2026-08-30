@@ -87,8 +87,9 @@ class RMSNorm(nn.Module):
 
 
 class ShortConv(nn.Module):
-    def __init__(self, dim: int):
+    def __init__(self, dim: int, window: int):
         super().__init__()
+        self.window = window
         self.weight = nn.Parameter(torch.ones(4, dim))
 
     def forward(self, x: torch.Tensor):
