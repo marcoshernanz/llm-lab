@@ -16,7 +16,6 @@ TEXT_COLUMN = "text"
 DEVICE = "cuda" if torch.cuda.is_available() else "mps"
 SEED = 1337
 
-CHUNK_SIZE = 16
 
 # Tensor shapes:
 # B: batch size
@@ -38,6 +37,10 @@ CHUNK_SIZE = 16
 CONV_WINDOW = 4
 G_MIN = -5.0
 DECAY_BIAS_INIT = -6.0
+CHUNK_SIZE = 16
+# The chunked form divides by the cumulative decay, so a chunk of fully decayed channels asks for
+# exp(-G_MIN * CHUNK_SIZE). Bounding the decay is what keeps that reciprocal representable at all.
+assert CHUNK_SIZE * -G_MIN < math.log(torch.finfo(torch.float32).max)
 
 CONTEXT_LEN = 256
 D_MODEL = 256
@@ -169,10 +172,10 @@ def attend(
 
 def delta_rule(
     q: torch.Tensor,  # [B, H, T, Dh]
-    k: torch.Tensor,  #  [B, H, T, Dh]
-    v: torch.Tensor,  #  [B, H, T, Dh]
-    beta: torch.Tensor,  #  [B, H, T]
-    decay: torch.Tensor,  #  [B, H, T, Dh]
+    k: torch.Tensor,  # [B, H, T, Dh]
+    v: torch.Tensor,  # [B, H, T, Dh]
+    beta: torch.Tensor,  # [B, H, T]
+    decay: torch.Tensor,  # [B, H, T, Dh]
 ) -> torch.Tensor:
     """Carry an associative memory along the sequence and read it with each query.
 
@@ -207,39 +210,41 @@ def delta_rule_chunked(
     beta: torch.Tensor,  # [B, H, T]
     decay: torch.Tensor,  # [B, H, T, Dh]
 ) -> torch.Tensor:
+    """Return exactly what delta_rule returns, one chunk of tokens at a time.
+
+    Rescaling by the cumulative decay takes it out of the recurrence, which leaves every token's
+    write a linear function of the writes before it. Stacking those gives a triangular system, so
+    one solve produces a whole chunk of writes at once instead of a step per token.
+    """
     batch_size, num_heads, seq_len, head_dim = q.size()
-    S = torch.zeros(batch_size, num_heads, head_dim, head_dim, device=q.device)  # [B, H, Dh, Dh]
+    state = torch.zeros(
+        batch_size, num_heads, head_dim, head_dim, device=q.device
+    )  # [B, H, Dh, Dh]
     outputs = []
     for start in range(0, seq_len, CHUNK_SIZE):
-        chunk = slice(start, start + CHUNK_SIZE)
+        chunk = slice(start, min(start + CHUNK_SIZE, seq_len))
+        chunk_len = chunk.stop - chunk.start
+        eye = torch.eye(chunk_len, device=q.device)  # [C, C]
 
-        Q = q[:, :, chunk]
-        K = k[:, :, chunk]
-        V = v[:, :, chunk]
-        Beta = beta[:, :, chunk]
+        cumulative = decay[:, :, chunk].cumprod(dim=2)  # [B, H, C, Dh]
+        queries = q[:, :, chunk] * cumulative  # [B, H, C, Dh]
+        keys_decayed = k[:, :, chunk] * cumulative  # [B, H, C, Dh]
+        keys_undecayed = k[:, :, chunk] / cumulative  # [B, H, C, Dh]
 
-        cumulative_decay = decay[:, :, chunk].cumprod(dim=2)
+        # Each token's write depends on every earlier write, which is one triangular system.
+        write = torch.diag_embed(beta[:, :, chunk])  # [B, H, C, C]
+        overlap = (keys_decayed @ keys_undecayed.mT).tril(-1)  # [B, H, C, C]
+        solved = torch.linalg.solve_triangular(eye + write @ overlap, write, upper=False)
+        written = solved @ v[:, :, chunk] - (solved @ keys_decayed) @ state  # [B, H, C, Dh]
 
-        K1 = K / cumulative_decay
-        K2 = cumulative_decay * K
-        Q1 = cumulative_decay * Q
+        causal = (queries @ keys_undecayed.mT).tril()  # [B, H, C, C]
+        outputs.append(queries @ state + causal @ written)  # [B, H, C, Dh]
 
-        M = torch.tril(K2 @ K2.mT, -1)
-
-        T = torch.inverse((torch.eye() + torch.diag(Beta) @ M)) @ torch.diag(Beta)
-
-        U = T @ V
-        W = T @ K2
-
-        V1 = U - W @ S
-
-        A = torch.tril(Q1 @ K1.mT)
-
-        O = Q1 @ S + A @ V1
-        S = cumulative_decay * S + (cumulative_decay / cumulative_decay * K).mT @ V1
-
-        outputs.append(O)  # [B, H, Dh, 1]
-    return torch.cat(outputs, dim=-1).mT  # [B, H, T, Dh]
+        # A write at position i survives only the decay that comes after it.
+        remaining = cumulative[:, :, -1:, :] / cumulative  # [B, H, C, Dh]
+        state = state * cumulative[:, :, -1, :, None]  # [B, H, Dh, Dh]
+        state = state + (k[:, :, chunk] * remaining).mT @ written  # [B, H, Dh, Dh]
+    return torch.cat(outputs, dim=2)  # [B, H, T, Dh]
 
 
 class KimiDeltaAttention(nn.Module):
