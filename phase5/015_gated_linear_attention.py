@@ -194,6 +194,35 @@ def delta_rule(
     return torch.cat(outputs, dim=-1).mT  # [B, H, T, Dh]
 
 
+def delta_rule_chunked(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, beta: torch.Tensor, decay: torch.Tensor
+) -> torch.Tensor:  # [B, H, T, Dh], [B, H, T, Dh], [B, H, T, Dh], [B, H, T], [B, H, T, Dh]
+    """Carry an associative memory along the sequence and read it with each query.
+
+    The state maps keys to values. Every token decays it per channel, reads whatever is already
+    stored at its key, writes the difference towards its own value, and reads the updated state
+    back with its query. Writing the difference is what lets a token overwrite rather than pile on.
+    """
+    batch_size, num_heads, seq_len, head_dim = q.size()
+    state = torch.zeros(
+        batch_size, num_heads, head_dim, head_dim, device=q.device
+    )  # [B, H, Dh, Dh]
+    outputs = []
+    for step in range(seq_len):
+        q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
+        k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
+        v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
+        beta_t = beta[:, :, step, None, None]  # [B, H, 1, 1]
+        decay_t = decay[:, :, step, :, None]  # [B, H, Dh, 1]
+
+        state = decay_t * state  # [B, H, Dh, Dh]
+        stored = state.mT @ k_t  # [B, H, Dh, 1]
+        written = beta_t * (v_t - stored)  # [B, H, Dh, 1]
+        state = state + k_t @ written.mT  # [B, H, Dh, Dh]
+        outputs.append(state.mT @ q_t)  # [B, H, Dh, 1]
+    return torch.cat(outputs, dim=-1).mT  # [B, H, T, Dh]
+
+
 class KimiDeltaAttention(nn.Module):
     """Mix the sequence with a gated delta-rule recurrence instead of softmax attention."""
 
