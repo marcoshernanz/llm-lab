@@ -425,7 +425,10 @@ def block_attn_res(
     q = proj.weight
     k = torch.stack(blocks + ([partial_block] if partial_block is not None else []))
     v = k
-    pass
+
+    h = ((q.mT @ norm(k)).softmax(dim=-1) * v).sum(dim=-1)
+
+    return h
 
 
 class DecoderBlock(nn.Module):
