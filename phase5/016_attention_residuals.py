@@ -16,6 +16,8 @@ TEXT_COLUMN = "text"
 DEVICE = "cuda" if torch.cuda.is_available() else "mps"
 SEED = 1337
 
+NUM_RES_BLOCKS = 4
+
 
 # Tensor shapes:
 # B: batch size
