@@ -174,7 +174,10 @@ class KimiDeltaAttention(nn.Module):
         v = split_heads(self.v_proj(x), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
         beta = torch.sigmoid(self.beta_proj(x)).mT  # [B, H, T]
-        decay = split_heads(torch.sigmoid(self.decay_proj(x)), NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
+        decay_logit = self.decay_proj(x) + self.decay_bias  # [B, T, D]
+        decay = split_heads(
+            torch.exp(G_MIN * torch.sigmoid(decay_logit)), NUM_HEADS, D_HEAD
+        )  # [B, H, T, Dh]
 
         state = torch.zeros(
             batch_size, NUM_HEADS, D_HEAD, D_HEAD, device=x.device
