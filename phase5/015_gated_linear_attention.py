@@ -197,12 +197,6 @@ def delta_rule(
 def delta_rule_chunked(
     q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, beta: torch.Tensor, decay: torch.Tensor
 ) -> torch.Tensor:  # [B, H, T, Dh], [B, H, T, Dh], [B, H, T, Dh], [B, H, T], [B, H, T, Dh]
-    """Carry an associative memory along the sequence and read it with each query.
-
-    The state maps keys to values. Every token decays it per channel, reads whatever is already
-    stored at its key, writes the difference towards its own value, and reads the updated state
-    back with its query. Writing the difference is what lets a token overwrite rather than pile on.
-    """
     batch_size, num_heads, seq_len, head_dim = q.size()
     state = torch.zeros(
         batch_size, num_heads, head_dim, head_dim, device=q.device
