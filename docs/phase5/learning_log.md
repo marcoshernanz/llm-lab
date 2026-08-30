@@ -23,6 +23,7 @@ Every run below is one seed (`1337`) on a Kaggle `Tesla T4`, `3000` steps, batch
 | P5-012 | [`phase5/012_bounded_activations.py`](../../phase5/012_bounded_activations.py) | `0.7973` | `-0.0015` | `14504768` | `2493.3` |
 | P5-013 | [`phase5/013_attention_sinks.py`](../../phase5/013_attention_sinks.py) | `0.7984` | `+0.0011` | `14504832` | `2758.2` |
 | P5-014 | [`phase5/014_multi_token_prediction.py`](../../phase5/014_multi_token_prediction.py) | `0.7885` | `-0.0099` | `18709584` | `3488.4` |
+| P5-015 | [`phase5/015_gated_linear_attention.py`](../../phase5/015_gated_linear_attention.py) | `0.7706` | `-0.0179` | `19528032` | `5093.0` |
 
 ## Reading The Ladder
 
@@ -848,4 +849,116 @@ the loop body executes once and never chains, so the recurrence that distinguish
 sequential MTP from Meta's parallel heads is never exercised, and a bug in threading the hidden
 state from one depth to the next would be invisible. Depth `2` is the smallest configuration that
 actually runs the mechanism. Dropping to `1` is a one-constant change.
+
+## P5-015 Milestone 515 Gated Linear Attention With A Delta Rule
+
+- Script: [`phase5/015_gated_linear_attention.py`](../../phase5/015_gated_linear_attention.py)
+- Total parameters: `19528032`
+- Inference parameters: `15323280`
+- Final train loss: `0.7382`
+- Final validation loss: `0.7706`
+- Wall-clock time: `5093.0s` on a Kaggle `T4`
+- `G_MIN = -5.0`, `CHUNK_SIZE = 8`, `CONV_WINDOW = 4`
+
+What changed from `M-014`:
+
+- the six sliding-window softmax layers become Kimi Delta Attention recurrences, while the two
+  global MLA layers and the multi-token heads are untouched,
+- queries, keys, and values are produced by `silu(ShortConv(proj(x)))`, with queries and keys
+  L2-normalized so a key erases exactly what it should,
+- the per-channel retention factor is `exp(G_MIN * sigmoid(logit))`, bounded below rather than
+  produced by an unbounded negative softplus,
+- the recurrent state is read with a head-wise RMSNorm and a full-rank sigmoid output gate,
+- RoPE is gone from these layers entirely; position now comes from the recurrence,
+- both the recurrent definition and the chunked parallel form are implemented, and the layer runs
+  the chunked one.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.2559 val_loss=4.2513 seconds=28.5 expert_min=0.011 expert_max=0.022 expert_unused=0 bias_span=0.106
+step=250 train_loss=1.1816 val_loss=1.1826 seconds=483.3 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.932
+step=500 train_loss=1.0022 val_loss=0.9935 seconds=931.9 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.933
+step=750 train_loss=0.9174 val_loss=0.9243 seconds=1370.1 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.822
+step=1000 train_loss=0.8666 val_loss=0.8816 seconds=1791.1 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.712
+step=1250 train_loss=0.8336 val_loss=0.8571 seconds=2203.2 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.814
+step=1500 train_loss=0.8187 val_loss=0.8285 seconds=2616.0 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.738
+step=1750 train_loss=0.7998 val_loss=0.8167 seconds=3028.0 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.707
+step=2000 train_loss=0.7858 val_loss=0.8013 seconds=3439.4 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.665
+step=2250 train_loss=0.7724 val_loss=0.7778 seconds=3849.9 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.637
+step=2500 train_loss=0.7684 val_loss=0.7875 seconds=4264.2 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.603
+step=2750 train_loss=0.7469 val_loss=0.7687 seconds=4678.1 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.664
+step=3000 train_loss=0.7382 val_loss=0.7706 seconds=5093.0 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.654
+```
+
+Main lesson:
+
+- **Best result of the ladder, `0.7706`, and the largest gain since `M-507`.** `-0.0179` at the end,
+  lower at every checkpoint after initialization, and the advantage is dramatic early: `-0.1180` at
+  step `250`, `-0.0695` at `500`. The recurrence learns markedly faster than the sliding window it
+  replaced.
+- **This is the first attention-layout milestone that produced a real signal.** GQA, hybrid
+  attention, and latent attention were all inside noise. Replacing the local mixer with a delta-rule
+  recurrence is not; the gap is an order of magnitude above what a single seed can resolve.
+- The cost is `1.46x` wall-clock, `5093.0s` against `3488.4s`, and `+818448` parameters at both
+  train and inference. So the comparison is confounded by capacity, as every milestone since `M-507`
+  has been. What is not confounded is the shape of the curve: a `-0.118` lead at step `250` is not a
+  four-percent parameter increase.
+- Routing was unaffected. Expert share held between `0.014` and `0.017` against an ideal `0.0156`,
+  no expert ever went unused, and `bias_span` decayed from `0.932` to `0.654` exactly as in earlier
+  runs.
+
+### The Chunked Form Is Correct And The Bound On It Was Not
+
+Both forms were implemented and they agree to `2.4e-07`, including when the sequence length is not
+a multiple of the chunk. That was the milestone's stated exit criterion and the derivation passed it.
+
+The first attempt still went `NaN`. Loss was healthy at step `1` (`4.2513`) and `NaN` by step `250`,
+with `60` of `64` experts reported dead because the routing scores had gone to `NaN` too.
+
+The cause was a bound that was off by exactly one factor of two. The chunked form divides keys by
+the cumulative decay, and the guard was:
+
+```python
+assert CHUNK_SIZE * -G_MIN < math.log(torch.finfo(torch.float32).max)
+```
+
+That correctly bounds `1/cumulative` in the forward at `exp(80)`. But the derivative of `k / c` is
+`-k / c**2`, so the **backward** holds the square and needs `exp(160)`, which is `3.1e69` against an
+`fp32` ceiling of `3.4e38`. Measured, sweeping the decay toward saturation:
+
+| decay | `1/cum` over a chunk | forward finite | backward finite |
+| ---: | ---: | --- | --- |
+| `0.98758` | `1.22e+00` | yes | yes |
+| `0.08208` | `2.35e+17` | yes | yes |
+| `0.02352` | `1.14e+26` | yes | **no** |
+| `0.00674` | `5.54e+34` | yes | **no** |
+
+The recurrent reference stays finite at every value, because it never forms the reciprocal at all.
+
+That also explains the timing. `DECAY_BIAS_INIT = -6.0` starts the retention factor at about
+`0.988`, nowhere near the cliff, so step `1` looked perfectly healthy. Training then pushed
+`decay_proj` until some channels saturated, and the backward overflowed the moment they did.
+
+The fix is `CHUNK_SIZE = 8` with the guard extended to cover the backward:
+
+```python
+assert 2 * CHUNK_SIZE * -G_MIN < math.log(torch.finfo(torch.float32).max)
+```
+
+This keeps Kimi K3's published `G_MIN = -5` and puts the backward exponent at `exp(80)`.
+
+The lesson generalizes past this milestone. **A numerical bound that only covers the forward pass is
+not a bound.** Any expression whose derivative squares a term needs roughly twice the exponent
+headroom, and an assert written from the forward alone will pass while the gradient overflows. It is
+also why "the two forms agree" was necessary but not sufficient here: the agreement test only
+exercises the forward, and the defect lived entirely in the backward.
+
+### Two Things Ruled Out Along The Way
+
+- **The chunked forward is sound**, staying finite even at fully saturated decay. The original
+  assert does its job for the half of the computation it describes.
+- **`l2_norm` has no epsilon**, so it returns `NaN` on a zero vector and its gradient reaches `2e8`
+  at `||x|| = 4e-9`. That was not the cause here, since measured `||q_head||` ran from `0.55` to
+  `1.85` and grew during training, but it is a latent hazard worth an epsilon.
 
