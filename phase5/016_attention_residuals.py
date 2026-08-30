@@ -16,8 +16,6 @@ TEXT_COLUMN = "text"
 DEVICE = "cuda" if torch.cuda.is_available() else "mps"
 SEED = 1337
 
-NUM_RES_BLOCKS = 4
-
 
 # Tensor shapes:
 # B: batch size
@@ -39,8 +37,8 @@ NUM_RES_BLOCKS = 4
 CONV_WINDOW = 4
 G_MIN = -5.0
 DECAY_BIAS_INIT = -6.0
-CHUNK_SIZE = 16
-assert CHUNK_SIZE * -G_MIN < math.log(torch.finfo(torch.float32).max)
+CHUNK_SIZE = 8
+assert 2 * CHUNK_SIZE * -G_MIN < math.log(torch.finfo(torch.float32).max)
 
 CONTEXT_LEN = 256
 D_MODEL = 256
@@ -53,6 +51,8 @@ D_FFN = 8 * D_MODEL // 3
 GATE_CAP = 4.0
 UP_CAP = 25.0
 NUM_BLOCKS = 8
+RES_BLOCK_SIZE = 2
+assert NUM_BLOCKS % RES_BLOCK_SIZE == 0
 INIT_STD = 0.02
 ROPE_BASE = 10000.0
 NORM_EPS = 1e-5
@@ -421,84 +421,84 @@ class MixtureOfExperts(nn.Module):
         return out.reshape(batch_size, seq_len, D_MODEL)  # [B, T, D]
 
 
-def block_attn_res(
-    blocks: list[torch.Tensor],  # list[B, T, D]
-    partial_block: torch.Tensor | None,  # [B, T D]
-    weight: torch.Tensor,  # [D]
+def attend_over_depth(
+    summaries: list[torch.Tensor],  # each [B, T, D]
+    partial: torch.Tensor | None,  # [B, T, D]
+    query: torch.Tensor,  # [D]
     norm: RMSNorm,
-):
-    q = weight  # [D]
-    k = torch.stack(
-        blocks + ([partial_block] if partial_block is not None else []), dim=-2
-    )  # [B, T, B, D]
-    v = k  # [B, T, B, D]
+) -> torch.Tensor:
+    """Mix the depth history into one sublayer's input, weighted by learned attention.
 
-    h = (q @ norm(k).mT).softmax(dim=-1)  # [B, T, B]
-    h = (h[..., None] * v).sum(dim=-2)  # [B, T, D]
-
-    return h
+    Keys are normalized so a layer with a large output cannot dominate on scale alone, but the
+    values are the raw representations, whose magnitudes are what the residual stream carries.
+    """
+    history = summaries if partial is None else summaries + [partial]
+    sources = torch.stack(history, dim=-2)  # [B, T, S, D]
+    logits = norm(sources) @ query  # [B, T, S]
+    return (logits.softmax(dim=-1)[..., None] * sources).sum(dim=-2)  # [B, T, D]
 
 
 class DecoderBlock(nn.Module):
-    """Apply one pre-norm attention sublayer and one pre-norm MLP sublayer."""
+    """Apply one attention sublayer and one feed-forward sublayer, each reading the depth history."""
 
-    def __init__(self, layer_number: int, is_global: bool, is_dense: bool):
-        """Create the attention, feed-forward, and normalization sublayers."""
+    def __init__(self, closes_block: bool, is_global: bool, is_dense: bool):
+        """Create the sublayers, their norms, and one pseudo-query per sublayer."""
         super().__init__()
-        self.layer_number = layer_number
-
+        self.closes_block = closes_block
         self.attn = GlobalSelfAttention() if is_global else KimiDeltaAttention()
         self.attn_norm = RMSNorm(D_MODEL)
         self.ffn = FeedForward(D_FFN) if is_dense else MixtureOfExperts()
         self.ffn_norm = RMSNorm(D_MODEL)
 
-        self.attn_res_proj = nn.Parameter(torch.ones(D_MODEL))
+        self.attn_res_query = nn.Parameter(torch.zeros(D_MODEL))
         self.attn_res_norm = RMSNorm(D_MODEL)
-        self.ffn_res_proj = nn.Parameter(torch.ones(D_MODEL))
+        self.ffn_res_query = nn.Parameter(torch.zeros(D_MODEL))
         self.ffn_res_norm = RMSNorm(D_MODEL)
 
     def forward(
         self,
-        blocks: list[torch.Tensor],  # list[B, T, D]
-        hidden_state: torch.Tensor | None,  # [B, T, D]
-    ):
-        """Return the residual output of one decoder block."""
-        partial_block = hidden_state  # [B, T, D]
+        summaries: list[torch.Tensor],  # each [B, T, D]
+        partial: torch.Tensor | None,  # [B, T, D]
+    ) -> tuple[list[torch.Tensor], torch.Tensor | None]:
+        """Return the depth history and the running sum, closing the block on a boundary."""
+        h = attend_over_depth(summaries, partial, self.attn_res_query, self.attn_res_norm)
+        attn_out = self.attn(self.attn_norm(h))  # [B, T, D]
+        partial = attn_out if partial is None else partial + attn_out  # [B, T, D]
 
-        h = block_attn_res(blocks, partial_block, self.attn_res_proj, self.attn_res_norm)
-        h = self.attn(self.attn_norm(h))
-        partial_block = h if partial_block is None else partial_block + h  # [B, T, D]
+        h = attend_over_depth(summaries, partial, self.ffn_res_query, self.ffn_res_norm)
+        partial = partial + self.ffn(self.ffn_norm(h))  # [B, T, D]
 
-        h = block_attn_res(blocks, partial_block, self.ffn_res_proj, self.ffn_res_norm)
-        partial_block += self.ffn(self.ffn_norm(h))  # [B, T, D]
-
-        if self.layer_number % (NUM_BLOCKS // NUM_RES_BLOCKS) == 0:
-            blocks.append(partial_block)
-            partial_block = None
-
-        return blocks, partial_block
+        if self.closes_block:
+            return summaries + [partial], None
+        return summaries, partial
 
 
 class Decoder(nn.Module):
     """Stack the decoder blocks, one global for every GLOBAL_EVERY, and normalize the output."""
 
     def __init__(self):
-        """Create the block stack, making every GLOBAL_EVERY-th block global, and the final norm."""
+        """Create the block stack, the output pseudo-query, and the final norm."""
         super().__init__()
         self.blocks = nn.ModuleList(
             [
-                DecoderBlock(i + 1, (i + 1) % GLOBAL_EVERY == 0, i < DENSE_BLOCKS)
+                DecoderBlock(
+                    (i + 1) % RES_BLOCK_SIZE == 0,
+                    (i + 1) % GLOBAL_EVERY == 0,
+                    i < DENSE_BLOCKS,
+                )
                 for i in range(NUM_BLOCKS)
             ]
         )
+        self.out_res_query = nn.Parameter(torch.zeros(D_MODEL))
+        self.out_res_norm = RMSNorm(D_MODEL)
         self.out_norm = RMSNorm(D_MODEL)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Run the full decoder stack."""
-        attn_res_blocks = [x]
-
+        """Run the full decoder stack, then aggregate every block summary into the output."""
+        summaries, partial = [x], None  # the embedding is the first source
         for block in self.blocks:
-            attn_res_blocks, x = block(attn_res_blocks, x)  # [B, T, D]
+            summaries, partial = block(summaries, partial)
+        x = attend_over_depth(summaries, partial, self.out_res_query, self.out_res_norm)
         return self.out_norm(x)  # [B, T, D]
 
 
@@ -520,7 +520,7 @@ class MultiTokenPredictor(nn.Module):
         self.hidden_norm = RMSNorm(D_MODEL)
         self.embed_norm = RMSNorm(D_MODEL)
         self.merge_proj = nn.Linear(2 * D_MODEL, D_MODEL, bias=False)
-        self.block = DecoderBlock(is_global=True, is_dense=False)
+        self.block = DecoderBlock(closes_block=False, is_global=True, is_dense=False)
 
     def forward(
         self, hidden: torch.Tensor, embeddings: torch.Tensor
@@ -533,7 +533,8 @@ class MultiTokenPredictor(nn.Module):
         hidden = self.hidden_norm(hidden)  # [B, T, D]
         embeddings = self.embed_norm(embeddings)  # [B, T, D]
         merged = self.merge_proj(torch.cat([hidden, embeddings], dim=-1))  # [B, T, D]
-        return self.block(merged)  # [B, T, D]
+        _, contribution = self.block([merged], None)  # [B, T, D]
+        return merged + contribution  # [B, T, D]
 
 
 class LanguageModel(nn.Module):
