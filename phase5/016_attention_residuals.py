@@ -457,7 +457,7 @@ class DecoderBlock(nn.Module):
         hidden_state: torch.Tensor | None,  # [B, T, D]
     ):
         """Return the residual output of one decoder block."""
-        partial_block = hidden_state  # [B, T, Dh]
+        partial_block = hidden_state  # [B, T, D]
 
         h = block_attn_res(blocks, partial_block, self.attn_res_proj, self.attn_res_norm)
         partial_block += self.attn(self.attn_norm(h))  # [B, T, D]
