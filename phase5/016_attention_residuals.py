@@ -422,9 +422,11 @@ class MixtureOfExperts(nn.Module):
 class DecoderBlock(nn.Module):
     """Apply one pre-norm attention sublayer and one pre-norm MLP sublayer."""
 
-    def __init__(self, is_global: bool, is_dense: bool):
+    def __init__(self, layer_number: int, is_global: bool, is_dense: bool):
         """Create the attention, feed-forward, and normalization sublayers."""
         super().__init__()
+        self.layer_number = layer_number
+
         self.attn = GlobalSelfAttention() if is_global else KimiDeltaAttention()
         self.attn_norm = RMSNorm(D_MODEL)
         self.ffn = FeedForward(D_FFN) if is_dense else MixtureOfExperts()
