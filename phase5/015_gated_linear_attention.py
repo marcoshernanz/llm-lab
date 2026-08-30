@@ -227,8 +227,7 @@ class KimiDeltaAttention(nn.Module):
             outputs.append(state.mT @ q_t)  # [B, H, Dh, 1]
 
         recurrent_output = torch.cat(outputs, dim=-1).mT  # [B, H, T, Dh]
-        attn_output = combine_heads(recurrent_output)  # [B, T, D]
-        attn_output = self.attn_norm(attn_output)
+        attn_output = self.attn_norm(combine_heads(recurrent_output))  # [B, T, D]
 
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
         return self.o_proj(gate * attn_output)  # [B, T, D]
