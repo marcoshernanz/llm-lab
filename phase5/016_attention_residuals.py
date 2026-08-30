@@ -467,7 +467,7 @@ class Decoder(nn.Module):
         attn_res_blocks = [x]
 
         for block in self.blocks:
-            x = block(x)  # [B, T, D]
+            attn_res_blocks, x = block(attn_res_blocks, x)  # [B, T, D]
         return self.out_norm(x)  # [B, T, D]
 
 
