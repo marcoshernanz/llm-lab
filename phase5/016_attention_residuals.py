@@ -447,7 +447,7 @@ class Decoder(nn.Module):
         super().__init__()
         self.blocks = nn.ModuleList(
             [
-                DecoderBlock(i % GLOBAL_EVERY == GLOBAL_EVERY - 1, i < DENSE_BLOCKS)
+                DecoderBlock(i, i % GLOBAL_EVERY == GLOBAL_EVERY - 1, i < DENSE_BLOCKS)
                 for i in range(NUM_BLOCKS)
             ]
         )
