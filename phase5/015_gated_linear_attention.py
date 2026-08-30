@@ -225,6 +225,8 @@ def delta_rule_chunked(
         K2 = cumulative_decay * K
         Q1 = cumulative_decay * Q
 
+        M = torch.tril(K2 @ K2.mT, -1)
+
         q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
         k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
         v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
