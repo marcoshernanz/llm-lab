@@ -165,6 +165,35 @@ def attend(
     return attn_weights @ v  # [B, Hq, T, Dh]
 
 
+def delta_rule(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, beta: torch.Tensor, decay: torch.Tensor
+) -> torch.Tensor:  # [B, H, T, Dh], [B, H, T, Dh], [B, H, T, Dh], [B, H, T], [B, H, T, Dh]
+    """Carry an associative memory along the sequence and read it with each query.
+
+    The state maps keys to values. Every token decays it per channel, reads whatever is already
+    stored at its key, writes the difference towards its own value, and reads the updated state
+    back with its query. Writing the difference is what lets a token overwrite rather than pile on.
+    """
+    batch_size, num_heads, seq_len, head_dim = q.size()
+    state = torch.zeros(
+        batch_size, num_heads, head_dim, head_dim, device=q.device
+    )  # [B, H, Dh, Dh]
+    outputs = []
+    for step in range(seq_len):
+        q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
+        k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
+        v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
+        beta_t = beta[:, :, step, None, None]  # [B, H, 1, 1]
+        decay_t = decay[:, :, step, :, None]  # [B, H, Dh, 1]
+
+        state = decay_t * state  # [B, H, Dh, Dh]
+        stored = state.mT @ k_t  # [B, H, Dh, 1]
+        written = beta_t * (v_t - stored)  # [B, H, Dh, 1]
+        state = state + k_t @ written.mT  # [B, H, Dh, Dh]
+        outputs.append(state.mT @ q_t)  # [B, H, Dh, 1]
+    return torch.cat(outputs, dim=-1).mT  # [B, H, T, Dh]
+
+
 class KimiDeltaAttention(nn.Module):
     """Mix the sequence with a gated delta-rule recurrence instead of softmax attention."""
 
@@ -182,20 +211,13 @@ class KimiDeltaAttention(nn.Module):
         self.k_conv = ShortConv(D_MODEL)
         self.v_conv = ShortConv(D_MODEL)
 
-        self.attn_norm = RMSNorm(D_HEAD)
+        self.head_norm = RMSNorm(D_HEAD)
 
         self.g_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
         self.o_proj = nn.Linear(D_MODEL, D_MODEL, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Return the recurrent mixer output for one batch of embeddings.
-
-        The state is an associative memory from keys to values. Each token decays it per
-        channel, reads whatever is already stored at its key, writes the difference towards
-        its own value, and then reads the updated state back with its query.
-        """
-        batch_size, seq_len, _ = x.size()
-
+        """Return the recurrent mixer output for one batch of embeddings."""
         q = F.silu(self.q_conv(self.q_proj(x)))  # [B, T, D]
         k = F.silu(self.k_conv(self.k_proj(x)))  # [B, T, D]
         v = F.silu(self.v_conv(self.v_proj(x)))  # [B, T, D]
@@ -205,32 +227,12 @@ class KimiDeltaAttention(nn.Module):
 
         beta = torch.sigmoid(self.beta_proj(x)).mT  # [B, H, T]
         decay_logit = self.decay_proj(x) + self.decay_bias  # [B, T, D]
-        decay = split_heads(
-            torch.exp(G_MIN * torch.sigmoid(decay_logit)), NUM_HEADS, D_HEAD
-        )  # [B, H, T, Dh]
+        decay = torch.exp(G_MIN * torch.sigmoid(decay_logit))  # [B, T, D]
+        decay = split_heads(decay, NUM_HEADS, D_HEAD)  # [B, H, T, Dh]
 
-        state = torch.zeros(
-            batch_size, NUM_HEADS, D_HEAD, D_HEAD, device=x.device
-        )  # [B, H, Dh, Dh]
-        outputs = []
-        for step in range(seq_len):
-            q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
-            k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
-            v_t = v[:, :, step, :, None]  # [B, H, Dh, 1]
-            beta_t = beta[:, :, step, None, None]  # [B, H, 1, 1]
-            decay_t = decay[:, :, step, :, None]  # [B, H, Dh, 1]
-
-            state = decay_t * state  # [B, H, Dh, Dh]
-            stored = state.mT @ k_t  # [B, H, Dh, 1]
-            written = beta_t * (v_t - stored)  # [B, H, Dh, 1]
-            state = state + k_t @ written.mT  # [B, H, Dh, Dh]
-            outputs.append(state.mT @ q_t)  # [B, H, Dh, 1]
-
-        recurrent_output = torch.cat(outputs, dim=-1).mT  # [B, H, T, Dh]
-        attn_output = self.attn_norm(combine_heads(recurrent_output))  # [B, T, D]
-
+        attn_output = self.head_norm(delta_rule(q, k, v, beta, decay))  # [B, H, T, Dh]
         gate = torch.sigmoid(self.g_proj(x))  # [B, T, D]
-        return self.o_proj(gate * attn_output)  # [B, T, D]
+        return self.o_proj(gate * combine_heads(attn_output))  # [B, T, D]
 
 
 class GlobalSelfAttention(nn.Module):
