@@ -446,9 +446,9 @@ class DecoderBlock(nn.Module):
         self.ffn = FeedForward(D_FFN) if is_dense else MixtureOfExperts()
         self.ffn_norm = RMSNorm(D_MODEL)
 
-        self.attn_res_proj = nn.Linear(D_MODEL, BLOCKS)
+        self.attn_res_proj = nn.Linear(D_MODEL, NUM_RES_BLOCKS)
         self.attn_res_norm = RMSNorm(D_MODEL)
-        self.ffm_res_proj = nn.Linear(D_MODEL, BLOCKS)
+        self.ffm_res_proj = nn.Linear(D_MODEL, NUM_RES_BLOCKS)
         self.ffm_res_norm = RMSNorm(D_MODEL)
 
     def forward(self, blocks: list[torch.Tensor], hidden_state: torch.Tensor | None):
@@ -461,7 +461,7 @@ class DecoderBlock(nn.Module):
         h = block_attn_res(blocks, partial_block, self.attn_res_proj, self.attn_res_norm)
         partial_block += self.ffn(self.ffn_norm(x))  # [B, T, D]
 
-        if self.layer_number % BLOCKS == 0:
+        if self.layer_number % NUM_RES_BLOCKS == 0:
             blocks.append(partial_block)
             partial_block = None
 
