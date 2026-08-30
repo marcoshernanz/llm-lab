@@ -36,8 +36,8 @@ For the run history, see [learning_log.md](learning_log.md).
 | 512 | Bounded feed-forward activations | Cap both GLU branches so outliers cannot form | done |
 | 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | done |
 | 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | done |
-| 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | next |
-| 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | planned |
+| 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | done |
+| 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | next |
 | 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | planned |
 | 518 | Modern reference model | One integrated model plus the full ablation table | planned |
 
@@ -64,6 +64,7 @@ For the run history, see [learning_log.md](learning_log.md).
 | 512 bounded activations | `0.7973` | `-0.0015` | `14504768` | `2493.3` |
 | 513 attention sinks | `0.7984` | `+0.0011` | `14504832` | `2758.2` |
 | 514 multi-token prediction | `0.7885` | `-0.0099` | `18709584` | `3488.4` |
+| 515 gated linear attention | `0.7706` | `-0.0179` | `19528032` | `5093.0` |
 
 - **Two mechanisms account for almost everything.** Pre-norm is worth `-0.7980` and RoPE `-1.2291`,
   together `-2.03` of the total `-2.26`. Everything after them moves the loss by under `0.19`.
@@ -927,12 +928,21 @@ $$
 With `g_min = -5` every retention factor exceeds `e⁻⁵ ≈ 6.7×10⁻³`, the cumulative log-decay over a `16`-token tile stays in `(-80, 0)`, and the rescaling factor stays inside `bf16` range. **Because the range is now finite, every tile can use dense tensor-core matmuls** and the special-cased diagonal path disappears entirely. A numerical bound bought a kernel simplification.
 
 **Implementation decisions.**
-- Implement **both the recurrent form and the chunked parallel form, and assert they agree numerically.** This is the milestone's real exit criterion. The recurrent form is the definition; the chunked form is what runs. If they disagree, the chunked derivation is wrong, and that bug is invisible in a loss curve.
+- Implement **both the recurrent form and the chunked parallel form, and assert they agree numerically.** The recurrent form is the definition; the chunked form is what runs. If they disagree, the chunked derivation is wrong, and that bug is invisible in a loss curve. **Agreement is necessary but not sufficient** — it exercises only the forward, and the chunked form's reciprocal can overflow in the backward while both forwards match exactly. Size `CHUNK_SIZE` against `2 * CHUNK_SIZE * -G_MIN`, not `CHUNK_SIZE * -G_MIN`.
 - Use the **bounded** decay parameterization with `g_min = -5`. The unbounded negative-softplus form is the older Kimi Linear/GDN mapping and is strictly harder to make numerically safe.
 - Keep the full KDA input pipeline: `q, k = L2Norm(Swish(ShortConv(Wx)))`, `v = Swish(ShortConv(W_v x))`, `β = σ(W_β x)`, and a **low-rank** projection for the decay logits `z`. The `L2Norm` on `q`/`k` is KDA's analogue of QK-Norm.
 - Output path is `y = W_o[σ(W_g x) ⊙ RMSNorm(õ_t)]` — head-wise RMSNorm on the recurrent output, then the same full-rank output gate from `M-507`. The norm matters: the recurrent state has no softmax to bound its scale.
 - **Remove RoPE from these layers.** Position now comes from the recurrence's decay ordering. This is what lets K3 run NoPE across the entire model.
 - Expect this to be **slow** — a Python-level chunked scan against fused kernels. Report it honestly; this is the single best phase-4 Triton target the ladder will produce.
+
+Status: complete via [`phase5/015_gated_linear_attention.py`](../../phase5/015_gated_linear_attention.py), recorded as `P5-015`.
+
+Main lesson:
+- **Best result of the ladder, `0.7706`, and the largest gain since `M-507`.** Lower at every checkpoint after initialization, with a `-0.1180` lead at step `250` narrowing to `-0.0179` at the end. The recurrence learns markedly faster than the sliding window it replaced.
+- **The first attention-layout milestone to produce a real signal.** GQA, hybrid attention, and latent attention were all inside noise; this is an order of magnitude above what one seed can resolve.
+- Cost is `1.46x` wall-clock and `+818448` parameters, so the endpoint is capacity-confounded like everything since `M-507`. The early-training gap is not: a `-0.118` lead at step `250` is not a four-percent parameter increase.
+- **The exit criterion passed and was still not sufficient.** Both forms agree to `2.4e-07` including on partial chunks, yet the first run went `NaN` by step `250`. The chunked form divides by the cumulative decay, and the guard bounded `1/c` in the forward while the backward holds `1/c**2`. `exp(160)` against an `fp32` ceiling of `exp(88.7)`. Fixed with `CHUNK_SIZE = 8` and `assert 2 * CHUNK_SIZE * -G_MIN < log(finfo.max)`, which keeps K3's `G_MIN = -5`.
+- **The transferable lesson: a numerical bound that only covers the forward pass is not a bound.** Any expression whose derivative squares a term needs twice the exponent headroom, and an agreement test between two forward implementations cannot see a defect that lives in the backward.
 
 ### Milestone 516: Residual-Stream Upgrade
 Track: Depth
