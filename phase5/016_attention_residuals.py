@@ -433,8 +433,8 @@ def block_attn_res(
     )  # [B, T, B, D]
     v = k  # [B, T, B, D]
 
-    h = (q @ norm(k).mT).softmax(dim=-1)  # [B, T, 1, B]
-    h = h @ v  # [B, T, 1, D]
+    h = (q @ norm(k).mT).softmax(dim=-1)  # [B, T, B]
+    h = (h[..., None] * v).sum(dim=-2)  # [B, T, D]
 
     return h.reshape(BATCH_SIZE, CONTEXT_LEN, D_MODEL)
 
