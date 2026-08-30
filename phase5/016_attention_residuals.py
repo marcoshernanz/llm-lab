@@ -449,9 +449,9 @@ class DecoderBlock(nn.Module):
         self.ffn = FeedForward(D_FFN) if is_dense else MixtureOfExperts()
         self.ffn_norm = RMSNorm(D_MODEL)
 
-        self.attn_res_proj = nn.Linear(D_MODEL, NUM_RES_BLOCKS)
+        self.attn_res_proj = nn.Parameter(torch.ones(D_MODEL))
         self.attn_res_norm = RMSNorm(D_MODEL)
-        self.ffn_res_proj = nn.Linear(D_MODEL, NUM_RES_BLOCKS)
+        self.ffn_res_proj = nn.Parameter(torch.ones(D_MODEL))
         self.ffn_res_norm = RMSNorm(D_MODEL)
 
     def forward(
