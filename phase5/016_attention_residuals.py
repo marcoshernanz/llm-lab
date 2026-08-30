@@ -420,8 +420,11 @@ class MixtureOfExperts(nn.Module):
 
 
 def block_attn_res(
-    blocks: list[torch.Tensor], partial_block: torch.Tensor, proj: nn.Linear, norm: RMSNorm
+    blocks: list[torch.Tensor], partial_block: torch.Tensor | None, proj: nn.Linear, norm: RMSNorm
 ):
+    q = proj.weight
+    k = torch.stack(blocks + ([partial_block] if partial_block is not None else []))
+    v = k
     pass
 
 
