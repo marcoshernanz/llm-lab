@@ -37,8 +37,8 @@ SEED = 1337
 CONV_WINDOW = 4
 G_MIN = -5.0
 DECAY_BIAS_INIT = -6.0
-CHUNK_SIZE = 16
-assert CHUNK_SIZE * -G_MIN < math.log(torch.finfo(torch.float32).max)
+CHUNK_SIZE = 8
+assert 2 * CHUNK_SIZE * -G_MIN < math.log(torch.finfo(torch.float32).max)
 
 CONTEXT_LEN = 256
 D_MODEL = 256
