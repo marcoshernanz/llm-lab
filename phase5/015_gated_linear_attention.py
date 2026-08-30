@@ -223,6 +223,7 @@ def delta_rule_chunked(
 
         K1 = K / cumulative_decay
         K2 = cumulative_decay * K
+        Q1 = cumulative_decay * Q
 
         q_t = q[:, :, step, :, None]  # [B, H, Dh, 1]
         k_t = k[:, :, step, :, None]  # [B, H, Dh, 1]
