@@ -208,9 +208,7 @@ def delta_rule_chunked(
     decay: torch.Tensor,  # [B, H, T, Dh]
 ) -> torch.Tensor:
     batch_size, num_heads, seq_len, head_dim = q.size()
-    state = torch.zeros(
-        batch_size, num_heads, head_dim, head_dim, device=q.device
-    )  # [B, H, Dh, Dh]
+    S = torch.zeros(batch_size, num_heads, head_dim, head_dim, device=q.device)  # [B, H, Dh, Dh]
     outputs = []
     for start in range(0, seq_len, CHUNK_SIZE):
         chunk = slice(start, start + CHUNK_SIZE)
