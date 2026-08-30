@@ -441,7 +441,7 @@ class DecoderBlock(nn.Module):
         """Return the residual output of one decoder block."""
         partial_block = hidden_state  # [B, T, Dh]
 
-        h = block_attn_res(blocks, partial_block)
+        h = block_attn_res(blocks, partial_block, self.attn_res_proj, self.attn_res_norm)
 
         x = x + self.attn(self.attn_norm(x))  # [B, T, D]
         x = x + self.ffn(self.ffn_norm(x))  # [B, T, D]
