@@ -168,8 +168,12 @@ def attend(
 
 
 def delta_rule(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, beta: torch.Tensor, decay: torch.Tensor
-) -> torch.Tensor:  # [B, H, T, Dh], [B, H, T, Dh], [B, H, T, Dh], [B, H, T], [B, H, T, Dh]
+    q: torch.Tensor,  # [B, H, T, Dh]
+    k: torch.Tensor,  #  [B, H, T, Dh]
+    v: torch.Tensor,  #  [B, H, T, Dh]
+    beta: torch.Tensor,  #  [B, H, T]
+    decay: torch.Tensor,  #  [B, H, T, Dh]
+) -> torch.Tensor:
     """Carry an associative memory along the sequence and read it with each query.
 
     The state maps keys to values. Every token decays it per channel, reads whatever is already
