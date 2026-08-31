@@ -24,6 +24,7 @@ Every run below is one seed (`1337`) on a Kaggle `Tesla T4`, `3000` steps, batch
 | P5-013 | [`phase5/013_attention_sinks.py`](../../phase5/013_attention_sinks.py) | `0.7984` | `+0.0011` | `14504832` | `2758.2` |
 | P5-014 | [`phase5/014_multi_token_prediction.py`](../../phase5/014_multi_token_prediction.py) | `0.7885` | `-0.0099` | `18709584` | `3488.4` |
 | P5-015 | [`phase5/015_gated_linear_attention.py`](../../phase5/015_gated_linear_attention.py) | `0.7706` | `-0.0179` | `19528032` | `5093.0` |
+| P5-016 | [`phase5/016_attention_residuals.py`](../../phase5/016_attention_residuals.py) | `0.7790` | `+0.0084` | `19538784` | `5602.2` |
 
 ## Reading The Ladder
 
@@ -961,4 +962,101 @@ exercises the forward, and the defect lived entirely in the backward.
 - **`l2_norm` has no epsilon**, so it returns `NaN` on a zero vector and its gradient reaches `2e8`
   at `||x|| = 4e-9`. That was not the cause here, since measured `||q_head||` ran from `0.55` to
   `1.85` and grew during training, but it is a latent hazard worth an epsilon.
+
+## P5-016 Milestone 516 Attention Residuals
+
+- Script: [`phase5/016_attention_residuals.py`](../../phase5/016_attention_residuals.py)
+- Total parameters: `19538784`
+- Inference parameters: `15331984`
+- Final train loss: `0.7492`
+- Final validation loss: `0.7790`
+- Wall-clock time: `5602.2s` on a Kaggle `T4`
+- `RES_BLOCK_SIZE = 2`, giving four block summaries plus the embedding
+
+What changed from `M-015`:
+
+- the plain residual connection is gone; each sublayer instead attends over the depth history,
+- every attention and feed-forward sublayer carries its own learnable pseudo-query and its own norm,
+- weights are `softmax` over `RMSNorm(source) @ query`, with **normalized keys and raw values**, so a
+  layer cannot dominate on output scale alone while the values keep the magnitudes the stream
+  carries,
+- layers are grouped into blocks of two, summed within a block and attended over across blocks,
+- the token embedding is the first source, so every sublayer keeps direct access to the raw input,
+- the final output aggregates all block summaries through one more pseudo-query.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.2487 val_loss=4.2439 seconds=29.4 expert_min=0.011 expert_max=0.022 expert_unused=0 bias_span=0.106
+step=250 train_loss=1.1620 val_loss=1.1628 seconds=493.3 expert_min=0.013 expert_max=0.022 expert_unused=0 bias_span=0.748
+step=500 train_loss=1.0041 val_loss=0.9930 seconds=961.3 expert_min=0.014 expert_max=0.019 expert_unused=0 bias_span=0.734
+step=750 train_loss=0.9293 val_loss=0.9329 seconds=1428.7 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.974
+step=1000 train_loss=0.8758 val_loss=0.8892 seconds=1891.0 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.972
+step=1250 train_loss=0.8442 val_loss=0.8681 seconds=2355.1 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.937
+step=1500 train_loss=0.8327 val_loss=0.8424 seconds=2816.9 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.935
+step=1750 train_loss=0.8123 val_loss=0.8288 seconds=3277.6 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.926
+step=2000 train_loss=0.7964 val_loss=0.8112 seconds=3739.9 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.925
+step=2250 train_loss=0.7831 val_loss=0.7898 seconds=4204.1 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.893
+step=2500 train_loss=0.7764 val_loss=0.7969 seconds=4668.0 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.855
+step=2750 train_loss=0.7546 val_loss=0.7771 seconds=5134.1 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.875
+step=3000 train_loss=0.7492 val_loss=0.7790 seconds=5602.2 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.833
+```
+
+Main lesson:
+
+- **The first mechanism in the ladder to make things worse at a genuinely matched budget.** Final
+  validation loss `0.7790` against `0.7706`, a delta of `+0.0084` for `+10752` parameters, which is
+  `0.06%`. Everything since `M-507` has been capacity-confounded; this one is not, so the sign of the
+  result is attributable to the mechanism.
+- **`+0.0084` is still inside single-seed resolution**, so the honest verdict is "no measurable
+  benefit, trending negative," not "attention residuals are harmful." What raises it above a coin
+  flip is the shape below, not the endpoint.
+- Cost is `1.10x` wall-clock, `5602.2s` against `5093.0s`.
+
+### It Helps Early And Hurts Late, And The Crossover Is Sharp
+
+| Step | 1 | 250 | 500 | 750 | 1500 | 3000 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `M-015` | `4.2513` | `1.1826` | `0.9935` | `0.9243` | `0.8285` | `0.7706` |
+| `M-016` | `4.2439` | `1.1628` | `0.9930` | `0.9329` | `0.8424` | `0.7790` |
+| delta | `-0.0074` | `-0.0198` | `-0.0005` | `+0.0086` | `+0.0139` | `+0.0084` |
+
+`M-016` is **ahead at every checkpoint through step `500` and behind at every checkpoint from `750`
+on**, all ten of them. That consistency is what makes the result worth recording despite a final
+delta inside noise: this is not scatter, it is a crossover.
+
+The plausible mechanism is the initialization. Every pseudo-query starts at zero, so the softmax
+over the depth history is **uniform** and each sublayer begins by reading the *mean* of the history
+rather than the accumulated sum a plain residual would hand it. Averaging is a gentler, better
+conditioned starting point, which fits the early lead. But it also means the mechanism has to
+*learn* its way back to something like a residual stream before it can beat one, and within `3000`
+steps it does not finish paying that back.
+
+This is worth separating from the mechanism failing outright. At `8` layers there are only four
+block summaries plus the embedding to choose between, so the depth-addressing that AttnRes exists to
+provide has very little to address. Kimi K3 runs it over `93` layers in `8` blocks of `12`, where a
+layer genuinely cannot reach layer `40`'s output through the accumulated sum. That problem does not
+exist here.
+
+### Routing Got Harder To Balance Again
+
+`bias_span` behaves as it did under bounded activations: it rises rather than decaying. `M-015` fell
+from `0.932` to `0.654`; `M-016` starts lower at `0.748`, peaks at `0.974` around step `750`, and
+ends at `0.833`, about `27%` higher than `M-015`.
+
+Load itself stays flat, at `0.014` to `0.017` against an ideal `0.0156` with nothing unused, so the
+balancer is doing its job. It simply has to push harder. That is now the second time a mechanism
+that changes what reaches the feed-forward block has made the router's raw preferences more
+concentrated, which is a pattern worth watching rather than a conclusion.
+
+### The Verdict The Roadmap Asked For
+
+The milestone's rule was to implement one residual-stream replacement, measure it, and keep it only
+if it earns its complexity at this scale. **It does not.** It costs `10%` wall-clock and a
+per-sublayer query and norm on every block, and it returns a loss that is slightly worse and a
+router that is slightly harder to balance.
+
+It stays in the ladder as a recorded negative result rather than being carried into the reference
+model. The mechanism is real, two frontier models ship a version of it, and the reason it does not
+pay here is legible: `8` layers is not deep enough for the depth bottleneck it removes to exist.
 
