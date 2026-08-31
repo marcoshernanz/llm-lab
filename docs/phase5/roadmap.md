@@ -37,8 +37,8 @@ For the run history, see [learning_log.md](learning_log.md).
 | 513 | Attention sinks | Let a head attend to nothing via a learnable logit in the denominator | done |
 | 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | done |
 | 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | done |
-| 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | next |
-| 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | planned |
+| 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | done |
+| 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | next |
 | 518 | Modern reference model | One integrated model plus the full ablation table | planned |
 
 ## Current Status
@@ -65,6 +65,7 @@ For the run history, see [learning_log.md](learning_log.md).
 | 513 attention sinks | `0.7984` | `+0.0011` | `14504832` | `2758.2` |
 | 514 multi-token prediction | `0.7885` | `-0.0099` | `18709584` | `3488.4` |
 | 515 gated linear attention | `0.7706` | `-0.0179` | `19528032` | `5093.0` |
+| 516 attention residuals | `0.7790` | `+0.0084` | `19538784` | `5602.2` |
 
 - **Two mechanisms account for almost everything.** Pre-norm is worth `-0.7980` and RoPE `-1.2291`,
   together `-2.03` of the total `-2.26`. Everything after them moves the loss by under `0.19`.
@@ -984,6 +985,16 @@ Plain hyper-connections do this and are numerically unstable when stacked. mHC's
 - Keep the `RMSNorm` inside the attention kernel. Removing it is the obvious "simplification" and it is the thing that makes the weights scale-invariant.
 - Parameter cost is one `d`-vector per layer — `8 × 128 = 1024` parameters. This is nearly free, which makes it an unusually clean comparison.
 - Memory cost is keeping all `L` layer outputs alive, so activation memory rises. Measure it.
+
+Status: complete via [`phase5/016_attention_residuals.py`](../../phase5/016_attention_residuals.py), recorded as `P5-016`.
+
+Main lesson:
+- **Does not earn its complexity at this scale, and it is the cleanest negative result in the ladder.** `+0.0084` for `+10752` parameters, `0.06%`, so unlike everything since `M-507` the sign is attributable to the mechanism rather than to capacity.
+- `+0.0084` is inside single-seed resolution, so the verdict is "no measurable benefit, trending negative" rather than "harmful". What lifts it above scatter is the **crossover**: `M-016` leads at every checkpoint through step `500` and trails at all ten checkpoints from `750` on.
+- **The likely cause is the zero-initialized pseudo-query.** A zero query means a uniform softmax, so each sublayer starts by reading the *mean* of its depth history rather than the accumulated sum a plain residual supplies. Averaging is better conditioned early, which fits the lead, but the mechanism then has to learn its way back to something residual-like before it can win, and `3000` steps is not enough to repay that.
+- **The deeper reason it cannot pay here is depth.** With `8` layers there are four block summaries plus the embedding to address between. K3 runs AttnRes across `93` layers in `8` blocks of `12`, where a layer genuinely cannot reach layer `40` through the accumulated sum. That bottleneck does not exist at this size.
+- Routing got harder to balance again: `bias_span` rises to `0.974` and ends `27%` above `M-015`, the second time a change to what reaches the feed-forward block has concentrated the router's raw preferences.
+- **Kept as a recorded negative result, not carried into the reference model.**
 
 ### Milestone 517: Muon Optimizer And Untied Embeddings
 Track: Optimization
