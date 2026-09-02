@@ -120,7 +120,9 @@ def newtonSchulz(x: torch.Tensor, n: int):
     x = x / torch.linalg.matrix_norm(x)
 
     for _ in range(n):
-        pass
+        x = a * x + b * (x @ x.mT) @ x + c * (x @ x.mT) ** 2 @ x
+
+    return x
 
 
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
