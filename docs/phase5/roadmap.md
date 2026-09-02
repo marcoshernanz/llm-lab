@@ -1026,8 +1026,8 @@ Kimi K3 refines further with **Per-Head Muon**: for attention projections, parti
 **Implementation decisions.**
 - **Write Newton-Schulz explicitly**, not imported. It is five lines and it is the entire mechanism.
 - Use the hybrid coefficient schedule: `8 + 2` iterations as above.
-- Rescale the update RMS so AdamW's learning rate stays reusable — DeepSeek rescales to `0.18`; the alternative published form is `√max(n,m) · γ`. Pick one and record which.
-- Parameter groups: **Muon** for all `2D` weights in attention, feed-forward, experts, and the router. **AdamW** for the embedding table, the output head, every RMSNorm gain, the attention sink logits, and the MoE bias buffer's neighbours. Justify each group in the log.
+- Rescale the update so AdamW's learning rate stays reusable. `UVᵀ` has per-entry RMS `1/√max(n,m)`, so multiplying by `0.18 · √max(n,m)` gives every Muon update an RMS of `0.18` regardless of shape — DeepSeek-V4's value. Recorded as `MUON_UPDATE_RMS`.
+- Parameter groups: **Muon** for every `nn.Linear` weight except the output head, which is exactly the set of matrices used as linear maps. **AdamW** for everything else: both vocabulary tables, every RMSNorm gain, the sink logits, the AttnRes pseudo-queries, the KDA decay biases, and the `ShortConv` filters — those last are stored `[D, W]` but are `D` independent filters, not a map, so `p.dim() == 2` is the wrong test.
 - Use Nesterov momentum and apply weight decay to Muon parameters, per both reports.
 - **Skip Per-Head Muon initially.** With `4` heads its benefit is small; implement it as the A/B if the main comparison is clean.
 - Untie the embeddings and expect this to **hurt or do nothing**. At a `98`-character vocabulary the output head is `98 × 128 = 12544` parameters and the tying constraint is nearly harmless; untying matters at a `160K` vocabulary where the two roles genuinely conflict. Predict the null result in advance and check it.
