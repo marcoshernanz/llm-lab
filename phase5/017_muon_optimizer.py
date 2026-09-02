@@ -115,6 +115,9 @@ class ShortConv(nn.Module):
 def newtonSchulz(x: torch.Tensor):
     x = x / torch.linalg.matrix_norm(x)
 
+    for _ in range(5):
+        pass
+
 
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
     """Scale each vector to unit length, so k k^T erases exactly what it should."""
