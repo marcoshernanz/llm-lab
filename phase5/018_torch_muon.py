@@ -1,4 +1,4 @@
-"""Phase 5 experiment 017: orthogonalized updates on the matrices, AdamW on everything else."""
+"""Phase 5 experiment 018: the same model, stepped by PyTorch's own Muon."""
 
 import math
 import time
@@ -71,9 +71,6 @@ DENSE_BLOCKS = 1
 BATCH_SIZE = 32
 LEARNING_RATE = 3e-3
 WEIGHT_DECAY = 0.01
-MUON_MOMENTUM = 0.95
-MUON_UPDATE_RMS = 0.18
-NEWTON_SCHULZ_SCHEDULE = ((8, (3.4445, -4.7750, 2.0315)), (2, (2.0, -1.5, 0.5)))
 GRAD_CLIP_NORM = 1.0
 TRAIN_STEPS = 3_000
 EVAL_INTERVAL = 250
@@ -572,51 +569,12 @@ class LanguageModel(nn.Module):
         return logits
 
 
-def newton_schulz(x: torch.Tensor) -> torch.Tensor:  # [n, m]
-    """Return the nearest orthogonal matrix to x, using matrix products only.
-
-    Every odd polynomial in x acts on its singular values alone and leaves its singular vectors
-    untouched, so each round pushes all the singular values toward 1 without moving anything else.
-    """
-    tall = x.size(0) > x.size(1)
-    if tall:
-        x = x.mT  # [m, n]
-    x = x / (torch.linalg.matrix_norm(x) + NORM_EPS)
-
-    for steps, (a, b, c) in NEWTON_SCHULZ_SCHEDULE:
-        for _ in range(steps):
-            gram = x @ x.mT  # [n, n], or [m, m] once transposed
-            x = a * x + b * (gram @ x) + c * (gram @ gram @ x)  # [n, m]
-    return x.mT if tall else x  # [n, m]
-
-
-class Muon:
-    """Step each weight matrix along every direction equally, not just along its largest few."""
-
-    def __init__(self, params: list[nn.Parameter], lr: float, weight_decay: float):
-        """Keep the matrices and one momentum buffer per matrix."""
-        self.params = params
-        self.lr = lr
-        self.weight_decay = weight_decay
-        self.momentum = [torch.zeros_like(p) for p in params]
-
-    @torch.no_grad()
-    def step(self) -> None:
-        """Orthogonalize the Nesterov momentum of every matrix and take one step along it."""
-        for i, weight in enumerate(self.params):  # [n, m]
-            if weight.grad is None:
-                continue
-            self.momentum[i] = MUON_MOMENTUM * self.momentum[i] + weight.grad  # [n, m]
-            lookahead = weight.grad + MUON_MOMENTUM * self.momentum[i]  # [n, m]
-            update = newton_schulz(lookahead) * MUON_UPDATE_RMS * math.sqrt(max(weight.shape))
-            weight -= self.lr * (update + self.weight_decay * weight)
-
-
-def build_optimizers(model: LanguageModel) -> list[Muon | torch.optim.AdamW]:
+def build_optimizers(model: LanguageModel) -> list[torch.optim.Optimizer]:
     """Put every linear map on Muon and everything else on AdamW.
 
     Orthogonalizing only makes sense for a matrix used as a map, so the two vocabulary tables,
-    the depthwise conv filters, and every vector stay on AdamW.
+    the depthwise conv filters, and every vector stay on AdamW. The rescale option makes each
+    Muon update the same size AdamW's would be, so both groups share one learning rate.
     """
     linear_weights = {
         id(module.weight) for module in model.modules() if isinstance(module, nn.Linear)
@@ -625,7 +583,9 @@ def build_optimizers(model: LanguageModel) -> list[Muon | torch.optim.AdamW]:
     matrices = [p for p in model.parameters() if id(p) in linear_weights]
     others = [p for p in model.parameters() if id(p) not in linear_weights]
     return [
-        Muon(matrices, lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY),
+        torch.optim.Muon(
+            matrices, lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, adjust_lr_fn="match_rms_adamw"
+        ),
         torch.optim.AdamW(others, lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY),
     ]
 
