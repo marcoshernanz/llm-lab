@@ -38,8 +38,9 @@ For the run history, see [learning_log.md](learning_log.md).
 | 514 | Multi-token prediction | A sequential auxiliary head that predicts token `t+2` | done |
 | 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | done |
 | 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | done |
-| 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | next |
-| 518 | Modern reference model | One integrated model plus the full ablation table | planned |
+| 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | done |
+| 518 | Library Muon | The same model stepped by `torch.optim.Muon`, to see what the library changes | next |
+| 519 | Modern reference model | One integrated model plus the full ablation table | planned |
 
 ## Current Status
 
@@ -209,10 +210,10 @@ That matters here. It means the attention-layout milestones are **measurements, 
 
 ## Target Architecture
 
-This is the frozen end state for milestone 518.
+This is the frozen end state for milestone 519.
 Every milestone before it is a step along one of these rows.
 
-| Component | Vanilla start (M-501) | Phase-5 end state (M-518) |
+| Component | Vanilla start (M-501) | Phase-5 end state (M-519) |
 | --- | --- | --- |
 | Normalization | LayerNorm, post-norm, biases everywhere | RMSNorm, pre-norm plus final norm, no biases anywhere |
 | Positions | learned absolute position embedding | RoPE on local layers, NoPE on global layers |
@@ -1033,12 +1034,31 @@ Kimi K3 refines further with **Per-Head Muon**: for attention projections, parti
 - Untie the embeddings and expect this to **hurt or do nothing**. At a `98`-character vocabulary the output head is `98 × 128 = 12544` parameters and the tying constraint is nearly harmless; untying matters at a `160K` vocabulary where the two roles genuinely conflict. Predict the null result in advance and check it.
 - Do **not** adopt QK-Clip. `M-507` already installed QK-Norm, and DeepSeek-V4 states explicitly that RMSNorm on queries and KV entries is why they dropped QK-Clip from their Muon implementation.
 
-### Milestone 518: Modern Reference Model
+### Milestone 518: Library Muon
+Track: Optimization
+
+**Goal.** Keep the 517 model and parameter split exactly as they are, and replace the hand-written optimizer with `torch.optim.Muon`, which PyTorch added in 2.9.
+
+**Why a separate milestone.** 517 exists to see the mechanism; this one exists to see what a library implementation of the same mechanism decides differently, and to learn the API that production code will call. Both matter and they are different lessons, so they get different files.
+
+**What the library does differently.** Reading the source of `torch/optim/_muon.py`:
+- Newton–Schulz runs in **bfloat16**, cast in and back out. Three significant digits is enough for an optimizer direction and it halves the matmul cost.
+- **Five iterations of one coefficient set**, Keller Jordan's `(3.4445, -4.7750, 2.0315)`. There is no settling phase, so singular values land in a band around 1 rather than at it. The docstring says so and cites the empirical finding that this does not hurt.
+- The rescale is `0.2 · √max(A, B)`, Moonshot's value, selected with `adjust_lr_fn="match_rms_adamw"`. DeepSeek-V4's `0.18` is not expressible without wrapping the class, so the milestone uses `0.2` and notes the difference.
+- Momentum is the exponential-moving-average form via `lerp_`, which is the 517 form times a constant that the Frobenius normalization erases.
+- It rejects any non-2D parameter at construction, which is a free check that the split in `build_optimizers` is right.
+
+**Implementation decisions.**
+- Nothing in the model changes. The diff against 517 should be the optimizer section and the constants it consumed, and nothing else.
+- Use the library's defaults for momentum and Newton–Schulz; the point is to run the library as shipped.
+- Watch the wall-clock. bfloat16 matmul has no native tensor-core path on the T4, so the cast may cost more than it saves there.
+
+### Milestone 519: Modern Reference Model
 Track: Integration
 
 **Goal.** Produce one integrated model containing every mechanism that earned its place, plus the ablation table for the whole phase.
 
-**The problem.** Seventeen incremental scripts is a ladder, not an architecture. Each milestone was measured against its immediate predecessor, which means the errors compound and no single run demonstrates the whole thing. There is also no artifact for phase 4 to profile.
+**The problem.** Eighteen incremental scripts is a ladder, not an architecture. Each milestone was measured against its immediate predecessor, which means the errors compound and no single run demonstrates the whole thing. There is also no artifact for phase 4 to profile.
 
 **What the field does.** Every technical report read for this roadmap ends the same way: one frozen configuration table, one ablation study, and an honest section on what did not work. DeepSeek-V4's "Mitigating Training Instability" section — publishing two fixes while admitting "a comprehensive theoretical understanding of their underlying mechanisms remains an open question" — is the model to imitate.
 
@@ -1063,7 +1083,7 @@ Track: Integration
 
 ## Recommended Order
 
-The intended order is exactly `501` through `518`.
+The intended order is exactly `501` through `519`.
 
 The order is not arbitrary:
 
