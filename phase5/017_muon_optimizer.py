@@ -113,6 +113,10 @@ class ShortConv(nn.Module):
 
 
 def newtonSchulz(x: torch.Tensor):
+    a = 3.4445
+    b = -4.7750
+    c = 2.0315
+
     x = x / torch.linalg.matrix_norm(x)
 
     for _ in range(5):
