@@ -603,14 +603,13 @@ class Muon:
     @torch.no_grad()
     def step(self) -> None:
         """Orthogonalize the Nesterov momentum of every matrix and take one step along it."""
-        for weight, momentum in zip(self.params, self.momentum):  # [n, m] each
+        for i, weight in enumerate(self.params):  # [n, m]
             if weight.grad is None:
                 continue
-            momentum.lerp_(weight.grad, 1 - MUON_MOMENTUM)
-            lookahead = weight.grad.lerp(momentum, MUON_MOMENTUM)  # [n, m]
+            self.momentum[i] = MUON_MOMENTUM * self.momentum[i] + weight.grad  # [n, m]
+            lookahead = weight.grad + MUON_MOMENTUM * self.momentum[i]  # [n, m]
             update = newton_schulz(lookahead) * MUON_UPDATE_RMS * math.sqrt(max(weight.shape))
-            weight.mul_(1 - self.lr * self.weight_decay)
-            weight.add_(update, alpha=-self.lr)
+            weight -= self.lr * (update + self.weight_decay * weight)
 
 
 def build_optimizers(model: LanguageModel) -> list[Muon | torch.optim.AdamW]:
