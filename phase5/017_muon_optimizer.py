@@ -70,6 +70,10 @@ DENSE_BLOCKS = 1
 
 BATCH_SIZE = 32
 LEARNING_RATE = 3e-3
+WEIGHT_DECAY = 0.01
+MUON_MOMENTUM = 0.95
+MUON_UPDATE_RMS = 0.18
+NEWTON_SCHULZ_SCHEDULE = ((8, (3.4445, -4.7750, 2.0315)), (2, (2.0, -1.5, 0.5)))
 GRAD_CLIP_NORM = 1.0
 TRAIN_STEPS = 3_000
 EVAL_INTERVAL = 250
@@ -110,19 +114,6 @@ class ShortConv(nn.Module):
         """Return each position blended with the CONV_WINDOW - 1 positions before it."""
         padded = F.pad(x.mT, (CONV_WINDOW - 1, 0))  # [B, D, T+W-1]
         return F.conv1d(padded, self.weight[:, None], groups=x.size(-1)).mT  # [B, T, D]
-
-
-def newtonSchulz(x: torch.Tensor, n: int):
-    a = 3.4445
-    b = -4.7750
-    c = 2.0315
-
-    x = x / torch.linalg.matrix_norm(x)
-
-    for _ in range(n):
-        x = a * x + b * (x @ x.mT) @ x + c * (x @ x.mT) ** 2 @ x
-
-    return x
 
 
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
@@ -554,16 +545,13 @@ class LanguageModel(nn.Module):
     """Embed tokens, run the decoder, and predict the next token and a few beyond it."""
 
     def __init__(self, vocab_size: int):
-        """Create the embedding table, the decoder stack, and the prediction heads."""
+        """Create the embedding table, the decoder stack, the prediction heads, and the output head."""
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, D_MODEL)
         self.decoder = Decoder()
         self.predictors = nn.ModuleList([MultiTokenPredictor() for _ in range(MTP_DEPTH)])
+        self.lm_head = nn.Linear(D_MODEL, vocab_size, bias=False)
         self.apply(init_weights)
-
-    def decode(self, hidden: torch.Tensor) -> torch.Tensor:  # [B, T, D]
-        """Read logits out of a hidden state through the shared embedding table."""
-        return hidden @ self.embed_tokens.weight.T  # [B, T, V]
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:  # [B, T+MTP_DEPTH]
         """Return next-token logits, then one further-ahead prediction per depth.
@@ -573,15 +561,74 @@ class LanguageModel(nn.Module):
         """
         embeddings = self.embed_tokens(x)  # [B, T+MTP_DEPTH, D]
         hidden = self.decoder(embeddings[:, :CONTEXT_LEN])  # [B, T, D]
-        logits = [self.decode(hidden)]  # [B, T, V]
+        logits = [self.lm_head(hidden)]  # [B, T, V]
 
         if not self.training:
             return logits
 
         for depth, predictor in enumerate(self.predictors, start=1):
             hidden = predictor(hidden, embeddings[:, depth : depth + CONTEXT_LEN])  # [B, T, D]
-            logits.append(self.decode(hidden))  # [B, T, V]
+            logits.append(self.lm_head(hidden))  # [B, T, V]
         return logits
+
+
+def newton_schulz(x: torch.Tensor) -> torch.Tensor:  # [n, m]
+    """Return the nearest orthogonal matrix to x, using matrix products only.
+
+    Every odd polynomial in x acts on its singular values alone and leaves its singular vectors
+    untouched, so each round pushes all the singular values toward 1 without moving anything else.
+    """
+    tall = x.size(0) > x.size(1)
+    if tall:
+        x = x.mT  # [m, n]
+    x = x / (torch.linalg.matrix_norm(x) + NORM_EPS)
+
+    for steps, (a, b, c) in NEWTON_SCHULZ_SCHEDULE:
+        for _ in range(steps):
+            gram = x @ x.mT  # [n, n], or [m, m] once transposed
+            x = a * x + b * (gram @ x) + c * (gram @ gram @ x)  # [n, m]
+    return x.mT if tall else x  # [n, m]
+
+
+class Muon:
+    """Step each weight matrix along every direction equally, not just along its largest few."""
+
+    def __init__(self, params: list[nn.Parameter], lr: float, weight_decay: float):
+        """Keep the matrices and one momentum buffer per matrix."""
+        self.params = params
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.momentum = [torch.zeros_like(p) for p in params]
+
+    @torch.no_grad()
+    def step(self) -> None:
+        """Orthogonalize the Nesterov momentum of every matrix and take one step along it."""
+        for weight, momentum in zip(self.params, self.momentum):  # [n, m] each
+            if weight.grad is None:
+                continue
+            momentum.lerp_(weight.grad, 1 - MUON_MOMENTUM)
+            lookahead = weight.grad.lerp(momentum, MUON_MOMENTUM)  # [n, m]
+            update = newton_schulz(lookahead) * MUON_UPDATE_RMS * math.sqrt(max(weight.shape))
+            weight.mul_(1 - self.lr * self.weight_decay)
+            weight.add_(update, alpha=-self.lr)
+
+
+def build_optimizers(model: LanguageModel) -> list[Muon | torch.optim.AdamW]:
+    """Put every linear map on Muon and everything else on AdamW.
+
+    Orthogonalizing only makes sense for a matrix used as a map, so the two vocabulary tables,
+    the depthwise conv filters, and every vector stay on AdamW.
+    """
+    linear_weights = {
+        id(module.weight) for module in model.modules() if isinstance(module, nn.Linear)
+    }
+    linear_weights.discard(id(model.lm_head.weight))
+    matrices = [p for p in model.parameters() if id(p) in linear_weights]
+    others = [p for p in model.parameters() if id(p) not in linear_weights]
+    return [
+        Muon(matrices, lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY),
+        torch.optim.AdamW(others, lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY),
+    ]
 
 
 def load_text(split: str) -> str:
@@ -672,7 +719,7 @@ def main() -> None:
     val_tokens = encode(val_text, stoi)
 
     model = LanguageModel(len(chars)).to(DEVICE)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    optimizers = build_optimizers(model)
     parameters = sum(p.numel() for p in model.parameters())
     predictor_parameters = sum(p.numel() for p in model.predictors.parameters())
     print(
@@ -685,10 +732,11 @@ def main() -> None:
         inputs, targets = sample_batch(train_tokens)
         loss, _ = loss_fn(model(inputs), targets)
 
-        optimizer.zero_grad()
+        model.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
-        optimizer.step()
+        for optimizer in optimizers:
+            optimizer.step()
 
         if step == 1 or step % EVAL_INTERVAL == 0:
             train_loss = estimate_loss(model, train_tokens)
