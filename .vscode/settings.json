@@ -22,6 +22,7 @@
     "Nesterov",
     "numel",
     "Orthogonalize",
+    "orthogonalized",
     "pmean",
     "randint",
     "rebalance",
