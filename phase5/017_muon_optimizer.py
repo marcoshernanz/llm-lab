@@ -112,6 +112,10 @@ class ShortConv(nn.Module):
         return F.conv1d(padded, self.weight[:, None], groups=x.size(-1)).mT  # [B, T, D]
 
 
+def newtonSchulz():
+    pass
+
+
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
     """Scale each vector to unit length, so k k^T erases exactly what it should."""
     return x / torch.linalg.norm(x, dim=-1, keepdim=True)  # [..., dim]
