@@ -112,8 +112,8 @@ class ShortConv(nn.Module):
         return F.conv1d(padded, self.weight[:, None], groups=x.size(-1)).mT  # [B, T, D]
 
 
-def newtonSchulz():
-    pass
+def newtonSchulz(x: torch.Tensor):
+    x = x / torch.linalg.matrix_norm(x)
 
 
 def l2_norm(x: torch.Tensor) -> torch.Tensor:  # [..., dim]
