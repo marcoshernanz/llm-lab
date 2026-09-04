@@ -25,6 +25,8 @@ Every run below is one seed (`1337`) on a Kaggle `Tesla T4`, `3000` steps, batch
 | P5-014 | [`phase5/014_multi_token_prediction.py`](../../phase5/014_multi_token_prediction.py) | `0.7885` | `-0.0099` | `18709584` | `3488.4` |
 | P5-015 | [`phase5/015_gated_linear_attention.py`](../../phase5/015_gated_linear_attention.py) | `0.7706` | `-0.0179` | `19528032` | `5093.0` |
 | P5-016 | [`phase5/016_attention_residuals.py`](../../phase5/016_attention_residuals.py) | `0.7790` | `+0.0084` | `19538784` | `5602.2` |
+| P5-017 | [`phase5/017_muon_optimizer.py`](../../phase5/017_muon_optimizer.py) | `0.6827` | `-0.0963` | `19563872` | `13597.8` |
+| P5-018 | [`phase5/018_torch_muon.py`](../../phase5/018_torch_muon.py) | `0.6813` | `-0.0014` | `19563872` | `8346.4` |
 
 ## Reading The Ladder
 
@@ -52,6 +54,14 @@ Two caveats that apply to every row:
 - **`3000` steps is not convergence.** Every run except the collapsed baseline was still improving
   at the final checkpoint, by between `0.019` and `0.138` over the last `500` steps. The ladder
   compares architectures at a fixed budget, not at their best.
+- **Neither the data order nor the validation windows are matched across milestones.** Validation
+  loss is the mean over `32` freshly sampled `256`-token windows at every checkpoint (about `16%` of
+  the split, different windows each time), and because each architecture consumes the RNG
+  differently at initialization, no two milestones train on the same batch sequence. Bit-exact
+  reproducibility holds per script, not across scripts, so every delta in the table carries
+  data-order and eval-sampling variance on top of the seed variance. Measured on 2026-09-04: three
+  seeds of the untied-AdamW `016` model spread `0.013` in validation loss and `0.12` in final
+  `bias_span`; three seeds of `018` spread `0.006` and `0.06`.
 
 ## P5-001 Milestone 501 Vanilla Decoder Baseline
 
@@ -1059,4 +1069,189 @@ router that is slightly harder to balance.
 It stays in the ladder as a recorded negative result rather than being carried into the reference
 model. The mechanism is real, two frontier models ship a version of it, and the reason it does not
 pay here is legible: `8` layers is not deep enough for the depth bottleneck it removes to exist.
+
+## P5-017 Milestone 517 Muon Optimizer And Untied Embeddings
+
+- Script: [`phase5/017_muon_optimizer.py`](../../phase5/017_muon_optimizer.py)
+- Total parameters: `19563872`
+- Inference parameters: `15357072`
+- Final train loss: `0.6462`
+- Final validation loss: `0.6827`
+- Wall-clock time: `13597.8s` on a Kaggle `T4`
+- `MUON_MOMENTUM = 0.95`, `MUON_UPDATE_RMS = 0.18`, Newton-Schulz `8 + 2` hybrid schedule,
+  `WEIGHT_DECAY = 0.01`
+
+What changed from `M-016`:
+
+- every `nn.Linear` weight except the output head is stepped by a hand-written Muon: Nesterov
+  momentum, orthogonalized by ten Newton-Schulz iterations, rescaled so the update has RMS `0.18`,
+  with decoupled weight decay,
+- the embedding table, the output head, every norm gain, the depthwise conv filters, the sink
+  logits, the pseudo-queries, and the decay bias stay on AdamW,
+- both optimizers share the one control learning rate, which the RMS rescale is what makes possible,
+- the input and output embeddings are untied, adding a `98 x 256` output head and `25088` parameters,
+- weight decay stays at `0.01`, which is what AdamW's default had been applying in every earlier
+  milestone, so it is not a second variable.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.0810 val_loss=4.0782 seconds=31.8 expert_min=0.009 expert_max=0.021 expert_unused=0 bias_span=0.107
+step=250 train_loss=0.9755 val_loss=0.9831 seconds=1158.9 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.539
+step=500 train_loss=0.8722 val_loss=0.8707 seconds=2287.7 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.511
+step=750 train_loss=0.8148 val_loss=0.8260 seconds=3425.9 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.443
+step=1000 train_loss=0.7696 val_loss=0.7909 seconds=4565.1 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.469
+step=1250 train_loss=0.7400 val_loss=0.7695 seconds=5698.3 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.377
+step=1500 train_loss=0.7241 val_loss=0.7419 seconds=6827.8 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.358
+step=1750 train_loss=0.7089 val_loss=0.7308 seconds=7952.5 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.387
+step=2000 train_loss=0.6927 val_loss=0.7146 seconds=9077.8 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.435
+step=2250 train_loss=0.6798 val_loss=0.6942 seconds=10207.1 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.340
+step=2500 train_loss=0.6732 val_loss=0.6990 seconds=11338.4 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.333
+step=2750 train_loss=0.6550 val_loss=0.6847 seconds=12465.2 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.317
+step=3000 train_loss=0.6462 val_loss=0.6827 seconds=13597.8 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.310
+```
+
+Main lesson:
+
+- **The largest gain since RoPE, and by a wide margin.** `0.6827` against `M-016`'s `0.7790` is
+  `-0.0963`; against the previous best, `M-015` at `0.7706`, it is `-0.0879`. Nothing between
+  `M-504` and here moved the loss by more than `0.19`, and most moved it by under `0.03`. This is
+  five times the single-seed noise floor and it holds at **every** checkpoint.
+- **Muon reaches AdamW's final loss by step `1250`, `42%` of the budget.** That is the honest way to
+  read an optimizer result: not "lower at the end" but "the same place, much sooner." Everything
+  after step `1250` is ground AdamW never covered in `3000` steps.
+- **The cost is severe: `2.43x` wall-clock, `13598s`, nearly four hours.** The optimizer alone adds
+  about `2.7s` per step. That is a Python loop over `1843` weight matrices, each running ten
+  Newton-Schulz iterations of three matrix products, one matrix at a time. Production Muon batches
+  the matrices and fuses the iterations; this implementation deliberately does neither, because the
+  point was to write the five lines that are the mechanism. The cost is the price of legibility, and
+  it is stated rather than hidden.
+- **Routing got dramatically easier to balance.** `bias_span` ends at `0.310` against `0.833` under
+  AdamW, the lowest of any run since balancing was introduced. Orthogonalized updates spread the
+  router's own weights across directions evenly, and its raw preferences come out less
+  concentrated. That is a second-order effect of the optimizer on a mechanism it was never aimed at.
+
+### Two Things Changed, And Only One Of Them Matters
+
+This milestone moved the optimizer and untied the embeddings at once, which the roadmap chose
+deliberately: a tied embedding would have to sit on Muon and AdamW simultaneously, so the optimizer
+split forces the question. But it means the `-0.0963` is not cleanly attributable.
+
+The roadmap also predicted the untying half in advance: at a `98`-character vocabulary the output
+head is `25088` parameters and the tying constraint is nearly harmless, so untying should *hurt or do
+nothing*. The gain is therefore almost certainly the optimizer, and the untying is along for the
+ride. The clean control is `M-016` with untied embeddings and AdamW, and it has not been run.
+
+### What This Does To Every Earlier Comparison
+
+This is why the optimizer was placed last. Every result from `M-505` through `M-516` was measured
+under AdamW, and several of them — GQA, SwiGLU, hybrid attention, latent attention, sparsity,
+bounded activations, sinks — came out inside noise. **Those verdicts are conditional on the
+optimizer.** A mechanism that AdamW could not exploit in `3000` steps may be one Muon can, and a
+mechanism that looked free under AdamW may not be free under an optimizer that reaches a lower
+basin. The ladder's earlier rows are correct as measurements and provisional as conclusions, and
+this run is the reason.
+
+The right response is not to rerun the ladder under Muon — that would be a second ladder — but to
+keep this caveat attached to every "inside noise" claim above it.
+
+## P5-018 Milestone 518 Library Muon
+
+- Script: [`phase5/018_torch_muon.py`](../../phase5/018_torch_muon.py)
+- Total parameters: `19563872`, identical to `M-017`
+- Inference parameters: `15357072`
+- Final train loss: `0.6460`
+- Final validation loss: `0.6813`
+- Wall-clock time: `8346.4s` on a Kaggle `T4`
+- `torch.optim.Muon` with `adjust_lr_fn="match_rms_adamw"`, `ns_steps=5`, one coefficient set
+
+What changed from `M-017`:
+
+- the hand-written `newton_schulz` and `Muon` class are deleted and replaced by `torch.optim.Muon`,
+- the parameter split is unchanged: the same `1843` linear maps on Muon, the same `111` tensors on
+  AdamW, verified to the parameter,
+- the library runs five Newton-Schulz iterations with Keller's single coefficient set, where `M-017`
+  ran DeepSeek's `8 + 2` hybrid schedule,
+- the library rescales with Moonshot's `match_rms_adamw` rule, where `M-017` rescaled to an RMS of
+  `0.18`,
+- nothing about the model changed at all.
+
+Logged checkpoints:
+
+```text
+step=1 train_loss=4.0813 val_loss=4.0784 seconds=29.6 expert_min=0.009 expert_max=0.021 expert_unused=0 bias_span=0.107
+step=250 train_loss=0.9699 val_loss=0.9799 seconds=728.7 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.706
+step=500 train_loss=0.8689 val_loss=0.8682 seconds=1425.6 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.671
+step=750 train_loss=0.8091 val_loss=0.8223 seconds=2121.6 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.560
+step=1000 train_loss=0.7646 val_loss=0.7856 seconds=2815.5 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.502
+step=1250 train_loss=0.7341 val_loss=0.7630 seconds=3509.9 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.441
+step=1500 train_loss=0.7184 val_loss=0.7331 seconds=4209.4 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.429
+step=1750 train_loss=0.7051 val_loss=0.7240 seconds=4899.6 expert_min=0.014 expert_max=0.016 expert_unused=0 bias_span=0.385
+step=2000 train_loss=0.6900 val_loss=0.7119 seconds=5586.6 expert_min=0.014 expert_max=0.018 expert_unused=0 bias_span=0.465
+step=2250 train_loss=0.6773 val_loss=0.6918 seconds=6276.6 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.378
+step=2500 train_loss=0.6717 val_loss=0.6962 seconds=6967.2 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.352
+step=2750 train_loss=0.6545 val_loss=0.6832 seconds=7657.6 expert_min=0.014 expert_max=0.017 expert_unused=0 bias_span=0.512
+step=3000 train_loss=0.6460 val_loss=0.6813 seconds=8346.4 expert_min=0.015 expert_max=0.017 expert_unused=0 bias_span=0.411
+```
+
+Main lesson:
+
+- **The hand-written Muon is validated.** `0.6813` against `0.6827` is `-0.0014`, an order of
+  magnitude inside single-seed resolution, from an identical initialization: the two runs agree to
+  four decimals at step `1` (`4.0782` and `4.0784`) and never drift more than `0.0088` apart. Two
+  implementations with different iteration counts, different coefficient schedules, and different
+  rescale rules landed in the same place. That is the strongest evidence available that `M-017`'s
+  five lines are a correct Muon and not a lucky one.
+- **The library is `1.63x` faster**, `8346s` against `13598s`. The optimizer's per-step cost drops
+  from about `2.7s` to about `0.9s`. Half of that is five Newton-Schulz iterations instead of ten;
+  the rest is that the library runs the iteration in bfloat16 with fused `addmm`s. It is still a
+  single-tensor Python loop over the `1843` matrices (torch 2.11 has no `foreach` path for `Muon`),
+  so the mechanism is the same; only the per-iteration cost moved.
+- **`018` is a hair lower at all twelve post-initialization checkpoints**, by between `0.001` and
+  `0.009`. That consistency is suggestive of a real, tiny edge — Moonshot's rescale, or five sharper
+  iterations doing enough — but every one of those gaps is well inside noise and none should be
+  claimed.
+- Routing balance is comparable but noisier: `bias_span` ends at `0.411` against `0.310`, bouncing
+  between `0.35` and `0.51` late in training where `M-017` decayed smoothly.
+
+### Why This Milestone Exists
+
+The roadmap insisted the Newton-Schulz be written out rather than imported, because the iteration
+*is* the mechanism and importing it would have taught nothing. This milestone is the other half of
+that bargain: having written it, check it against the reference. The check passed, and it also
+answered a practical question — DeepSeek's `8 + 2` hybrid schedule buys nothing measurable over
+Keller's five iterations at this scale, while costing roughly double the optimizer time.
+
+Going forward the library version is the one to run. `M-017` stays in the ladder as the
+implementation that explains what `torch.optim.Muon` is doing.
+
+### Seed Variance And The Two Missing Controls (2026-09-04)
+
+Four runs on the `018` model and four on the `016` architecture with an untied output head, all
+on the same T4 control, settle what the single-seed ladder could not:
+
+| Run | Seed | Val loss | `bias_span` at 250 / 1250 / 3000 |
+| --- | ---: | ---: | --- |
+| `016` untied, AdamW everywhere | 1337 | `0.7781` | `0.656` / `0.679` / `0.757` |
+| `016` untied, AdamW everywhere | 1338 | `0.7827` | `0.654` / `0.866` / `0.873` |
+| `016` untied, AdamW everywhere | 1339 | `0.7699` | `0.785` / `0.914` / `0.858` |
+| `018`, routers on AdamW, Muon elsewhere | 1337 | `0.6783` | `0.873` / `0.779` / `0.285` |
+| `018` (router on Muon) | 1337 | `0.6813` | `0.706` / `0.441` / `0.411` |
+| `018` (router on Muon) | 1338 | `0.6752` | `0.734` / `0.656` / `0.400` |
+| `018` (router on Muon) | 1339 | `0.6791` | `0.692` / `0.447` / `0.462` |
+
+- **Untying is null under AdamW**: `0.7781` against `0.7790` tied, as the roadmap predicted for a
+  `98`-symbol vocabulary. The whole `-0.0963` of `M-017` is the optimizer's.
+- **Seed spread**: AdamW `0.013` in loss and `0.12` in final `bias_span`; Muon `0.006` and `0.06`.
+  The Muon loss gain (`0.098`) is eight times the larger spread; the `bias_span` gap (`0.83`
+  against `0.42` at three seeds each) is several times the spread and the two arms do not overlap.
+- **Loss is indifferent to the router's optimizer** (`0.6783` with routers on AdamW), and the late
+  collapse of `bias_span` survives it (`0.285`). What the router's optimizer changes is the early
+  trajectory: `0.873` at step `250` with the router on AdamW against `0.706` and `0.539` with the
+  router on Muon (`018` and `017`). The balancer's reduced effort under Muon therefore comes mostly
+  from the experts and backbone, which is the observation the 2026–27 TFG is built on.
+- Two of the Muon seeds show a mid-run bounce in `bias_span` (`0.656` at step `1250` for seed
+  `1338`), so the honest summary statistic is the span integrated over training, not its last value.
+
+Scripts and logs: `experiments/tfg/revalidation-2026-09/t4-pilots/`.
 
