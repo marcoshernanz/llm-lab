@@ -39,12 +39,12 @@ For the run history, see [learning_log.md](learning_log.md).
 | 515 | Gated linear attention with a delta rule | Replace sliding-window layers with a KDA-style recurrence | done |
 | 516 | Residual-stream upgrade | Let each layer attend over the outputs of all preceding layers | done |
 | 517 | Muon optimizer | Orthogonalized updates on 2D matrices, AdamW on everything else | done |
-| 518 | Library Muon | The same model stepped by `torch.optim.Muon`, to see what the library changes | next |
-| 519 | Modern reference model | One integrated model plus the full ablation table | planned |
+| 518 | Library Muon | The same model stepped by `torch.optim.Muon`, to see what the library changes | done |
+| 519 | Modern reference model | One integrated model plus the full ablation table | next |
 
 ## Current Status
 
-- Milestones 501 through 510 are complete and recorded as `P5-001` through `P5-010`.
+- Milestones 501 through 518 are complete and recorded as `P5-001` through `P5-018`; 519 is next.
 - All runs live on a Kaggle `Tesla T4` at seed `1337`, which reproduces bit-exactly. Local `mps` is
   not reproducible, two identical runs diverging by up to `0.053` validation loss, so a results
   table must live on one platform.
@@ -67,6 +67,8 @@ For the run history, see [learning_log.md](learning_log.md).
 | 514 multi-token prediction | `0.7885` | `-0.0099` | `18709584` | `3488.4` |
 | 515 gated linear attention | `0.7706` | `-0.0179` | `19528032` | `5093.0` |
 | 516 attention residuals | `0.7790` | `+0.0084` | `19538784` | `5602.2` |
+| 517 Muon, untied embeddings | `0.6827` | `-0.0963` | `19563872` | `13597.8` |
+| 518 library Muon | `0.6813` | `-0.0014` | `19563872` | `8346.4` |
 
 - **Two mechanisms account for almost everything.** Pre-norm is worth `-0.7980` and RoPE `-1.2291`,
   together `-2.03` of the total `-2.26`. Everything after them moves the loss by under `0.19`.
@@ -216,7 +218,7 @@ Every milestone before it is a step along one of these rows.
 | Component | Vanilla start (M-501) | Phase-5 end state (M-519) |
 | --- | --- | --- |
 | Normalization | LayerNorm, post-norm, biases everywhere | RMSNorm, pre-norm plus final norm, no biases anywhere |
-| Positions | learned absolute position embedding | RoPE on local layers, NoPE on global layers |
+| Positions | learned absolute position embedding | decoupled RoPE on the global MLA layers (rope dims only); the KDA local layers carry no positional encoding (as implemented from 009 and 015; the original plan said the reverse) |
 | Attention layout | dense multi-head attention in every layer | `3` local to `1` global, last layer always global |
 | Local mixer | — | gated linear attention with a delta-rule update |
 | Global mixer | — | gated MLA, QK-Norm, output gate, learnable attention sink |
@@ -270,12 +272,12 @@ implementation does, and the ladder simply did not have it until it was audited.
 Model size envelope:
 
 - Embedding dim: `256`
-- Attention heads: `8` query, `4` key/value, head dim `32`
+- Attention heads: `8` query, `4` key/value, head dim `32` (the key/value head count applies to the GQA layers through 014; from 015 the local layers are KDA with `8` full heads and the global layers are MLA)
 - Decoder blocks: `8`, divisible by four so the 3:1 hybrid pattern is exact
 - Dense feed-forward hidden dim: `4 * D_MODEL`, narrowing to `8 * D_MODEL // 3` once gated
 - Rope dims per score head: `D_HEAD // 2`
 - Latent dim on global layers: `64`
-- Experts: `128` wide routed, `128` wide shared
+- Experts: `128` wide routed, `128` wide shared in 510; `64` experts of width `32` plus a `128`-wide shared expert from 511 onward
 - Roughly `6.4M` parameters at the vanilla starting point, `8.9M` once sparse
 
 **A constant is written as a formula only when the formula is the real convention.** `4 * D_MODEL`
@@ -487,7 +489,7 @@ Track: Attention
 **The solution that won.** Interpolate. Partition `H_q` query heads into `H_kv` groups; every head in a group shares one K/V head. `H_kv = H_q` is plain MHA, `H_kv = 1` is MQA, and everything between is GQA. Cache shrinks by `H_q / H_kv` while each query head keeps its own query projection and thus its own view. Empirically quality is close to MHA at `H_kv` around `8`, which is why essentially every open model from 2023 onward ships GQA as the floor.
 
 **Implementation decisions.**
-- `NUM_Q_HEADS = 4`, `NUM_KV_HEADS = 2`, group size `2`.
+- `NUM_Q_HEADS = 8`, `NUM_KV_HEADS = 4`, group size `2` (an earlier draft used 4/2).
 - Expand with `repeat_interleave`, **not** `repeat`. `repeat_interleave` produces group-contiguous pairing (`[k0, k0, k1, k1]`), matching HuggingFace; `repeat` produces `[k0, k1, k0, k1]` and pairs the wrong heads. Note that `x.repeat(n, dim=2)` is not even a valid call — `Tensor.repeat` does not take a `dim`.
 - Expect **no quality signal** at this scale. Training has no KV cache, so the mechanism's entire benefit is invisible here. Report the cache arithmetic explicitly instead; that is the actual deliverable.
 
@@ -754,7 +756,7 @@ One pass, no step size. The mean-subtraction removes a common offset that would 
 - Register `expert_bias` as a **buffer, not a parameter** — it must never receive a gradient.
 - The `topk` no longer returns the weights. Select on `scores + bias`, then `gather` the weights from raw `scores`. Conflating these silently reintroduces the distortion the whole design exists to avoid, and it is the single most likely bug in this milestone.
 - Update the bias under `no_grad` and **only when `self.training`**. The update uses the current batch's load and applies to the *next* batch — a batch must never be routed with a bias derived from itself.
-- `γ = 0.001`, matching DeepSeek-V3.
+- The fixed-step sign rule with `γ = 0.001` (DeepSeek-V3) was the original plan; the code implements Quantile Balancing instead, see the next bullet.
 - **Quantile Balancing is worth implementing over the fixed-step rule.** The expectation was that QB only pays off at hundreds of experts with distributed histogram estimation, and that the sign rule would do at this size. That was wrong in a useful way: QB needs no step size, converges in one pass rather than adapting over many, and its per-expert bias is directly readable as how much the router wants to be imbalanced. At `64` experts on one GPU the exact quantile is a single `sort` per layer, so the histogram estimator is unnecessary and the simple form is not simpler.
 - Keep the **sigmoid** router. DeepSeek-V4 switched to `Sqrt(Softplus)`, but two of three frontier models still use sigmoid, and one lab changing its mind once is not a trend. Sigmoid's bounded `(0,1)` range is also what makes a fixed `γ` mean the same thing for every expert.
 - **Skip DeepSeek's sequence-wise balance loss.** It is a safety net against extreme within-sequence imbalance at trillion scale, and adding it would reintroduce exactly the auxiliary-loss coupling this milestone is about removing.
@@ -932,7 +934,7 @@ With `g_min = -5` every retention factor exceeds `e⁻⁵ ≈ 6.7×10⁻³`, the
 **Implementation decisions.**
 - Implement **both the recurrent form and the chunked parallel form, and assert they agree numerically.** The recurrent form is the definition; the chunked form is what runs. If they disagree, the chunked derivation is wrong, and that bug is invisible in a loss curve. **Agreement is necessary but not sufficient** — it exercises only the forward, and the chunked form's reciprocal can overflow in the backward while both forwards match exactly. Size `CHUNK_SIZE` against `2 * CHUNK_SIZE * -G_MIN`, not `CHUNK_SIZE * -G_MIN`.
 - Use the **bounded** decay parameterization with `g_min = -5`. The unbounded negative-softplus form is the older Kimi Linear/GDN mapping and is strictly harder to make numerically safe.
-- Keep the full KDA input pipeline: `q, k = L2Norm(Swish(ShortConv(Wx)))`, `v = Swish(ShortConv(W_v x))`, `β = σ(W_β x)`, and a **low-rank** projection for the decay logits `z`. The `L2Norm` on `q`/`k` is KDA's analogue of QK-Norm.
+- Keep the full KDA input pipeline: `q, k = L2Norm(Swish(ShortConv(Wx)))`, `v = Swish(ShortConv(W_v x))`, `β = σ(W_β x)`, and a projection for the decay logits `z` (K3 uses a low-rank one; the implementation uses a full-rank `D_MODEL x D_MODEL` projection, which is where most of the milestone's `+818448` parameters come from). The `L2Norm` on `q`/`k` is KDA's analogue of QK-Norm, and it has no epsilon in the current code.
 - Output path is `y = W_o[σ(W_g x) ⊙ RMSNorm(õ_t)]` — head-wise RMSNorm on the recurrent output, then the same full-rank output gate from `M-507`. The norm matters: the recurrent state has no softmax to bound its scale.
 - **Remove RoPE from these layers.** Position now comes from the recurrence's decay ordering. This is what lets K3 run NoPE across the entire model.
 - Expect this to be **slow** — a Python-level chunked scan against fused kernels. Report it honestly; this is the single best phase-4 Triton target the ladder will produce.
@@ -981,10 +983,10 @@ Plain hyper-connections do this and are numerically unstable when stacked. mHC's
 
 **Implementation decisions.**
 - **Implement Attention Residuals, not mHC.** Three reasons. AttnRes is one mechanism with a clean statement — attention over depth — and it teaches something transferable; mHC needs dynamic parameter generation, Sinkhorn projection, and a `4x`-wide residual state, which is a lot of machinery for one measurement. AttnRes's justification is architectural (the depth bottleneck) while mHC's is primarily numerical (stability at `1.6T` parameters), and the numerical problem does not exist at `6M`. And AttnRes changes the residual *routing*, which is the interesting question; mHC changes its *width*.
-- Use the **full** form, not Block AttnRes. At `L = 8` the block partition would be near-vacuous, and `O(L²d)` at `L = 8` is `64` inner products per token — free.
+- The plan was the **full** form; the implementation is the block form with `RES_BLOCK_SIZE = 2` (the running in-block partial sum is exposed as an extra source, and each sublayer has its own pseudo-query and norm), which is why the parameter delta is `+10752` rather than one `d`-vector per layer.
 - Include the **token embedding as index `0`**, per K3. Every layer keeps direct access to the raw input.
 - Keep the `RMSNorm` inside the attention kernel. Removing it is the obvious "simplification" and it is the thing that makes the weights scale-invariant.
-- Parameter cost is one `d`-vector per layer — `8 × 128 = 1024` parameters. This is nearly free, which makes it an unusually clean comparison.
+- Parameter cost in the implemented block form is `+10752` (pseudo-queries and norms per sublayer plus the output aggregation), `0.06%` of the model. This is nearly free, which makes it an unusually clean comparison.
 - Memory cost is keeping all `L` layer outputs alive, so activation memory rises. Measure it.
 
 Status: complete via [`phase5/016_attention_residuals.py`](../../phase5/016_attention_residuals.py), recorded as `P5-016`.
@@ -1030,9 +1032,18 @@ Kimi K3 refines further with **Per-Head Muon**: for attention projections, parti
 - Rescale the update so AdamW's learning rate stays reusable. `UVᵀ` has per-entry RMS `1/√max(n,m)`, so multiplying by `0.18 · √max(n,m)` gives every Muon update an RMS of `0.18` regardless of shape — DeepSeek-V4's value. Recorded as `MUON_UPDATE_RMS`.
 - Parameter groups: **Muon** for every `nn.Linear` weight except the output head, which is exactly the set of matrices used as linear maps. **AdamW** for everything else: both vocabulary tables, every RMSNorm gain, the sink logits, the AttnRes pseudo-queries, the KDA decay biases, and the `ShortConv` filters — those last are stored `[D, W]` but are `D` independent filters, not a map, so `p.dim() == 2` is the wrong test.
 - Use Nesterov momentum and apply weight decay to Muon parameters, per both reports.
-- **Skip Per-Head Muon initially.** With `4` heads its benefit is small; implement it as the A/B if the main comparison is clean.
-- Untie the embeddings and expect this to **hurt or do nothing**. At a `98`-character vocabulary the output head is `98 × 128 = 12544` parameters and the tying constraint is nearly harmless; untying matters at a `160K` vocabulary where the two roles genuinely conflict. Predict the null result in advance and check it.
+- **Skip Per-Head Muon initially.** With `8` heads of dim `32` its benefit is small; implement it as the A/B if the main comparison is clean.
+- Untie the embeddings and expect this to **hurt or do nothing**. At a `98`-character vocabulary the output head is `98 × 256 = 25088` parameters and the tying constraint is nearly harmless; untying matters at a `160K` vocabulary where the two roles genuinely conflict. Predict the null result in advance and check it. (Checked on 2026-09-04: the untied model under AdamW reaches `0.7781` against `0.7790` tied, so the null held and the 517 gain is the optimizer's.)
 - Do **not** adopt QK-Clip. `M-507` already installed QK-Norm, and DeepSeek-V4 states explicitly that RMSNorm on queries and KV entries is why they dropped QK-Clip from their Muon implementation.
+
+Status: complete via [`phase5/017_muon_optimizer.py`](../../phase5/017_muon_optimizer.py), recorded as `P5-017`.
+
+Main lesson:
+- **The largest gain since RoPE.** `-0.0963` against the predecessor and `-0.0879` against the previous best, five times the noise floor, lower at every checkpoint. Muon reaches AdamW's final loss by step `1250`, `42%` of the budget.
+- **Cost is `2.43x` wall-clock, nearly four hours.** A Python loop over `1843` matrices running ten Newton-Schulz iterations each, one at a time. Production Muon batches and fuses; this one deliberately does not, because the five lines *are* the mechanism.
+- **Untying is along for the ride.** The roadmap predicted it would do nothing at a `98`-character vocabulary, so the gain is the optimizer. The clean control — `M-016` untied on AdamW — has not been run.
+- **Routing became far easier to balance**, `bias_span` `0.310` against `0.833`, the lowest since balancing was introduced. Orthogonalized updates leave the router's preferences less concentrated.
+- **Every "inside noise" verdict from `M-505` to `M-516` is now conditional on AdamW.** That is exactly why the optimizer was placed last, and the caveat stays attached to those rows rather than triggering a second ladder.
 
 ### Milestone 518: Library Muon
 Track: Optimization
@@ -1052,6 +1063,14 @@ Track: Optimization
 - Nothing in the model changes. The diff against 517 should be the optimizer section and the constants it consumed, and nothing else.
 - Use the library's defaults for momentum and Newton–Schulz; the point is to run the library as shipped.
 - Watch the wall-clock. bfloat16 matmul has no native tensor-core path on the T4, so the cast may cost more than it saves there.
+
+Status: complete via [`phase5/018_torch_muon.py`](../../phase5/018_torch_muon.py), recorded as `P5-018`.
+
+Main lesson:
+- **The hand-written Muon is validated.** `0.6813` against `0.6827`, `-0.0014`, from an identical initialization, with two implementations that differ in iteration count, coefficient schedule, and rescale rule. They never drift more than `0.0088` apart across the run.
+- **The library is `1.63x` faster.** Five Newton-Schulz iterations instead of ten, run in bfloat16; torch 2.11's `Muon` is itself a single-tensor Python loop (no `foreach` path), so the rest of the gain is the cheaper iteration, not batching. Same mechanism, less overhead.
+- **DeepSeek's `8 + 2` hybrid schedule buys nothing measurable over Keller's five iterations at this scale**, while roughly doubling optimizer time.
+- **The library version is the one to run from here.** `M-017` stays as the implementation that explains what `torch.optim.Muon` does.
 
 ### Milestone 519: Modern Reference Model
 Track: Integration
@@ -1116,7 +1135,7 @@ Specific mechanisms deliberately **not** implemented, with reasons:
 | Mechanism | Model | Why it is skipped |
 | --- | --- | --- |
 | LatentMoE | Kimi K3 | Routed experts operate in a `0.5×d` latent so expert traffic does not scale with routing multiplicity. The benefit is *communication* under expert parallelism, which does not exist on one GPU. |
-| Quantile Balancing | Kimi K3 | Solves fixed-step bias adaptation at `896` experts with distributed histogram estimation. At `32` experts on one GPU the simple sign rule is sufficient. |
+| Quantile Balancing (histogram estimator) | Kimi K3 | The exact-quantile form *is* implemented in 511; only the distributed histogram estimator is skipped, because at `64` experts on one GPU the exact quantile is a single sort per layer. |
 | mHC | DeepSeek-V4 | A numerical-stability fix for `1.6T` parameters. `M-516` implements AttnRes instead, which addresses the architectural question rather than the numerical one. |
 | CSA / HCA | DeepSeek-V4 | Compression along the *sequence* axis, which only matters when sequence length dominates memory. At context `256` it cannot. |
 | DeepSeek Sparse Attention | GLM-5.2 | A learned indexer selecting top-`2048` of a `1M`-token prefix. At context `256`, top-`2048` is the whole sequence. |
